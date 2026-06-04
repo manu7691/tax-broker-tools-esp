@@ -5,11 +5,11 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "tax-engine"
 version = "0.1.0"
-description = "Austrian Tax Engine for E-Trade RSUs and ESPP using Moving Average Cost Basis"
+description = "Spanish Tax Engine for E-Trade RSUs and ESPP using FIFO Cost Basis"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
-keywords = ["tax", "austria", "espp", "rsu", "capital-gains", "kest"]
+keywords = ["tax", "spain", "espp", "rsu", "capital-gains", "fifo", "renta", "modelo-100"]
 dependencies = [
     "certifi>=2024.0.0",
     "openpyxl>=3.1.5",

@@ -1,9 +1,9 @@
 #!/usr/bin/env python3
 """
-Austrian Tax Engine for E-Trade RSUs and ESPP
+Spanish Tax Engine for E-Trade RSUs and ESPP
 
-Calculates capital gains tax using the Austrian moving average cost basis method
-(Gleitender Durchschnittspreis) for stocks acquired through RSU vesting and ESPP purchases.
+Calculates capital gains tax using the Spanish FIFO cost basis method
+for stocks acquired through RSU vesting and ESPP purchases.
 
 Main entry point for the application.
 """

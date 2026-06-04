@@ -1,3 +1,4 @@
+import contextlib
 import os
 import re
 import time
@@ -115,11 +116,18 @@ def download_rsu_confirmations() -> None:
 
                 print(f"Checking confirmation for {formatted_date}...")
 
+                # Dismiss any Qualtrics survey popups that might intercept clicks
+                with contextlib.suppress(Exception):
+                    if page.locator(".QSIWebResponsive").is_visible():
+                        # Pressing Escape usually closes these modals
+                        page.keyboard.press("Escape")
+                        time.sleep(0.5)
+
                 # Click download to get the URL (and cId)
                 with page.expect_popup() as popup_info:
                     row.locator(
                         '[data-test-id="Stockplanconfig.transactiontable.download"]'
-                    ).click()
+                    ).click(force=True, timeout=10000)
 
                 popup = popup_info.value
                 popup.wait_for_load_state()

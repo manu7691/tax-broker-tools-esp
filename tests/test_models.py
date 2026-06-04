@@ -191,34 +191,53 @@ class TestYearlyTaxSummary:
         assert summary.net_gain_loss == Decimal("-300.00")
         assert summary.taxable_gain == Decimal("0")
 
-    def test_kest_calculation_27_5_percent(self):
-        """Test KESt calculation at 27.5% rate."""
-        summary = YearlyTaxSummary(
+    def test_tax_due_calculation_progressive(self):
+        """Test Spanish savings tax due progressive scale calculation."""
+        # 19% for up to 6000
+        summary1 = YearlyTaxSummary(
             year=2021,
             total_gains=Decimal("1000.00"),
             total_losses=Decimal("0.00"),
         )
-        # 1000 * 0.275 = 275.00
-        assert summary.kest_due == Decimal("275.00")
+        # 1000 * 0.19 = 190.00
+        assert summary1.tax_due == Decimal("190.00")
 
-    def test_kest_rounding(self):
-        """Test that KESt is rounded to 2 decimal places."""
+        # 21% band (6000 to 50000)
+        summary2 = YearlyTaxSummary(
+            year=2021,
+            total_gains=Decimal("10000.00"),
+            total_losses=Decimal("0.00"),
+        )
+        # 6000 * 0.19 + 4000 * 0.21 = 1140 + 840 = 1980.00
+        assert summary2.tax_due == Decimal("1980.00")
+
+        # 23% band (50000 to 200000)
+        summary3 = YearlyTaxSummary(
+            year=2021,
+            total_gains=Decimal("60000.00"),
+            total_losses=Decimal("0.00"),
+        )
+        # 6000 * 0.19 + 44000 * 0.21 + 10000 * 0.23 = 1140 + 9240 + 2300 = 12680.00
+        assert summary3.tax_due == Decimal("12680.00")
+
+    def test_tax_due_rounding(self):
+        """Test that tax due is rounded to 2 decimal places."""
         summary = YearlyTaxSummary(
             year=2021,
             total_gains=Decimal("333.33"),
             total_losses=Decimal("0.00"),
         )
-        # 333.33 * 0.275 = 91.66575 -> 91.67 (rounded)
-        assert summary.kest_due == Decimal("91.67")
+        # 333.33 * 0.19 = 63.3327 -> 63.33 (rounded)
+        assert summary.tax_due == Decimal("63.33")
 
-    def test_kest_zero_when_no_taxable_gain(self):
-        """Test that KESt is zero when there's no taxable gain."""
+    def test_tax_due_zero_when_no_taxable_gain(self):
+        """Test that tax due is zero when there's no taxable gain."""
         summary = YearlyTaxSummary(
             year=2021,
             total_gains=Decimal("100.00"),
             total_losses=Decimal("-200.00"),
         )
-        assert summary.kest_due == Decimal("0.00")
+        assert summary.tax_due == Decimal("0.00")
 
     def test_default_values(self):
         """Test that gains and losses default to zero."""

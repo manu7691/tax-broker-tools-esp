@@ -4,7 +4,7 @@
 cd "$(dirname "$0")"
 
 echo "=========================================="
-echo "   Austrian Tax Engine - Setup & Run"
+echo "   Spanish Tax Engine - Setup & Run"
 echo "=========================================="
 
 # 1. Check for Python 3
@@ -54,7 +54,7 @@ fi
 while true; do
     clear
     echo "=========================================="
-    echo "   Austrian Tax Engine for E-Trade"
+    echo "   Spanish Tax Engine for E-Trade"
     echo "=========================================="
     echo "1. Login to E-Trade (Required first)"
     echo "2. Download All Data (ESPP, Orders, RSU)"

@@ -23,7 +23,7 @@ class ECBRateFetcher:
     Fetches USD/EUR exchange rates from the European Central Bank.
 
     Uses the ECB Statistical Data Warehouse API to get official daily rates.
-    These are the rates accepted by the Austrian Finanzamt.
+    These are the rates accepted by the Spanish Agencia Tributaria.
     """
 
     # ECB API endpoint for USD/EUR daily exchange rates

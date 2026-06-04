@@ -71,11 +71,23 @@ def parse_rsu_pdf(pdf_path: Path) -> StockEvent | None:
                 print(f"Warning: Could not parse price '{price_str}' in {pdf_path.name}: {e}")
                 return None
 
+            # Extract Shares Sold (for taxes)
+            # Example: Shares Sold (14.0000)
+            shares_sold_match = re.search(r"Shares\s+Sold\s+\(([\d,\.]+)\)", text)
+            shares_sold_to_cover = Decimal("0")
+            if shares_sold_match:
+                shares_sold_str = shares_sold_match.group(1).replace(",", "")
+                try:
+                    shares_sold_to_cover = Decimal(shares_sold_str)
+                except Exception:
+                    pass
+
             return StockEvent(
                 event_date=event_date,
                 event_type=EventType.VEST,
                 shares=shares,
                 price_usd=price_usd,
+                shares_sold_to_cover=shares_sold_to_cover,
                 notes=f"RSU Vest ({pdf_path.name})",
             )
 

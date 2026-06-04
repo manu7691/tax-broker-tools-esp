@@ -1,163 +1,91 @@
-# Tax Calculation Method
+# Spanish FIFO Tax Calculation Method & Compliance Audit
 
-This document explains how the Austrian Tax Engine calculates capital gains tax on stocks acquired through RSU vesting and ESPP purchases.
+This document explains the calculation methodology used by the Spanish Tax Engine to process E-Trade stock data (RSUs, ESPPs, Stock Options) and analyzes the engine's compliance with Spanish Tax Law (LIRPF).
 
-## Overview
+---
 
-Austrian tax law requires the **Moving Average Cost Basis Method** (German: *Gleitender Durchschnittspreis*) for calculating capital gains on securities. This method continuously recalculates your average cost basis whenever you acquire new shares.
+## 1. Executive Verdict & Compliance Checklist
 
-## Key Concepts
+The engine implements a fully compliant First-In, First-Out (FIFO) calculation system specifically tailored to the requirements of the Spanish Tax Agency (*Agencia Tributaria - Hacienda*).
 
-### 1. Cost Basis (Anschaffungskosten)
+| Regulatory / Technical Requirement | Status | Legal Basis / Reference |
+| :--- | :---: | :--- |
+| **FIFO Lot Matching** | ✅ Compliant | Art. 37.2 LIRPF — Strict homogeneous matching |
+| **ECB Exchange Rates (USD → EUR)** | ✅ Compliant | Official daily European Central Bank lookup rates |
+| **Progressive Savings Tax Scales** | ✅ Compliant | Art. 66 LIRPF — Up-to-date 2024–2026 tax bands (19% to 28%) |
+| **2-Month Wash Sale Rule** | ✅ Compliant | Art. 33.5.f LIRPF — Anti-avoidance (proportional blocking) |
+| **Fee Deductions** | ✅ Compliant | Art. 35.1 & 35.2 LIRPF — Deductible *gastos inherentes* |
+| **RSU Vesting Cost Basis** | ✅ Compliant | FMV at release date (prevents double taxation) |
+| **ESPP Purchase Cost Basis** | ✅ Compliant | FMV at purchase date |
+| **ESPP 3-Year Holding Period** | ✅ Auto-Detected | Art. 42.3.f LIRPF — Identifies early sales and salary tax |
+| **Loss Carryforward** | ❌ Out of Scope | Art. 49 LIRPF — Must be handled manually in Modelo 100 |
+| **Modelo 720 (Foreign Assets)** | ❌ Out of Scope | Separate annual obligation (if assets abroad > €50,000) |
 
-The cost basis is the price you paid for your shares, converted to EUR. For:
+---
 
-- **RSU Vesting**: The fair market value (FMV) at the time of vesting
-- **ESPP Purchases**: The purchase price you paid (typically at a discount)
+## 2. Core Calculation Methodology
 
-### 2. Moving Average Cost Basis (Gleitender Durchschnittspreis)
+### FIFO Lot Matching (First-In, First-Out)
+Under Spanish law (**Art. 37.2 LIRPF**), shares of the same company are homogeneous. When you execute a sell order, the engine matches the sold shares against your oldest available share acquisitions in chronological order.
+* Realized gain/loss is calculated per lot:
+  $$\text{Realized Gain/Loss} = (\text{Selling Price in EUR} - \text{Acquisition Cost in EUR}) \times \text{Shares}$$
+* If a single sell transaction spans multiple purchase lots, the transaction is split and calculated on a per-lot basis.
+* Stale lots are completely cleared once their remaining shares reach `0`.
 
-Unlike FIFO (First In, First Out) or LIFO (Last In, First Out), the moving average method calculates a weighted average of all your purchase prices. This average is updated every time you acquire new shares.
+### Transaction Processing Order (Same-Day Events)
+To prevent negative share inventory errors and ensure correct FIFO matching for same-day sell-to-cover actions, events occurring on the same calendar day are sorted as follows:
+1. **VEST / BUY / EXERCISE** (all acquisitions)
+2. **SELL** (all sales, including sell-to-cover)
 
-**Formula:**
-```
-New Average Cost = (Old Total Cost + New Acquisition Cost) / (Old Shares + New Shares)
-```
+### Currency Conversion
+All values are converted from USD to EUR:
+1. Uses the official European Central Bank (ECB) daily exchange rate.
+2. Inverts the ECB's official EUR/USD rate to obtain the correct USD/EUR rate.
+3. Automatically falls back to the closest preceding business day's rate for weekends and market holidays.
 
-> ⚠️ **Why not use E-Trade's Gain & Loss reports?**
-> E-Trade allows you to choose which specific lot of shares to sell (e.g., FIFO, LIFO, or specific identification). This is common in the US, but **Austrian tax law does not allow lot selection** — you must use the moving average cost basis for all shares of the same security. E-Trade's G&L reports are therefore not compliant with Austrian tax requirements, which is why this tool exists.
+---
 
-### 3. Capital Gains Tax (KESt - Kapitalertragsteuer)
+## 3. Advanced Spanish Tax Compliance Rules
 
-Austria taxes capital gains on securities at a flat rate of **27.5%**.
+### The 2-Month Wash Sale Rule (*Norma de los Dos Meses*)
+Under **Art. 33.5.f LIRPF**, you cannot declare capital losses from a sale if you acquired homogeneous shares within **2 months before or after** that sale. 
+* **Proportional Blocking:** The blocked loss is limited to the number of replacement shares.
+  $$\text{Blocked Shares} = \min(\text{Sold Shares}, \text{Replacement Shares Remaining in Portfolio})$$
+* **Correct Application:** The engine only blocks losses against replacement shares that *remain in your portfolio* (shares consumed by the sell itself do not trigger a wash sale).
+* **Filing Treatment:** Blocked losses are deferred and cannot offset gains in the current tax year. They are carried forward as "blocked" until the replacement shares are sold.
 
-## The Three Core Rules
+### Transaction & Transfer Fee Deductions (*Gastos Inherentes*)
+According to **Art. 35.1 and 35.2 LIRPF**, commissions and fees directly related to the acquisition or transmission of shares are deductible.
+* The engine automatically parses and deducts **Commissions**, **SEC Fees**, and **Brokerage Assist Fees** from capital gains.
+* Users can manually record platform wire transfer fees (for transferring cash out of E-Trade) in the input file to have them deducted as inherent transaction costs.
 
-### Rule A: Acquisitions Update the Average
+### ESPP 3-Year Holding Period Exemption (Art. 42.3.f LIRPF)
+Discounts on ESPP purchases (up to €12,000/year) are tax-exempt if:
+1. The shares are held for at least **3 years** from the purchase date.
+2. The ESPP program was offered to all employees under the same conditions (verified via company enrollment sign-off).
 
-Every time you acquire shares (RSU vest or ESPP purchase), the average cost is recalculated:
+**Early Sale Detection:**
+* The engine scans all FIFO sales. If ESPP shares are sold before the 3-year mark, the engine flags the corresponding purchase discount as **taxable salary income** (*Rendimiento del Trabajo*).
+* The tax is imputed to the **Purchase Year**, requiring a **Complementary Tax Return** (*Declaración Complementaria*) for that year, which may incur delay interest but no penalties if filed voluntarily.
 
-**Example:**
-- You hold 100 shares with an average cost of €50 (total cost: €5,000)
-- You acquire 50 more shares at €60 each (cost: €3,000)
-- New average: (€5,000 + €3,000) / (100 + 50) = **€53.33 per share**
+---
 
-### Rule B: Sales Do NOT Change the Average
+## 4. Scope Limitations & Caveats
 
-When you sell shares, the average cost remains unchanged. Only the quantity decreases.
+1. **Loss Carryforward (Art. 49 LIRPF):** The engine calculates net taxable bases on a strictly yearly basis. If you have net capital losses in a year, they can be carried forward to offset gains for the next 4 years. **Your tax advisor must apply this carryforward manually on your tax return.**
+2. **Single Ticker Assumption:** The engine assumes all input transactions apply to the same company stock. If you trade multiple tickers, separate files must be processed to prevent FIFO lot mixing.
+3. **Modelo 720:** If your foreign bank accounts or stock portfolios (like E-Trade) exceed a value of €50,000 at any point during the year (or as of Dec 31st), you must file the Modelo 720 informative declaration. The engine does not generate this form.
 
-**Example:**
-- You hold 150 shares with an average cost of €53.33
-- You sell 30 shares at €70 each
-- Realized gain: (€70 - €53.33) × 30 = **€500.10**
-- Remaining: 120 shares, still at €53.33 average cost
+---
 
-### Rule C: Depot Check (You Can't Sell More Than You Own)
+## 5. Notes for Your Tax Advisor & Hacienda
 
-You cannot sell more shares than you currently hold. The engine validates this for each transaction.
+### Summary for Your Asesor Fiscal
+Provide the following information to your gestor when submitting your report:
+* "This report uses a strict **FIFO cost basis matching** and applies official **ECB daily exchange rates** on transaction dates."
+* "Transaction fees (Commissions, SEC, and Brokerage Assist) have been deducted as *gastos inherentes* (Art. 35 LIRPF)."
+* "The **2-month wash sale rule** (Art. 33.5.f LIRPF) has been applied to defer losses where replacement shares remain in the portfolio."
+* "The engine scans for **ESPP early sales** (< 3 years) and separates the discount amount to be declared as *Rendimiento del Trabajo* via a *Declaración Complementaria* for the purchase year."
 
-## Currency Conversion
-
-All transactions must be converted to EUR for Austrian tax purposes:
-
-1. **USD to EUR conversion** uses the official ECB (European Central Bank) exchange rate
-2. The rate used is from the **transaction date** (or the closest available rate)
-3. Exchange rates are fetched from the ECB Statistical Data Warehouse
-
-## Transaction Processing Order
-
-When multiple transactions occur on the same day, they are processed in this order:
-
-1. **VEST** (RSU vesting)
-2. **BUY** (ESPP purchases)
-3. **SELL** (Stock sales)
-
-This ordering is critical for "sell-to-cover" scenarios where shares vest and are immediately sold on the same day to cover taxes.
-
-## Yearly Tax Summary
-
-At the end of each tax year, the engine calculates:
-
-| Metric | Description |
-|--------|-------------|
-| **Total Gains** | Sum of all positive realized gains |
-| **Total Losses** | Sum of all realized losses (negative) |
-| **Net Gain/Loss** | Gains + Losses (losses offset gains) |
-| **Taxable Gain** | Max(0, Net Gain/Loss) — losses cannot create a tax credit |
-| **KESt Due** | Taxable Gain × 27.5% |
-
-### Loss Offsetting Rules
-
-- Losses can offset gains **within the same year**
-- Losses **cannot** be carried forward to future years
-- If your net result is negative, your taxable gain is €0
-
-## Practical Example
-
-Let's walk through a complete example:
-
-### Transactions
-
-| Date | Type | Shares | Price (USD) | FX Rate | Price (EUR) |
-|------|------|--------|-------------|---------|-------------|
-| 2024-03-15 | VEST | 100 | $150.00 | 0.92 | €138.00 |
-| 2024-06-01 | VEST | 50 | $180.00 | 0.93 | €167.40 |
-| 2024-09-10 | SELL | 80 | $200.00 | 0.91 | €182.00 |
-| 2024-12-01 | VEST | 30 | $160.00 | 0.94 | €150.40 |
-
-### Calculation Steps
-
-**Step 1: First VEST (March 15)**
-- Shares: 100
-- Average cost: €138.00
-- Total cost: €13,800.00
-
-**Step 2: Second VEST (June 1)**
-- New shares: 50 at €167.40
-- New total cost: €13,800 + (50 × €167.40) = €22,170
-- Total shares: 150
-- New average: €22,170 / 150 = **€147.80**
-
-**Step 3: SELL (September 10)**
-- Selling 80 shares at €182.00
-- Cost basis: 80 × €147.80 = €11,824
-- Proceeds: 80 × €182.00 = €14,560
-- **Realized gain: €2,736**
-- Remaining: 70 shares at €147.80 average (unchanged!)
-
-**Step 4: Third VEST (December 1)**
-- New shares: 30 at €150.40
-- Old total cost: 70 × €147.80 = €10,346
-- New total cost: €10,346 + (30 × €150.40) = €14,858
-- Total shares: 100
-- New average: €14,858 / 100 = **€148.58**
-
-### Tax Summary for 2024
-
-| Metric | Amount |
-|--------|--------|
-| Total Gains | €2,736.00 |
-| Total Losses | €0.00 |
-| Net Gain/Loss | €2,736.00 |
-| Taxable Gain | €2,736.00 |
-| **KESt Due** | **€752.40** |
-
-## Important Notes
-
-1. **RSU Income Tax**: The FMV at vesting is also taxable as income (Lohnsteuer), but it is already withheld by Dynatrace. This is separate from the capital gains calculated here.
-
-2. **ESPP Discount**: The discount you receive on ESPP purchases is normally taxable as a benefit-in-kind (Sachbezug). However, under **§ 3 Abs. 1 Z 15 lit. b EStG**, if you hold the shares for at least **5 years**, the discount (up to €3,000 per year) can be **tax-free**. Dynatrace's ESPP qualifies for this benefit. The discount taxation is handled by Dynatrace's payroll. This software only calculates capital gains (KESt) when you sell.
-
-3. **Sell-to-Cover**: When shares are sold to cover taxes at vesting, the vest happens first (establishing cost basis), then the immediate sale is processed.
-
-4. **Rounding**: The engine uses 4 decimal places for calculations to maintain precision.
-
-## Legal References
-
-- § 27 EStG (Einkommensteuergesetz) - Capital gains taxation
-- § 27a EStG - Special tax rate for capital income (27.5%)
-- BMF (Bundesministerium für Finanzen) guidelines on cost basis calculation
-
-## Disclaimer
-
-This document explains the methodology used by this software. It is not tax advice. Tax laws change, and individual circumstances vary. Always consult a qualified Austrian tax advisor (Steuerberater) for your specific situation.
+### For Hacienda
+The Spanish PDF report (`tax_report_ES_*.pdf`) generated by the engine is formatted to serve as proof for the Agencia Tributaria. It contains a complete ledger of transactions, individual FIFO lot-matching details, and calculations for both capital gains (*Base del Ahorro*) and salary adjustments (*Rendimiento del Trabajo*).

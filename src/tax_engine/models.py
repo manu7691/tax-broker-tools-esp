@@ -1,5 +1,5 @@
 """
-Data models for the Austrian Tax Engine.
+Data models for the Spanish Tax Engine.
 
 Contains all dataclasses and enums used throughout the application.
 """
@@ -17,6 +17,29 @@ class EventType(Enum):
     BUY = "BUY"  # ESPP purchase
     SELL = "SELL"  # Manual sell or sell-to-cover
     EXERCISE = "EXERCISE"  # Stock option exercise - cost basis = FMV at exercise
+
+
+@dataclass
+class ShareLot:
+    """Represents a lot of acquired shares for FIFO tracking (Spain)."""
+
+    acquisition_date: date
+    shares: Decimal
+    price_eur: Decimal
+    remaining_shares: Decimal
+    notes: str = ""
+
+
+@dataclass
+class FifoMatch:
+    """Represents a match of sold shares to an acquisition lot under FIFO."""
+
+    acquisition_date: date
+    acquisition_price_eur: Decimal
+    shares: Decimal
+    realized_gain_loss: Decimal
+    notes: str = ""
+
 
 
 @dataclass
@@ -38,6 +61,8 @@ class StockEvent:
     shares: Decimal
     price_usd: Decimal
     fx_rate: Decimal | None = None
+    fees_usd: Decimal = Decimal("0")
+    shares_sold_to_cover: Decimal = Decimal("0")  # For VEST events
     notes: str = ""
     _fx_rate_resolved: Decimal | None = field(default=None, init=False, repr=False)
 
@@ -99,36 +124,66 @@ class ProcessedEvent:
     realized_gain_loss: Decimal = Decimal("0")
     cost_change_eur: Decimal = Decimal("0")
     total_portfolio_cost_eur: Decimal = Decimal("0")
+    fifo_matches: list[FifoMatch] = field(default_factory=list)
 
 
 @dataclass
 class YearlyTaxSummary:
-    """Tax summary for a single year."""
+    """Tax summary for a single year under Spanish law."""
 
     year: int
     total_gains: Decimal = Decimal("0")
     total_losses: Decimal = Decimal("0")
+    blocked_losses: Decimal = Decimal("0")
+    total_fees_eur: Decimal = Decimal("0")  # Spanish 2-month rule blocked losses (negative or zero)
+
+    @property
+    def deductible_losses(self) -> Decimal:
+        """Deductible losses for Spain (after excluding blocked losses)."""
+        return self.total_losses - self.blocked_losses
 
     @property
     def net_gain_loss(self) -> Decimal:
-        """Net gain/loss for the year (losses can offset gains within same year)."""
-        return self.total_gains + self.total_losses
+        """Net gain/loss, excluding blocked losses."""
+        return self.total_gains + self.deductible_losses
 
     @property
     def taxable_gain(self) -> Decimal:
-        """
-        Taxable gain after offsetting losses.
-        In Austria, losses can offset gains within the same year,
-        but cannot be carried forward to future years.
-        """
+        """Taxable gain after offsetting allowed losses."""
         return max(Decimal("0"), self.net_gain_loss)
 
     @property
-    def kest_due(self) -> Decimal:
+    def tax_due(self) -> Decimal:
         """
-        KESt (Kapitalertragsteuer) due at 27.5% rate.
+        Calculate Spanish savings tax due (progressive scale).
+        Bands:
+        - Up to €6,000: 19%
+        - €6,000.01 to €50,000: 21%
+        - €50,000.01 to €200,000: 23%
+        - €200,000.01 to €300,000: 27%
+        - Over €300,000: 28%
         """
-        return (self.taxable_gain * Decimal("0.275")).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        base = self.taxable_gain
+        tax = Decimal("0")
+
+        bands = [
+            (Decimal("6000"), Decimal("0.19")),
+            (Decimal("44000"), Decimal("0.21")),
+            (Decimal("150000"), Decimal("0.23")),
+            (Decimal("100000"), Decimal("0.27")),
+            (None, Decimal("0.28")),
+        ]
+
+        remaining = base
+        for limit, rate in bands:
+            if limit is None or remaining <= limit:
+                tax += remaining * rate
+                break
+            else:
+                tax += limit * rate
+                remaining -= limit
+
+        return tax.quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 
 @dataclass
@@ -136,12 +191,13 @@ class TaxEngineState:
     """
     Current state of the tax engine.
 
-    Tracks the portfolio position and moving average cost basis.
+    Tracks the portfolio position, FIFO cost basis, and share lots.
     """
 
     total_shares: Decimal = Decimal("0")
     avg_cost_eur: Decimal = Decimal("0")
     total_portfolio_cost_eur: Decimal = Decimal("0")
+    lots: list[ShareLot] = field(default_factory=list)
 
     def clone(self) -> "TaxEngineState":
         """Create a copy of the current state."""
@@ -149,4 +205,14 @@ class TaxEngineState:
             total_shares=self.total_shares,
             avg_cost_eur=self.avg_cost_eur,
             total_portfolio_cost_eur=self.total_portfolio_cost_eur,
+            lots=[
+                ShareLot(
+                    acquisition_date=lot.acquisition_date,
+                    shares=lot.shares,
+                    price_eur=lot.price_eur,
+                    remaining_shares=lot.remaining_shares,
+                    notes=lot.notes,
+                )
+                for lot in self.lots
+            ],
         )

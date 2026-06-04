@@ -2,7 +2,7 @@
 
 ## Project Overview
 
-This is an **Austrian Tax Engine** that calculates capital gains tax using the **Moving Average Cost Basis method** (Gleitender Durchschnittspreis) required by Austrian tax law. It processes stock transactions from E-Trade (RSU vesting, ESPP purchases, and sales).
+This is a **Spanish Tax Engine** that calculates capital gains tax using the **FIFO (First-In, First-Out) Cost Basis method** required by Spanish tax law (Agencia Tributaria). It processes stock transactions from E-Trade including RSU vesting, ESPP purchases, stock options exercises, and manual sales.
 
 ## Running Commands
 
@@ -12,16 +12,22 @@ This is an **Austrian Tax Engine** that calculates capital gains tax using the *
 
 ## Architecture Notes
 
-- **models.py**: Data classes (`StockEvent`, `ProcessedEvent`, `YearlyTaxSummary`, `TaxEngineState`)
-- **tax_engine.py**: Core calculation logic using moving average cost basis
+- **models.py**: Data classes (`StockEvent`, `ProcessedEvent`, `YearlyTaxSummary`, `TaxEngineState`, `ShareLot`, `FifoMatch`)
+- **tax_engine.py**: Core calculation logic using FIFO lots, progressive tax scale, and wash sale rules
 - **ecb_rates.py**: Fetches USD/EUR rates from ECB Statistical Data Warehouse
 - **rsu_parser.py**: Parses RSU confirmation PDFs using regex
+- **options_parser.py**: Parses Stock Options exercise confirmations
+- **cli_main.py**: Orchestrates the CLI, reads `orders.xlsx` (sells) and `BenefitHistory.xlsx` (ESPP buys)
 - **sample_data.py**: Creates sample events for testing/demo
 
-## Key Tax Rules (Austrian Law)
+## Key Tax Rules (Spanish Law - LIRPF)
 
-- **Rule A**: Moving average recalculated on every acquisition (VEST/BUY)
-- **Rule B**: Selling doesn't change the average cost, only reduces quantity
-- **Rule C**: Cannot sell more shares than currently held (depot check)
-- **KESt Rate**: 27.5% on capital gains
-- Losses can offset gains within the same year but cannot be carried forward
+- **FIFO Method (Art. 37.1.a LIRPF)**: Shares sold are always matched against the oldest acquired available shares of the same security.
+- **Progressive Savings Tax Scale (Art. 66 LIRPF)**:
+  - Up to €6,000: 19%
+  - €6,000.01 - €50,000: 21%
+  - €50,000.01 - €200,000: 23%
+  - €200,000.01 - €300,000: 27%
+  - Over €300,000: 28%
+- **2-Month Wash Sale Rule (Art. 33.5.f LIRPF)**: Losses are blocked (deferred) if homogeneous shares remain in the portfolio that were acquired within 2 months before or after the loss-making sale.
+- **ESPP Discounts**: Usually treated as salary income (Rendimiento del Trabajo). When correctly declared as such, the cost basis for capital gains is the FMV at purchase, preventing double taxation.

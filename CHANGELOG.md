@@ -12,7 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Initial release
-- Austrian tax calculation using Moving Average Cost Basis method
+- Spanish tax calculation using FIFO Cost Basis method (and 2-month wash sale rule)
 - E-Trade integration for RSU and ESPP data download
 - ECB exchange rate fetching for USD/EUR conversion
 - PDF report generation

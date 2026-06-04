@@ -16,8 +16,8 @@ from tax_engine import (
 
 def main() -> None:
     """Run the tax engine with sample data using ECB rates."""
-    print("Austrian Tax Engine for E-Trade RSUs and ESPP")
-    print("Using Moving Average Cost Basis (Gleitender Durchschnittspreis)")
+    print("Spanish Tax Engine for E-Trade RSUs and ESPP")
+    print("Using FIFO Cost Basis (First In, First Out) & Progressive Savings Rate Scale")
     print("\n** DEMO MODE: Using sample data **\n")
 
     # Create events without FX rates - they'll be fetched from ECB
@@ -36,14 +36,18 @@ def main() -> None:
 
     # Show current state
     print(f"\nCurrent Position: {engine.state.total_shares} shares")
-    print(f"Current Avg Cost: €{engine.state.avg_cost_eur:,.4f}")
+    print(f"Current Informational Avg Cost: €{engine.state.avg_cost_eur:,.4f}")
     print(f"Total Portfolio Cost: €{engine.state.total_portfolio_cost_eur:,.4f}")
 
-    # Generate PDF report
-    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    pdf_path = f"tax_report_demo_{timestamp}.pdf"
-    print(f"Generating PDF report at: {pdf_path}...")
-    engine.generate_pdf_report(pdf_path)
+    # Generate PDF reports (English and Spanish for Hacienda)
+    import datetime
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    pdf_path_en = f"tax_report_demo_EN_{timestamp}.pdf"
+    pdf_path_es = f"tax_report_demo_ES_{timestamp}.pdf"
+    print(f"Generating English PDF report at: {pdf_path_en}...")
+    engine.generate_pdf_report(pdf_path_en, lang="en")
+    print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
+    engine.generate_pdf_report(pdf_path_es, lang="es")
     print("PDF generation complete.")
 
 

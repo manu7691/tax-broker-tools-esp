@@ -1,8 +1,8 @@
 """
-Austrian Tax Engine for E-Trade RSUs and ESPP
+Spanish Tax Engine for E-Trade RSUs and ESPP
 
-A tax calculation engine implementing the Austrian moving average cost basis method
-(Gleitender Durchschnittspreis) for stocks acquired through RSU vesting and ESPP purchases.
+A tax calculation engine implementing the Spanish FIFO cost basis method
+for stocks acquired through RSU vesting and ESPP purchases.
 """
 
 from .ecb_rates import ECBRateFetcher, prefetch_ecb_rates

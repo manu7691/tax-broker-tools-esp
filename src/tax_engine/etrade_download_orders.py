@@ -12,50 +12,184 @@ OUTPUT_DIR = Path("input/orders")
 OUTPUT_FILE = OUTPUT_DIR / "orders.xlsx"
 
 
-def _get_execution_date(row, order_date: str, page) -> str:  # type: ignore[no-untyped-def]
-    """Click the row to expand its detail, read execution dates from Order History,
-    verify they all fall on the same calendar date, and return that date string.
-    Falls back to order_date if anything goes wrong.
-
-    HTML structure (from DevTools inspection):
-      div[data-test-id="orders.ordertbl.odrhistoryexpand"]
-        button[aria-expanded]   ← collapse/expand toggle
-        div.collapse.in
-          table[role="table"]
-            tbody[role="rowgroup"]
-              tr[role="row"]
-                td.text-left[role="cell"]  ← "Order Placed" / "Order Executed"
-                td.text-left[role="cell"]  ← "11/17/2025 09:30:00 AM ET"
-                td.text-left[role="cell"]  ← sale quantity
-                td.text-left[role="cell"]  ← price
+def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # type: ignore[no-untyped-def]
+    """Click the row to expand its detail, read execution dates and fees.
+    Returns a dict with 'execution_date', 'Commission', 'SEC Fees', 'Disbursement Fee'.
     """
+    details = {
+        "execution_date": order_date,
+        "Commission": "0",
+        "SEC Fees": "0",
+        "Disbursement Fee": "0"
+    }
+
     # Click the expand chevron in the first cell of the row
     try:
         row.locator("td").first.click()
+        # Be human-like, wait a bit for E-trade's backend
+        time.sleep(1.5)
     except Exception as e:
         print(f"  WARNING: Could not click row to expand detail: {e}")
-        return order_date
+        return details
 
-    # Wait for the Order History div to become visible
-    order_history_div = page.locator('div[data-test-id="orders.ordertbl.odrhistoryexpand"]')
     try:
-        order_history_div.wait_for(state="visible", timeout=5000)
-    except Exception as e:
-        print(f"  WARNING: Order History section did not appear: {e}")
-        with contextlib.suppress(Exception):
-            row.locator("td").first.click()
-        return order_date
+        # Wait for the Order History div to become visible (it may take a moment to load)
+        order_history_div = page.locator('div[data-test-id="orders.ordertbl.odrhistoryexpand"]').first
+        try:
+            order_history_div.wait_for(state="visible", timeout=5000)
+        except Exception:
+            pass
 
-    # Find all "Order Executed" cells inside the Order History table
-    try:
-        executed_cells = (
-            order_history_div.locator('td[role="cell"]').filter(has_text="Order Executed").all()
-        )
-    except Exception as e:
-        print(f"  WARNING: Could not find Order Executed cells: {e}")
-        with contextlib.suppress(Exception):
+        # --- EXTRACT FEES ---
+        try:
+            fees = {"Commission": "0", "SEC Fees": "0", "Brokerage Assist Fee": "0"}
+            
+            # Look for the specific Disbursement Details table based on user's exact DOM
+            disb_table = page.locator('[data-test-id="orders.ordertbl.disbursementtbl"] table').first
+            
+            # Find the Disbursement Details toggle button
+            disb_toggle = page.locator("text=Disbursement Details").first
+            
+            # E-Trade often auto-expands this section when the row is opened. 
+            # If we click it when it's already expanded, we accidentally close it!
+            if disb_toggle.is_visible() and not disb_table.is_visible():
+                # Verify aria-expanded just to be perfectly safe
+                try:
+                    # Sometimes the text= locator gets the inner div, so we check parent button
+                    button = disb_toggle.locator("xpath=ancestor-or-self::button").first
+                    is_expanded = button.get_attribute("aria-expanded") == "true"
+                except Exception:
+                    is_expanded = False
+                    
+                if not is_expanded:
+                    with contextlib.suppress(Exception):
+                        disb_toggle.click(timeout=1000)
+                        time.sleep(0.5)
+                        
+            # VERY IMPORTANT: E-Trade loads this table asynchronously via AJAX after clicking. 
+            # We must wait for it to appear in the DOM.
+            try:
+                disb_table.wait_for(state="visible", timeout=8000)
+            except Exception:
+                pass
+            
+            if disb_table.is_visible():
+                headers = disb_table.locator("thead th").all_inner_texts()
+                cells = disb_table.locator("tbody td").all_inner_texts()
+                
+                headers = [h.strip() for h in headers]
+                cells = [c.replace('$', '').replace(',', '').strip() for c in cells]
+                
+                def get_cell(label: str) -> str:
+                    for i, h in enumerate(headers):
+                        if label in h:
+                            return cells[i] if i < len(cells) else "0"
+                    return "0"
+                    
+                comm = get_cell("Commission")
+                sec = get_cell("SEC Fee")
+                brokerage = get_cell("Brokerage Assist Fee")
+                
+                if comm != "0": fees["Commission"] = comm
+                if sec != "0": fees["SEC Fees"] = sec
+                if brokerage != "0": fees["Brokerage Assist Fee"] = brokerage
+                
+            else:
+                # Fallback if the table doesn't have the data-test-id
+                def get_fee_fallback(label: str) -> str:
+                    try:
+                        el = page.locator(f"text={label}").first
+                        if el.is_visible():
+                            return el.evaluate('''node => {
+                                let th = node.closest("th");
+                                if (th) {
+                                    let thead = th.closest("thead");
+                                    let table = th.closest("table");
+                                    if (thead && table) {
+                                        let tr = th.closest("tr");
+                                        let idx = Array.from(tr.children).indexOf(th);
+                                        let tbody = table.querySelector("tbody");
+                                        if (tbody && tbody.children.length > 0) {
+                                            let dataCell = tbody.children[0].children[idx];
+                                            if (dataCell) {
+                                                let match = dataCell.innerText.match(/\\$([\\d,.]+)/);
+                                                if (match) return match[1];
+                                            }
+                                        }
+                                    }
+                                }
+                                if (node.nextElementSibling) {
+                                    let match = node.nextElementSibling.innerText.match(/\\$([\\d,.]+)/);
+                                    if (match) return match[1];
+                                }
+                                let match = node.innerText.match(/\\$([\\d,.]+)/);
+                                if (match) return match[1];
+                                return "0";
+                            }''')
+                    except Exception:
+                        pass
+                    return "0"
+                    
+                comm = get_fee_fallback("Commission")
+                if comm == "0": comm = get_fee_fallback("Estimated Commission")
+                sec = get_fee_fallback("SEC Fee")
+                if sec == "0": sec = get_fee_fallback("Estimated SEC Fee")
+                brokerage = get_fee_fallback("Brokerage Assist Fee")
+                
+                fees["Commission"] = comm
+                fees["SEC Fees"] = sec
+                fees["Brokerage Assist Fee"] = brokerage
+            
+            details.update(fees)
+        except Exception as e:
+            print(f"  WARNING: Could not parse fees: {e}")
+
+        # --- EXTRACT EXECUTION DATE ---
+        try:
+            executed_cells = (
+                order_history_div.locator('td[role="cell"]').filter(has_text="Order Executed").all()
+            )
+        except Exception as e:
+            print(f"  WARNING: Could not find Order Executed cells: {e}")
+            return details
+
+        if not executed_cells:
+            print(
+                f"  WARNING: No 'Order Executed' entries found for order dated {order_date}, using Order Date."
+            )
+            return details
+
+        exec_dates = []
+        for cell in executed_cells:
+            try:
+                date_str = cell.locator("xpath=following-sibling::td[1]").inner_text().strip()
+                if date_str:
+                    exec_dates.append(date_str)
+            except Exception:
+                pass
+
+        if not exec_dates:
+            return details
+
+        unique_dates = list(set(exec_dates))
+        if len(unique_dates) > 1:
+            print(
+                f"  WARNING: Order placed on {order_date} has executions on MULTIPLE dates: "
+                f"{sorted(unique_dates)}. Using the first execution date. "
+                f"This order may need manual review."
+            )
+
+        details["execution_date"] = exec_dates[0]
+        return details
+        
+    finally:
+        # ALWAYS click the row again to collapse it. 
+        # This prevents the DOM from getting bloated and ensures `page.locator.first` always works for the next row.
+        try:
             row.locator("td").first.click()
-        return order_date
+            time.sleep(1)
+        except Exception:
+            pass
 
     if not executed_cells:
         print(
@@ -63,7 +197,7 @@ def _get_execution_date(row, order_date: str, page) -> str:  # type: ignore[no-u
         )
         with contextlib.suppress(Exception):
             row.locator("td").first.click()
-        return order_date
+        return details
 
     # Extract the date part (MM/DD/YYYY) from the adjacent "Date & Time" cell
     exec_dates: list[str] = []
@@ -84,7 +218,7 @@ def _get_execution_date(row, order_date: str, page) -> str:  # type: ignore[no-u
         print(
             f"  WARNING: Could not parse any execution dates for order {order_date}, using Order Date."
         )
-        return order_date
+        return details
 
     unique_dates = set(exec_dates)
     if len(unique_dates) > 1:
@@ -94,7 +228,8 @@ def _get_execution_date(row, order_date: str, page) -> str:  # type: ignore[no-u
             f"This order may need manual review."
         )
 
-    return exec_dates[0]
+    details["execution_date"] = exec_dates[0]
+    return details
 
 
 def download_orders() -> None:
@@ -182,17 +317,34 @@ def download_orders() -> None:
 
             benefit_type = cells[1].inner_text().strip()
             order_date = cells[2].inner_text().strip()
+            action = cells[3].inner_text().strip()
             sold_qty = cells[8].inner_text().strip()
             exec_price = cells[9].inner_text().strip()
+            status = cells[-1].inner_text().strip()
+
+            if "Cancelled" in status:
+                print(f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Order Cancelled, skipping.")
+                continue
+
+            if "Sell" not in action and "Sale" not in action:
+                # E-trade logs you out if you click too fast. Skip clicking on non-sell orders entirely.
+                print(f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Not a sell, skipping details.")
+                continue
 
             print(
-                f"  Row {i + 1}: {benefit_type} {order_date} qty={sold_qty} — fetching execution date..."
+                f"  Row {i + 1}: {benefit_type} {order_date} qty={sold_qty} (Action: {action}) — fetching details & fees..."
             )
-            execution_date = _get_execution_date(row, order_date, page)
+            exec_details = _get_execution_details(row, order_date, page)
+            execution_date = exec_details["execution_date"]
 
             if execution_date != order_date:
                 print(f"    Order Date: {order_date}  →  Execution Date: {execution_date}")
 
+            if exec_details["Commission"] != "0" or exec_details["SEC Fees"] != "0":
+                print(f"    Found Fees: Commission={exec_details['Commission']}, SEC={exec_details['SEC Fees']}, Brokerage Assist={exec_details['Brokerage Assist Fee']}")
+            else:
+                print(f"    No fees found for this order (may be a vest or no-fee transaction).")
+                
             data.append(
                 {
                     "Execution Date": execution_date,
@@ -200,6 +352,9 @@ def download_orders() -> None:
                     "Sold Qty.": sold_qty,
                     "Execution Price": exec_price,
                     "Benefit Type": benefit_type,
+                    "Commission": exec_details["Commission"],
+                    "SEC Fees": exec_details["SEC Fees"],
+                    "Brokerage Assist Fee": exec_details["Brokerage Assist Fee"],
                 }
             )
 

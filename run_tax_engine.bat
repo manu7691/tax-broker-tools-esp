@@ -2,7 +2,7 @@
 cd /d "%~dp0"
 
 echo ==========================================
-echo    Austrian Tax Engine - Setup ^& Run
+echo    Spanish Tax Engine - Setup ^& Run
 echo ==========================================
 echo Working directory: %CD%
 
@@ -64,7 +64,7 @@ if %errorlevel% neq 0 (
 :menu
 cls
 echo ==========================================
-echo    Austrian Tax Engine for E-Trade
+echo    Spanish Tax Engine for E-Trade
 echo ==========================================
 echo 1. Login to E-Trade (Required first)
 echo 2. Download All Data (ESPP, Orders, RSU)
