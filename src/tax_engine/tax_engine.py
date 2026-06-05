@@ -382,9 +382,23 @@ class TaxEngine:
             print(f"    Estimated Tax Due:         €{summary.tax_due:>12,.2f}")
             print()
 
+        # 4-Year Loss Carryforward (Art. 49 LIRPF)
+        carryforward_rows = [s for s in self.get_all_yearly_summaries() if s.net_gain_loss < 0]
+        print("\nLOSS CARRYFORWARD WORKSHEET (Art. 49 LIRPF)")
+        print("-" * 95)
+        if carryforward_rows:
+            print("Net losses below can be offset against savings-base gains of the next 4 years:")
+            print()
+            for s in carryforward_rows:
+                print(f"  Year {s.year}: Net Loss €{s.net_gain_loss:>12,.2f}  ->  deductible through {s.year + 4}")
+        else:
+            print("  No years with a net loss to carry forward.")
+
         print("\n" + "=" * 95)
         print("  NOTE: Transaction Fees (Commissions, SEC Fees) ARE DEDUCTED (Wire Transfers EXCLUDED)")
         print("  from your capital gains automatically, per Spanish Tax Law (Gastos Inherentes).")
+        print("  NOTE: 'Est. Tax' is an ISOLATED estimate on these stock gains only — your real")
+        print("  liability depends on total savings income and prior-year loss carryforward.")
         print("=" * 95 + "\n")
 
     def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None) -> str:
@@ -432,6 +446,13 @@ class TaxEngine:
                 "<li><strong>2-Month Wash Sale Rule</strong>: Losses from sales are blocked (deferred) if homogenous shares are acquired within 2 months before or after the sale date.</li>"
             )
             html.append(
+                "<li><strong style='color: #cc6600;'>SCOPE - Single Account</strong>: "
+                "The wash-sale rule applies per security across <strong>all</strong> your brokers/accounts, "
+                "but this report only sees data from this account. If you bought the same security elsewhere "
+                "(e.g. another broker) within the 2-month window, those repurchases are NOT detected here and "
+                "some blocked losses may be under-reported.</li>"
+            )
+            html.append(
                 "<li><strong style='color: green;'>NOTE - Fees Included</strong>: "
                 "This report <strong>INCLUDES and DEDUCTS</strong> transaction commissions and SEC fees "
                 "from your capital gains, applying the official ECB USD/EUR exchange rate of the transaction date. "
@@ -454,6 +475,13 @@ class TaxEngine:
                 "<li><strong>Regla de los 2 Meses (Wash Sale)</strong>: Las pérdidas patrimoniales quedan bloqueadas (diferidas) si se adquieren acciones homogéneas dentro de los 2 meses anteriores o posteriores a la fecha de la venta.</li>"
             )
             html.append(
+                "<li><strong style='color: #cc6600;'>ALCANCE - Una Sola Cuenta</strong>: "
+                "La regla de los 2 meses se aplica por valor en <strong>todos</strong> tus brókers/cuentas, "
+                "pero este informe solo ve los datos de esta cuenta. Si compraste el mismo valor en otro lugar "
+                "(p. ej. otro bróker) dentro de la ventana de 2 meses, esas recompras NO se detectan aquí y "
+                "algunas pérdidas bloqueadas podrían estar infravaloradas.</li>"
+            )
+            html.append(
                 "<li><strong style='color: green;'>NOTA - Comisiones Incluidas</strong>: "
                 "Este informe <strong>INCLUYE y DEDUCE</strong> las comisiones de transacción y tasas SEC "
                 "como gastos inherentes a la transmisión, utilizando el tipo de cambio oficial del BCE de la fecha exacta de la transacción. "
@@ -471,11 +499,11 @@ class TaxEngine:
         html.append("<table>")
         if not is_es:
             html.append(
-                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Deductible Losses</th><th>Fees Deducted</th><th>Net Taxable Savings Base</th><th>Estimated Tax Due</th></tr>"
+                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Deductible Losses</th><th>Fees Deducted</th><th>Net Taxable Savings Base</th><th>Estimated Tax (Isolated)*</th></tr>"
             )
         else:
             html.append(
-                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Pérdidas Deducibles</th><th>Gastos Deducidos</th><th>Base Imponible del Ahorro</th><th>Impuesto Estimado</th></tr>"
+                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Pérdidas Deducibles</th><th>Gastos Deducidos</th><th>Base Imponible del Ahorro</th><th>Impuesto Estimado (Aislado)*</th></tr>"
             )
 
         for summary in self.get_all_yearly_summaries():
@@ -493,6 +521,71 @@ class TaxEngine:
             html.append(f"<td><strong>€{summary.tax_due:,.2f}</strong></td>")
             html.append("</tr>")
         html.append("</table>")
+
+        if not is_es:
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>"
+                "<strong>* Isolated estimate.</strong> The tax column applies the savings-base scale to these "
+                "stock gains <em>alone</em>. Your actual liability depends on your <strong>total</strong> savings "
+                "income for the year (dividends, interest, gains from other assets) and any losses carried forward "
+                "from prior years (4-year limit, Art. 49 LIRPF). Use this figure as a guide, not as the final tax due.</p>"
+            )
+        else:
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>"
+                "<strong>* Estimación aislada.</strong> La columna de impuesto aplica la escala del ahorro a estas "
+                "ganancias bursátiles de forma <em>aislada</em>. Tu cuota real depende de tu base del ahorro "
+                "<strong>total</strong> del ejercicio (dividendos, intereses, ganancias de otros activos) y de las "
+                "pérdidas pendientes de compensar de años anteriores (límite de 4 años, Art. 49 LIRPF). "
+                "Usa esta cifra como orientación, no como la cuota definitiva.</p>"
+            )
+
+        # 4-Year Loss Carryforward Worksheet (Art. 49 LIRPF)
+        carryforward_rows = [
+            s for s in self.get_all_yearly_summaries() if s.net_gain_loss < 0
+        ]
+        cf_title = (
+            "Loss Carryforward Worksheet (Art. 49 LIRPF)"
+            if not is_es
+            else "Hoja de Compensación de Pérdidas (Art. 49 LIRPF)"
+        )
+        html.append(f"<h2>{cf_title}</h2>")
+        if not is_es:
+            html.append(
+                "<p>Net losses in a year can be offset against savings-base gains of the following "
+                "<strong>4 years</strong>. This engine reports each year in isolation — your advisor must "
+                "apply the carryforward across years (and against other savings income) at filing time.</p>"
+            )
+        else:
+            html.append(
+                "<p>Las pérdidas netas de un ejercicio pueden compensarse con ganancias de la base del ahorro "
+                "de los <strong>4 ejercicios siguientes</strong>. Este motor informa cada año de forma aislada — "
+                "tu asesor debe aplicar la compensación entre años (y contra otras rentas del ahorro) al presentar la declaración.</p>"
+            )
+        if carryforward_rows:
+            html.append("<table>")
+            if not is_es:
+                html.append(
+                    "<tr><th>Year of Loss</th><th>Net Loss</th><th>Deductible Through (incl.)</th></tr>"
+                )
+            else:
+                html.append(
+                    "<tr><th>Año de la Pérdida</th><th>Pérdida Neta</th><th>Compensable Hasta (incl.)</th></tr>"
+                )
+            for s in carryforward_rows:
+                html.append("<tr>")
+                html.append(f"<td>{s.year}</td>")
+                html.append(f"<td class='loss'>€{s.net_gain_loss:,.2f}</td>")
+                html.append(f"<td>{s.year + 4}</td>")
+                html.append("</tr>")
+            html.append("</table>")
+        else:
+            no_loss = (
+                "No years with a net loss to carry forward."
+                if not is_es
+                else "No hay ejercicios con pérdida neta pendiente de compensar."
+            )
+            html.append(f"<p><em>{no_loss}</em></p>")
 
         # ESPP 3-Year Holding Period Analysis
         if espp_early_sale_discounts or espp_discounts:

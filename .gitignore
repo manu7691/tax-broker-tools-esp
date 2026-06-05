@@ -17,3 +17,6 @@ input/*
 # Generated reports
 *.pdf
 tax_report_*.md
+
+# ECB exchange-rate cache
+.ecb_rate_cache.json

@@ -7,6 +7,7 @@ for stocks acquired through RSU vesting, ESPP purchases, and stock options exerc
 Main entry point for the application.
 """
 
+import argparse
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -23,11 +24,11 @@ from tax_engine import (
 from tax_engine.options_parser import load_options_events
 
 
-def load_events_from_excel() -> list[StockEvent]:
+def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Load stock events from the BenefitHistory.xlsx file.
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
 
     # Read the ESPP sheet
     # The user mentioned the sheet is named "ESPP"
@@ -96,11 +97,11 @@ def load_events_from_excel() -> list[StockEvent]:
     return events
 
 
-def load_orders_from_excel() -> list[StockEvent]:
+def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Load sell orders from the orders.xlsx file.
     """
-    excel_path = Path("input/orders/orders.xlsx")
+    excel_path = input_dir / "orders" / "orders.xlsx"
     if not excel_path.exists():
         print(f"Warning: {excel_path} not found. No sell orders loaded.")
         return []
@@ -186,14 +187,14 @@ def load_orders_from_excel() -> list[StockEvent]:
     return events
 
 
-def load_options_stock_events() -> list[StockEvent]:
+def load_options_stock_events(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Convert options exercise confirmations into StockEvent objects.
 
     Each exercise creates an EXERCISE event (acquisition at FMV).
     Same-day sales additionally create a SELL event at the sale price.
     """
-    exercises = load_options_events()
+    exercises = load_options_events(input_dir / "options")
     events: list[StockEvent] = []
 
     for ex in exercises:
@@ -222,12 +223,12 @@ def load_options_stock_events() -> list[StockEvent]:
     return events
 
 
-def calculate_espp_discounts() -> dict[int, Decimal]:
+def calculate_espp_discounts(input_dir: Path = Path("input")) -> dict[int, Decimal]:
     """
     Calculate ESPP discount (taxable salary benefit) for each year.
     Returns a dictionary of year -> total discount in EUR.
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         return {}
 
@@ -291,12 +292,12 @@ def calculate_espp_discounts() -> dict[int, Decimal]:
     return discounts_by_year
 
 
-def build_espp_purchase_map() -> dict:
+def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict:
     """
     Build a map of ESPP purchase dates to (fmv_usd, purchase_price_usd).
     Used for 3-year holding period analysis (Art. 42.3.f LIRPF).
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         return {}
 
@@ -437,21 +438,40 @@ def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
 
 def main() -> None:
     """Run the tax engine with actual data from Excel files."""
+    parser = argparse.ArgumentParser(
+        description="Spanish Tax Engine for E-Trade RSUs, ESPP, and Stock Options."
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=Path("input"),
+        help="Directory holding espp/, orders/, rsu/, options/ data (default: input).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("."),
+        help="Directory where PDF reports are written (default: current directory).",
+    )
+    args = parser.parse_args()
+    input_dir: Path = args.input_dir
+    output_dir: Path = args.output_dir
+
     print("Spanish Tax Engine for E-Trade RSUs and ESPP")
     print("Using FIFO Cost Basis (First In, First Out) & Progressive Savings Rate Scale")
     print()
 
     # Load events from Excel file
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         print(f"Error: {excel_path} not found")
         print("\nTo run the sample example, use: uv run tax-demo")
         return
 
-    espp_events = load_events_from_excel()
-    sell_events = load_orders_from_excel()
-    rsu_events = load_rsu_events()
-    options_events = load_options_stock_events()
+    espp_events = load_events_from_excel(input_dir)
+    sell_events = load_orders_from_excel(input_dir)
+    rsu_events = load_rsu_events(input_dir / "rsu")
+    options_events = load_options_stock_events(input_dir)
 
     # Combine all events (engine.process_all handles chronological sorting internally)
     events = espp_events + sell_events + rsu_events + options_events
@@ -471,8 +491,8 @@ def main() -> None:
     engine.print_tax_summary()
 
     # ESPP Analysis: 3-year holding period detection
-    espp_discounts = calculate_espp_discounts()
-    espp_map = build_espp_purchase_map()
+    espp_discounts = calculate_espp_discounts(input_dir)
+    espp_map = build_espp_purchase_map(input_dir)
     espp_early_sales, espp_early_details = detect_espp_early_sales(
         engine.processed_events, espp_map
     )
@@ -530,9 +550,10 @@ def main() -> None:
     print(f"Total Portfolio Cost: €{engine.state.total_portfolio_cost_eur:,.4f}")
 
     # Generate PDF reports (English and Spanish for Hacienda)
+    output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    pdf_path_en = f"tax_report_EN_{timestamp}.pdf"
-    pdf_path_es = f"tax_report_ES_{timestamp}.pdf"
+    pdf_path_en = str(output_dir / f"tax_report_EN_{timestamp}.pdf")
+    pdf_path_es = str(output_dir / f"tax_report_ES_{timestamp}.pdf")
     print(f"Generating English PDF report at: {pdf_path_en}...")
     engine.generate_pdf_report(pdf_path_en, lang="en", espp_discounts=espp_discounts,
                                espp_early_sale_discounts=espp_early_sales)

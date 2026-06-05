@@ -7,11 +7,28 @@ external dependencies and private data exposure.
 
 from datetime import date
 from decimal import Decimal
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
 
+from tax_engine.ecb_rates import ECBRateFetcher
 from tax_engine.models import EventType, StockEvent
+
+
+@pytest.fixture(autouse=True)
+def isolate_ecb_disk_cache(tmp_path, monkeypatch):
+    """
+    Point the ECB rate cache at a throwaway temp file for every test.
+
+    Without this, tests that mock the ECB API would persist their fake rates
+    to the real on-disk cache and read them back in later tests, breaking
+    API-call-count assertions and leaking state between runs.
+    """
+    monkeypatch.setattr(ECBRateFetcher, "CACHE_FILE", Path(tmp_path) / "ecb_cache.json")
+    ECBRateFetcher.clear_cache()
+    yield
+    ECBRateFetcher.clear_cache()
 
 # =============================================================================
 # Sample Stock Events (with explicit FX rates - no ECB calls)
