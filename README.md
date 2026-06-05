@@ -147,6 +147,42 @@ Copy the net taxable savings base into the capital gains from stock transfers se
 
 ---
 
+## 📋 Menu Options
+
+When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (Windows), you get this menu:
+
+| # | Option | What it does |
+|---|--------|--------------|
+| 1 | Login to E-Trade | Opens a browser to log in (and pass MFA). **Run this first** — it saves a session. |
+| 2 | Download All Data | Downloads ESPP history, Orders, RSU confirmations and option exercises into `input/`. |
+| 3 | Calculate Tax | Runs the engine and generates the English + Spanish PDF reports. |
+| 4 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) for the savings base. |
+| 5 | Run Demo | Runs on sample data so you can see the output without your own data. |
+| 6 | Exit | Quit. |
+
+## 📂 Input Files
+
+Everything lives under `input/`. Menu options 1–2 create most of these automatically; the last two are optional and entered by you.
+
+| File | Required? | Where it comes from |
+|------|-----------|---------------------|
+| `input/espp/BenefitHistory.xlsx` | **Yes** | E-Trade → Stock Plan → Benefit History → *Download Expanded* |
+| `input/orders/orders.xlsx` | For any sells | E-Trade → Stock Plan → Orders |
+| `input/rsu/*.pdf` | If you have RSUs | E-Trade → Documents → RSU release confirmations |
+| `input/options/*.pdf` | If you exercised options | E-Trade → Documents → option exercise confirmations |
+| `input/prior_losses.json` | Optional | Pending losses from before your data window, e.g. `{"2019": 1500}` |
+| `input/savings_income.json` | Optional | Dividends/interest (see *Filing Spanish Renta* above) |
+
+## ❓ Troubleshooting
+
+- **"Session expired" / redirected to login:** run **Login** (option 1) again — E-Trade sessions expire after a while.
+- **Downloads fail or a page won't load:** disable ad/privacy blockers for `us.etrade.com`; they can break E-Trade's own scripts.
+- **`BenefitHistory.xlsx not found`:** ensure the ESPP file is at `input/espp/BenefitHistory.xlsx` (run **Download All Data**, or place it manually).
+- **Exchange-rate / network error:** the on-disk ECB cache (`.ecb_rate_cache.json`) lets repeat runs work offline, but the first run needs internet to fetch rates.
+- **Browser won't launch:** reinstall the Playwright browser: `.venv/bin/playwright install chromium`.
+
+---
+
 <br>
 <br>
 
@@ -290,3 +326,39 @@ El informe incluye además:
 > **Opciones de línea de comandos:** `uv run main.py` admite `--input-dir`, `--output-dir`, `--prior-losses` y `--savings-income` (todas opcionales).
 
 Introduce el valor de la "base imponible del ahorro" en el apartado de ganancias y pérdidas derivadas de la transmisión de valores en el borrador de tu declaración de la renta (IRPF).
+
+---
+
+## 📋 Opciones del Menú
+
+Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windows), aparece este menú:
+
+| # | Opción | Qué hace |
+|---|--------|----------|
+| 1 | Login to E-Trade | Abre el navegador para iniciar sesión (y el MFA). **Ejecútalo primero** — guarda la sesión. |
+| 2 | Download All Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU y los ejercicios de opciones en `input/`. |
+| 3 | Calculate Tax | Ejecuta el motor y genera los informes PDF en inglés y español. |
+| 4 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
+| 5 | Run Demo | Ejecuta con datos de ejemplo para ver la salida sin tus propios datos. |
+| 6 | Exit | Salir. |
+
+## 📂 Archivos de Entrada
+
+Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría automáticamente; las dos últimas son opcionales y las introduces tú.
+
+| Archivo | ¿Obligatorio? | De dónde sale |
+|---------|---------------|---------------|
+| `input/espp/BenefitHistory.xlsx` | **Sí** | E-Trade → Stock Plan → Benefit History → *Download Expanded* |
+| `input/orders/orders.xlsx` | Si hay ventas | E-Trade → Stock Plan → Orders |
+| `input/rsu/*.pdf` | Si tienes RSU | E-Trade → Documents → confirmaciones de liberación RSU |
+| `input/options/*.pdf` | Si ejerciste opciones | E-Trade → Documents → confirmaciones de ejercicio de opciones |
+| `input/prior_losses.json` | Opcional | Pérdidas pendientes de antes de tu ventana de datos, p. ej. `{"2019": 1500}` |
+| `input/savings_income.json` | Opcional | Dividendos/intereses (ver *Declarar en Renta* arriba) |
+
+## ❓ Solución de Problemas
+
+- **"Sesión caducada" / redirige al login:** vuelve a ejecutar **Login** (opción 1) — las sesiones de E-Trade caducan al cabo de un rato.
+- **Las descargas fallan o una página no carga:** desactiva los bloqueadores de anuncios/privacidad para `us.etrade.com`; pueden romper los propios scripts de E-Trade.
+- **`BenefitHistory.xlsx not found`:** asegúrate de que el archivo ESPP está en `input/espp/BenefitHistory.xlsx` (ejecuta **Download All Data** o colócalo manualmente).
+- **Error de tipo de cambio / red:** la caché del BCE en disco (`.ecb_rate_cache.json`) permite repetir sin conexión, pero la primera ejecución necesita internet para obtener los tipos.
+- **El navegador no se abre:** reinstala el navegador de Playwright: `.venv/bin/playwright install chromium`.

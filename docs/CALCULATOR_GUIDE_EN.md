@@ -115,12 +115,21 @@ The project includes self-executable scripts that automatically bootstrap the vi
 
 ## 4. Understanding the Outputs
 
-Once the execution finishes, the tool produces the following results:
+Once the execution finishes, the tool produces:
 
-1. **Console Report:** A detailed terminal breakdown of each sale, FIFO lot match, wash-sale blocks, and yearly tax summaries.
-2. **PDF Reports:** Bilingual PDF files generated directly in your root folder:
-   * `tax_report_EN_*.pdf`: English reference report.
-   * `tax_report_ES_*.pdf`: Spanish report formatted specifically to show to **Hacienda** or your **Asesor Fiscal** (tax advisor).
+1. **Console Report:** a terminal breakdown of each sale, FIFO lot match, wash-sale blocks, and yearly summaries.
+2. **PDF Reports** in your root folder: `tax_report_EN_*.pdf` (reference) and `tax_report_ES_*.pdf` (formatted for **Hacienda** / your **Asesor Fiscal**).
+
+The PDF is organised into these sections:
+
+| Section | What it tells you |
+|---------|-------------------|
+| **Yearly Tax Summary (Modelo 100 – Savings Base)** | Per year: total gains, total losses, losses blocked by the 2-month rule, deductible losses, fees, the net taxable savings base, and an *isolated* tax estimate. This is the headline figure for your IRPF. |
+| **Loss Carryforward Ledger** | Simulates the 4-year offset (Art. 49): each year's net result, prior-year losses applied, taxable amount after carryforward, plus pending and **expired** losses. |
+| **Savings Base – Capital Gains + Dividends/Interest** | *Only if you supplied `savings_income.json`.* Combines stock results with dividend/interest income, applies the 25% cross-category offset, and shows the combined base + foreign tax withheld. |
+| **Modelo 100 Filing Guide** | Maps each figure to its Modelo 100 *apartado* (with casilla numbers to verify per year). |
+| **ESPP 3-Year Holding Period Analysis** | Flags ESPP shares sold before 3 years, whose purchase discount becomes taxable salary income (Art. 42.3.f) and needs a complementary return. |
+| **Transaction Ledger** | The full per-sale FIFO detail (acquisition lots matched, gain/loss, wash-sale notes) — the evidence trail for your advisor. |
 
 ---
 
