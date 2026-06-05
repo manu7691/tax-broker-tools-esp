@@ -69,10 +69,11 @@ echo ==========================================
 echo 1. Login to E-Trade (Required first)
 echo 2. Download All Data (ESPP, Orders, RSU)
 echo 3. Calculate Tax
-echo 4. Run Demo
-echo 5. Exit
+echo 4. Add Dividend/Interest Income (optional)
+echo 5. Run Demo
+echo 6. Exit
 echo ==========================================
-set /p choice="Select an option (1-5): "
+set /p choice="Select an option (1-6): "
 
 if "%choice%"=="1" (
     echo Running Login...
@@ -93,12 +94,18 @@ if "%choice%"=="3" (
     goto menu
 )
 if "%choice%"=="4" (
+    echo Add Dividend/Interest Income ^(USD + date, converted at ECB rate^)...
+    .venv\Scripts\tax-savings-income
+    pause
+    goto menu
+)
+if "%choice%"=="5" (
     echo Running Demo...
     .venv\Scripts\tax-demo
     pause
     goto menu
 )
-if "%choice%"=="5" (
+if "%choice%"=="6" (
     exit /b 0
 )
 

@@ -59,10 +59,11 @@ while true; do
     echo "1. Login to E-Trade (Required first)"
     echo "2. Download All Data (ESPP, Orders, RSU)"
     echo "3. Calculate Tax"
-    echo "4. Run Demo"
-    echo "5. Exit"
+    echo "4. Add Dividend/Interest Income (optional)"
+    echo "5. Run Demo"
+    echo "6. Exit"
     echo "=========================================="
-    read -p "Select an option (1-5): " choice
+    read -p "Select an option (1-6): " choice
 
     case $choice in
         1)
@@ -92,13 +93,23 @@ while true; do
             ;;
         4)
             echo "------------------------------------------"
+            echo "Add Dividend/Interest Income"
+            echo "Enter each payment in USD with its date;"
+            echo "it is converted to EUR at the ECB rate."
+            echo "------------------------------------------"
+            .venv/bin/tax-savings-income
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
+        5)
+            echo "------------------------------------------"
             echo "Running Demo..."
             echo "------------------------------------------"
             .venv/bin/tax-demo
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
-        5)
+        6)
             echo "Exiting..."
             exit 0
             ;;
