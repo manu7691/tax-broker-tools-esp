@@ -100,6 +100,10 @@ class StockEvent:
             object.__setattr__(self, "price_usd", Decimal(str(self.price_usd)))
         if self.fx_rate is not None and not isinstance(self.fx_rate, Decimal):
             object.__setattr__(self, "fx_rate", Decimal(str(self.fx_rate)))
+        if not isinstance(self.fees_usd, Decimal):
+            object.__setattr__(self, "fees_usd", Decimal(str(self.fees_usd)))
+        if not isinstance(self.shares_sold_to_cover, Decimal):
+            object.__setattr__(self, "shares_sold_to_cover", Decimal(str(self.shares_sold_to_cover)))
 
         # Validate: shares and price must be positive
         if self.shares <= 0:
