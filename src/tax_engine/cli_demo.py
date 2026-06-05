@@ -5,7 +5,6 @@ This script demonstrates the tax engine functionality using the sample data
 that was previously in main.py. Use this to see the example calculations.
 """
 
-from datetime import datetime
 
 from tax_engine import (
     TaxEngine,

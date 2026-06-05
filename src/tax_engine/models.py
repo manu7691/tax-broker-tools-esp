@@ -187,6 +187,80 @@ class YearlyTaxSummary:
 
 
 @dataclass
+class CarryforwardYear:
+    """One year's row in the 4-year loss-carryforward ledger (Art. 49 LIRPF)."""
+
+    year: int
+    net_result: Decimal  # this year's net gain/loss (negative = loss)
+    prior_losses_applied: Decimal  # prior-year losses used against this year's gain
+    taxable_after: Decimal  # savings base from stock after applying carryforward
+    new_loss_carried: Decimal  # net loss generated this year, added to the pool
+
+
+@dataclass
+class CarryforwardLedger:
+    """Result of running the loss-carryforward simulation across all years."""
+
+    rows: list[CarryforwardYear] = field(default_factory=list)
+    expired: list[tuple[int, Decimal]] = field(default_factory=list)  # (origin_year, amount)
+    pending_end: list[tuple[int, Decimal, int]] = field(
+        default_factory=list
+    )  # (origin_year, remaining, use_by_year)
+
+
+@dataclass
+class SavingsIncomeYear:
+    """Dividend/interest (RCM) data for a single year, in EUR."""
+
+    year: int
+    dividends_eur: Decimal = Decimal("0")
+    interest_eur: Decimal = Decimal("0")
+    foreign_tax_eur: Decimal = Decimal("0")  # US tax withheld (informational)
+
+    @property
+    def rcm_net(self) -> Decimal:
+        """Net returns on movable capital for the year."""
+        return self.dividends_eur + self.interest_eur
+
+
+@dataclass
+class SavingsLedgerYear:
+    """One year's row of the two-bucket savings-base ledger (Art. 49 LIRPF)."""
+
+    year: int
+    gp_net: Decimal  # capital gains/losses net this year
+    rcm_net: Decimal  # dividends + interest net this year
+    gp_prior_applied: Decimal  # prior-year G/L losses used against this year's G/L gain
+    rcm_prior_applied: Decimal  # prior-year RCM losses used against this year's RCM
+    cross_offset: Decimal  # amount offset across categories (25% cap)
+    cross_direction: str  # "gp->rcm", "rcm->gp", or ""
+    gp_taxable: Decimal  # capital-gains contribution to the savings base (>= 0)
+    rcm_taxable: Decimal  # RCM contribution to the savings base (>= 0)
+    foreign_tax_eur: Decimal
+
+    @property
+    def savings_base(self) -> Decimal:
+        """Total savings base for the year (both buckets, >= 0)."""
+        return self.gp_taxable + self.rcm_taxable
+
+
+@dataclass
+class SavingsLedger:
+    """Result of the two-bucket savings-base simulation across all years."""
+
+    rows: list[SavingsLedgerYear] = field(default_factory=list)
+    # (bucket, origin_year, amount) where bucket is "G/L" or "RCM"
+    expired: list[tuple[str, int, Decimal]] = field(default_factory=list)
+    # (origin_year, remaining, use_by_year)
+    gp_pending_end: list[tuple[int, Decimal, int]] = field(default_factory=list)
+    rcm_pending_end: list[tuple[int, Decimal, int]] = field(default_factory=list)
+
+    @property
+    def total_foreign_tax(self) -> Decimal:
+        return sum((r.foreign_tax_eur for r in self.rows), Decimal("0"))
+
+
+@dataclass
 class TaxEngineState:
     """
     Current state of the tax engine.

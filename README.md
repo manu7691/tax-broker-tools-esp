@@ -121,16 +121,65 @@ It will generate a PDF file `tax_report_*.pdf`.
 
 ## 📝 Filing Spanish Renta (Modelo 100)
 
-The tax report output provides a dedicated **SPANISH RENTA (Modelo 100 - Base Imponible del Ahorro)** section.
+The tax report output provides a **Yearly Tax Summary (Modelo 100 - Savings Base)** section.
 
 For each tax year, it lists:
-- **Total Realized Gains:** Sum of all capital gains.
-- **Total Realized Losses:** Sum of all capital losses.
+- **Total Gains / Total Losses:** Sums of realized capital gains and losses.
 - **Blocked Losses:** Losses deferred due to the 2-month wash sale rule.
-- **Net Taxable Capital Gains:** The final net amount after applying the allowed losses to offset gains.
-- **Estimated Tax Due:** The calculated tax using Spanish savings progressive rates (19% to 28%).
+- **Deductible Losses:** Losses usable this year after removing blocked ones.
+- **Net Taxable Savings Base:** The final net amount after applying allowed losses against gains.
+- **Estimated Tax (Isolated):** Tax on *these stock gains alone* using the savings scale (19–28%). ⚠️ This is **not** your final liability — it ignores your total savings income (dividends, interest) and prior-year loss carryforward. Treat it as a guide.
 
-Copy the net taxable capital gains into the capital gains from stock transfers section of your annual IRPF tax return.
+The report also includes:
+- **Loss Carryforward Ledger (Art. 49 LIRPF):** simulates the 4-year offset of net losses against later gains and flags losses that expire unused. Seed pre-window losses via `input/prior_losses.json` (e.g. `{"2019": 1500}`) or `--prior-losses <file>`.
+- **Savings Base with dividends/interest (optional):** provide `input/savings_income.json` (or `--savings-income <file>`) to add your E\*TRADE dividends and cash interest (*rendimientos del capital mobiliario*). The report computes the **25% cross-category offset** (a stock loss offsetting dividend/interest income) and shows the combined savings base. Foreign tax withheld is shown for reference; the *deducción por doble imposición* is left to your advisor.
+  - **Recommended format — USD payments (exact):** a list of payments, each with its date; the engine converts each to EUR at the **ECB rate on that date**, exactly like stock trades:
+    ```json
+    [ { "date": "2024-03-15", "type": "dividend", "amount_usd": 80, "foreign_tax_usd": 12 } ]
+    ```
+    Enter them with the interactive helper (no JSON editing): `.venv/bin/python -m tax_engine.cli_savings_income` — or one-shot: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. A starter template: `cp docs/savings_income.example.json input/savings_income.json`.
+  - **Alternative — EUR per year (manual conversion):** if you only have an annual total (e.g. off a **Form 1042-S** / 1099 in *Accounts → Documents → Tax Center*), you can instead supply pre-converted EUR amounts: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Note this can't apply per-payment exchange rates.
+- **Modelo 100 Filing Guide:** a crosswalk mapping each figure to its Modelo 100 *apartado* (casilla numbers are indicative — verify for your year).
+
+> **CLI options:** `uv run main.py` accepts `--input-dir`, `--output-dir`, `--prior-losses`, and `--savings-income` (all optional).
+
+Copy the net taxable savings base into the capital gains from stock transfers section of your annual IRPF tax return.
+
+---
+
+## 📋 Menu Options
+
+When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (Windows), you get this menu:
+
+| # | Option | What it does |
+|---|--------|--------------|
+| 1 | Login to E-Trade | Opens a browser to log in (and pass MFA). **Run this first** — it saves a session. |
+| 2 | Download All Data | Downloads ESPP history, Orders, RSU confirmations and option exercises into `input/`. |
+| 3 | Calculate Tax | Runs the engine and generates the English + Spanish PDF reports. |
+| 4 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) for the savings base. |
+| 5 | Run Demo | Runs on sample data so you can see the output without your own data. |
+| 6 | Exit | Quit. |
+
+## 📂 Input Files
+
+Everything lives under `input/`. Menu options 1–2 create most of these automatically; the last two are optional and entered by you.
+
+| File | Required? | Where it comes from |
+|------|-----------|---------------------|
+| `input/espp/BenefitHistory.xlsx` | **Yes** | E-Trade → Stock Plan → Benefit History → *Download Expanded* |
+| `input/orders/orders.xlsx` | For any sells | E-Trade → Stock Plan → Orders |
+| `input/rsu/*.pdf` | If you have RSUs | E-Trade → Documents → RSU release confirmations |
+| `input/options/*.pdf` | If you exercised options | E-Trade → Documents → option exercise confirmations |
+| `input/prior_losses.json` | Optional | Pending losses from before your data window, e.g. `{"2019": 1500}` |
+| `input/savings_income.json` | Optional | Dividends/interest (see *Filing Spanish Renta* above) |
+
+## ❓ Troubleshooting
+
+- **"Session expired" / redirected to login:** run **Login** (option 1) again — E-Trade sessions expire after a while.
+- **Downloads fail or a page won't load:** disable ad/privacy blockers for `us.etrade.com`; they can break E-Trade's own scripts.
+- **`BenefitHistory.xlsx not found`:** ensure the ESPP file is at `input/espp/BenefitHistory.xlsx` (run **Download All Data**, or place it manually).
+- **Exchange-rate / network error:** the on-disk ECB cache (`.ecb_rate_cache.json`) lets repeat runs work offline, but the first run needs internet to fetch rates.
+- **Browser won't launch:** reinstall the Playwright browser: `.venv/bin/playwright install chromium`.
 
 ---
 
@@ -254,13 +303,62 @@ El motor generará el informe detallado en formato PDF (`tax_report_*.pdf`).
 
 ## 📝 Declarar en Renta (Modelo 100 España)
 
-El desglose final del informe PDF contiene una sección dedicada al **MODELO 100 de la Declaración de la Renta en España (Base Imponible del Ahorro)**.
+El informe PDF contiene una sección **Resumen Fiscal Anual (Modelo 100 - Base Imponible del Ahorro)**.
 
 Para cada ejercicio fiscal calcula:
-- **Ganancias Patrimoniales Totales:** Suma de todas las plusvalías realizadas.
-- **Pérdidas Patrimoniales Totales:** Suma de las pérdidas netas.
-- **Pérdidas Bloqueadas:** Pérdidas diferidas por aplicación de la regla de los 2 meses.
-- **Ganancia Neta Sujeta a Integración:** Importe neto a declarar tras compensar las pérdidas correspondientes.
-- **Cuota Fiscal Estimada:** Estimación del impuesto a ingresar según los tramos del ahorro vigentes (19% al 28%).
+- **Ganancias / Pérdidas Totales:** Sumas de las plusvalías y minusvalías realizadas.
+- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses.
+- **Pérdidas Deducibles:** Pérdidas utilizables en el ejercicio tras descontar las bloqueadas.
+- **Base Imponible del Ahorro:** Importe neto a declarar tras compensar las pérdidas correspondientes.
+- **Impuesto Estimado (Aislado):** Impuesto sobre *estas ganancias bursátiles de forma aislada* según los tramos del ahorro (19%–28%). ⚠️ **No** es tu cuota definitiva: ignora el resto de tu base del ahorro (dividendos, intereses) y la compensación de pérdidas de años anteriores. Úsalo como orientación.
 
-Introduce el valor de la "ganancia neta sujeta a integración" en el apartado de ganancias y pérdidas derivadas de la transmisión de valores en el borrador de tu declaración de la renta (IRPF).
+El informe incluye además:
+- **Libro de Compensación de Pérdidas (Art. 49 LIRPF):** simula la compensación a 4 años de pérdidas netas con ganancias posteriores y avisa de las que caducan. Inicializa pérdidas previas con `input/prior_losses.json` (p. ej. `{"2019": 1500}`) o `--prior-losses <archivo>`.
+- **Base del Ahorro con dividendos/intereses (opcional):** aporta `input/savings_income.json` (o `--savings-income <archivo>`) para incluir tus dividendos e intereses de cuenta de E\*TRADE (*rendimientos del capital mobiliario*). El informe calcula la **compensación cruzada del 25%** (una pérdida bursátil compensando dividendos/intereses) y muestra la base del ahorro combinada. La retención en origen se muestra a título informativo; la *deducción por doble imposición* la aplica tu asesor.
+  - **Formato recomendado — pagos en USD (exacto):** una lista de pagos, cada uno con su fecha; el motor convierte cada uno a EUR al **tipo del BCE de esa fecha**, igual que las operaciones de acciones:
+    ```json
+    [ { "date": "2024-03-15", "type": "dividend", "amount_usd": 80, "foreign_tax_usd": 12 } ]
+    ```
+    Introdúcelos con el asistente interactivo (sin editar JSON): `.venv/bin/python -m tax_engine.cli_savings_income` — o directo: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. Plantilla inicial: `cp docs/savings_income.example.json input/savings_income.json`.
+  - **Alternativa — EUR por año (conversión manual):** si solo tienes un total anual (p. ej. de un **Formulario 1042-S** / 1099 en *Accounts → Documents → Tax Center*), puedes aportar importes ya convertidos a EUR: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Ten en cuenta que así no se aplican los tipos de cambio por pago.
+- **Guía de Cumplimentación del Modelo 100:** asigna cada dato a su *apartado* (las casillas son orientativas — verifícalas para tu ejercicio).
+
+> **Opciones de línea de comandos:** `uv run main.py` admite `--input-dir`, `--output-dir`, `--prior-losses` y `--savings-income` (todas opcionales).
+
+Introduce el valor de la "base imponible del ahorro" en el apartado de ganancias y pérdidas derivadas de la transmisión de valores en el borrador de tu declaración de la renta (IRPF).
+
+---
+
+## 📋 Opciones del Menú
+
+Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windows), aparece este menú:
+
+| # | Opción | Qué hace |
+|---|--------|----------|
+| 1 | Login to E-Trade | Abre el navegador para iniciar sesión (y el MFA). **Ejecútalo primero** — guarda la sesión. |
+| 2 | Download All Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU y los ejercicios de opciones en `input/`. |
+| 3 | Calculate Tax | Ejecuta el motor y genera los informes PDF en inglés y español. |
+| 4 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
+| 5 | Run Demo | Ejecuta con datos de ejemplo para ver la salida sin tus propios datos. |
+| 6 | Exit | Salir. |
+
+## 📂 Archivos de Entrada
+
+Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría automáticamente; las dos últimas son opcionales y las introduces tú.
+
+| Archivo | ¿Obligatorio? | De dónde sale |
+|---------|---------------|---------------|
+| `input/espp/BenefitHistory.xlsx` | **Sí** | E-Trade → Stock Plan → Benefit History → *Download Expanded* |
+| `input/orders/orders.xlsx` | Si hay ventas | E-Trade → Stock Plan → Orders |
+| `input/rsu/*.pdf` | Si tienes RSU | E-Trade → Documents → confirmaciones de liberación RSU |
+| `input/options/*.pdf` | Si ejerciste opciones | E-Trade → Documents → confirmaciones de ejercicio de opciones |
+| `input/prior_losses.json` | Opcional | Pérdidas pendientes de antes de tu ventana de datos, p. ej. `{"2019": 1500}` |
+| `input/savings_income.json` | Opcional | Dividendos/intereses (ver *Declarar en Renta* arriba) |
+
+## ❓ Solución de Problemas
+
+- **"Sesión caducada" / redirige al login:** vuelve a ejecutar **Login** (opción 1) — las sesiones de E-Trade caducan al cabo de un rato.
+- **Las descargas fallan o una página no carga:** desactiva los bloqueadores de anuncios/privacidad para `us.etrade.com`; pueden romper los propios scripts de E-Trade.
+- **`BenefitHistory.xlsx not found`:** asegúrate de que el archivo ESPP está en `input/espp/BenefitHistory.xlsx` (ejecuta **Download All Data** o colócalo manualmente).
+- **Error de tipo de cambio / red:** la caché del BCE en disco (`.ecb_rate_cache.json`) permite repetir sin conexión, pero la primera ejecución necesita internet para obtener los tipos.
+- **El navegador no se abre:** reinstala el navegador de Playwright: `.venv/bin/playwright install chromium`.

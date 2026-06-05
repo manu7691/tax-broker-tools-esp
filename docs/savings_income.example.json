@@ -1,0 +1,4 @@
+[
+  { "date": "2024-03-15", "type": "dividend", "amount_usd": 80.00, "foreign_tax_usd": 12.00 },
+  { "date": "2024-05-29", "type": "interest", "amount_usd": 1.45 }
+]

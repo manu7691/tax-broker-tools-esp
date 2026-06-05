@@ -1,3 +1,4 @@
+import contextlib
 import re
 from datetime import datetime
 from decimal import Decimal
@@ -77,10 +78,8 @@ def parse_rsu_pdf(pdf_path: Path) -> StockEvent | None:
             shares_sold_to_cover = Decimal("0")
             if shares_sold_match:
                 shares_sold_str = shares_sold_match.group(1).replace(",", "")
-                try:
+                with contextlib.suppress(Exception):
                     shares_sold_to_cover = Decimal(shares_sold_str)
-                except Exception:
-                    pass
 
             return StockEvent(
                 event_date=event_date,

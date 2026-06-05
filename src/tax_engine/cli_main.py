@@ -7,14 +7,18 @@ for stocks acquired through RSU vesting, ESPP purchases, and stock options exerc
 Main entry point for the application.
 """
 
+import argparse
+import contextlib
+import json
 from datetime import date, datetime
-from decimal import Decimal, InvalidOperation
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
 
 import pandas as pd
 
 from tax_engine import (
     EventType,
+    SavingsIncomeYear,
     StockEvent,
     TaxEngine,
     load_rsu_events,
@@ -23,11 +27,129 @@ from tax_engine import (
 from tax_engine.options_parser import load_options_events
 
 
-def load_events_from_excel() -> list[StockEvent]:
+def load_prior_losses(path: Path) -> dict[int, Decimal]:
+    """
+    Load pending net losses from years *before* the imported data window.
+
+    Expects a JSON object mapping origin-year (string) to loss magnitude
+    (positive number), e.g. {"2019": 1500.00, "2020": 300}. Returns an empty
+    dict if the file does not exist or cannot be parsed.
+    """
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: could not read prior-losses file {path}: {e}")
+        return {}
+
+    result: dict[int, Decimal] = {}
+    for year_str, amount in raw.items():
+        try:
+            result[int(year_str)] = abs(Decimal(str(amount)))
+        except (ValueError, InvalidOperation):
+            print(f"Warning: skipping invalid prior-loss entry {year_str!r}: {amount!r}")
+    if result:
+        print(f"Loaded prior-year pending losses for {len(result)} year(s) from {path}.")
+    return result
+
+
+def _aggregate_usd_payments(payments: list) -> dict[int, SavingsIncomeYear]:
+    """
+    Convert a list of USD dividend/interest payments to per-year EUR totals.
+
+    Each payment is converted at the ECB USD->EUR rate on its own payment date,
+    exactly like stock transactions, then summed per year::
+
+        [{"date": "2024-03-15", "type": "dividend", "amount_usd": 80,
+          "foreign_tax_usd": 12}, ...]
+    """
+    from tax_engine.ecb_rates import ECBRateFetcher
+
+    result: dict[int, SavingsIncomeYear] = {}
+    for i, p in enumerate(payments):
+        try:
+            pay_date = date.fromisoformat(str(p["date"]).strip())
+            rate = ECBRateFetcher.get_rate(pay_date)
+            amount_eur = (Decimal(str(p.get("amount_usd", 0))) * rate).quantize(
+                Decimal("0.01"), ROUND_HALF_UP
+            )
+            ftax_eur = (Decimal(str(p.get("foreign_tax_usd", 0))) * rate).quantize(
+                Decimal("0.01"), ROUND_HALF_UP
+            )
+        except (ValueError, KeyError, InvalidOperation) as e:
+            print(f"Warning: skipping invalid payment #{i + 1} ({p!r}): {e}")
+            continue
+        entry = result.setdefault(pay_date.year, SavingsIncomeYear(year=pay_date.year))
+        if str(p.get("type", "dividend")).strip().lower().startswith("int"):
+            entry.interest_eur += amount_eur
+        else:
+            entry.dividends_eur += amount_eur
+        entry.foreign_tax_eur += ftax_eur
+    return result
+
+
+def load_savings_income(path: Path) -> dict[int, SavingsIncomeYear]:
+    """
+    Load dividend/interest (RCM) income, returning per-year EUR totals.
+
+    Two input shapes are accepted:
+
+    * **USD payments (exact)** — a JSON *list*, each converted at the ECB rate on
+      its payment date (recommended; consistent with stock transactions)::
+
+          [{"date": "2024-03-15", "type": "dividend", "amount_usd": 80,
+            "foreign_tax_usd": 12}, ...]
+
+    * **EUR per year (manual)** — a JSON *object* keyed by year, where you have
+      already converted to EUR::
+
+          {"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}
+
+    Returns an empty dict if the file is absent or unparseable.
+    """
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: could not read savings-income file {path}: {e}")
+        return {}
+
+    if isinstance(raw, list):
+        result = _aggregate_usd_payments(raw)
+        if result:
+            print(
+                f"Loaded {len(raw)} dividend/interest payment(s) "
+                f"(USD, ECB-converted per date) across {len(result)} year(s) from {path}."
+            )
+        return result
+
+    result = {}
+    for year_str, vals in raw.items():
+        try:
+            year = int(year_str)
+            entry = vals if isinstance(vals, dict) else {}
+            result[year] = SavingsIncomeYear(
+                year=year,
+                dividends_eur=Decimal(str(entry.get("dividends_eur", 0))),
+                interest_eur=Decimal(str(entry.get("interest_eur", 0))),
+                foreign_tax_eur=Decimal(str(entry.get("foreign_tax_eur", 0))),
+            )
+        except (ValueError, InvalidOperation):
+            print(f"Warning: skipping invalid savings-income entry {year_str!r}: {vals!r}")
+    if result:
+        print(f"Loaded dividend/interest income for {len(result)} year(s) (EUR) from {path}.")
+    return result
+
+
+def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Load stock events from the BenefitHistory.xlsx file.
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
 
     # Read the ESPP sheet
     # The user mentioned the sheet is named "ESPP"
@@ -96,11 +218,11 @@ def load_events_from_excel() -> list[StockEvent]:
     return events
 
 
-def load_orders_from_excel() -> list[StockEvent]:
+def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Load sell orders from the orders.xlsx file.
     """
-    excel_path = Path("input/orders/orders.xlsx")
+    excel_path = input_dir / "orders" / "orders.xlsx"
     if not excel_path.exists():
         print(f"Warning: {excel_path} not found. No sell orders loaded.")
         return []
@@ -163,10 +285,8 @@ def load_orders_from_excel() -> list[StockEvent]:
             if fee_col in df.columns:
                 val = str(row[fee_col]).replace("$", "").replace(",", "").strip()
                 if val and val.lower() not in ("nan", "none", "0", "0.00", ""):
-                    try:
+                    with contextlib.suppress(Exception):
                         fees_usd += Decimal(val)
-                    except Exception:
-                        pass
 
         notes = f"Sell Order ({row.get('Benefit Type', 'Unknown')})"
         if fees_usd > 0:
@@ -186,14 +306,14 @@ def load_orders_from_excel() -> list[StockEvent]:
     return events
 
 
-def load_options_stock_events() -> list[StockEvent]:
+def load_options_stock_events(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Convert options exercise confirmations into StockEvent objects.
 
     Each exercise creates an EXERCISE event (acquisition at FMV).
     Same-day sales additionally create a SELL event at the sale price.
     """
-    exercises = load_options_events()
+    exercises = load_options_events(input_dir / "options")
     events: list[StockEvent] = []
 
     for ex in exercises:
@@ -222,12 +342,12 @@ def load_options_stock_events() -> list[StockEvent]:
     return events
 
 
-def calculate_espp_discounts() -> dict[int, Decimal]:
+def calculate_espp_discounts(input_dir: Path = Path("input")) -> dict[int, Decimal]:
     """
     Calculate ESPP discount (taxable salary benefit) for each year.
     Returns a dictionary of year -> total discount in EUR.
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         return {}
 
@@ -245,9 +365,7 @@ def calculate_espp_discounts() -> dict[int, Decimal]:
 
     discounts_by_year: dict[int, Decimal] = {}
 
-    for i, row in df.iterrows():
-        row_num = i + 2
-
+    for _i, row in df.iterrows():
         if row.get("Record Type") != "Purchase":
             continue
 
@@ -291,12 +409,12 @@ def calculate_espp_discounts() -> dict[int, Decimal]:
     return discounts_by_year
 
 
-def build_espp_purchase_map() -> dict:
+def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict:
     """
     Build a map of ESPP purchase dates to (fmv_usd, purchase_price_usd).
     Used for 3-year holding period analysis (Art. 42.3.f LIRPF).
     """
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         return {}
 
@@ -418,17 +536,20 @@ def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
 
     for sell in sells:
         is_sell_to_cover = False
-        
+
         # Check against RSU vests
         for vest in vests:
             # Must be within 3 days (often same day, but can vary by a day or two)
             days_diff = abs((sell.event_date - vest.event_date).days)
-            if days_diff <= 3:
-                # If quantity matches exactly the withheld shares from the PDF
-                if sell.shares == vest.shares_sold_to_cover and vest.shares_sold_to_cover > 0:
-                    is_sell_to_cover = True
-                    break
-        
+            # Within 3 days and quantity matches the withheld shares from the PDF
+            if (
+                days_diff <= 3
+                and sell.shares == vest.shares_sold_to_cover
+                and vest.shares_sold_to_cover > 0
+            ):
+                is_sell_to_cover = True
+                break
+
         if is_sell_to_cover:
             sell.notes = sell.notes.replace("Sell Order", "Sell-to-Cover (Auto-detected)")
         else:
@@ -437,21 +558,59 @@ def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
 
 def main() -> None:
     """Run the tax engine with actual data from Excel files."""
+    parser = argparse.ArgumentParser(
+        description="Spanish Tax Engine for E-Trade RSUs, ESPP, and Stock Options."
+    )
+    parser.add_argument(
+        "--input-dir",
+        type=Path,
+        default=Path("input"),
+        help="Directory holding espp/, orders/, rsu/, options/ data (default: input).",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=Path("."),
+        help="Directory where PDF reports are written (default: current directory).",
+    )
+    parser.add_argument(
+        "--prior-losses",
+        type=Path,
+        default=None,
+        help="JSON file of pending losses from before the data window "
+        "({\"2019\": 1500, ...}). Defaults to <input-dir>/prior_losses.json if present.",
+    )
+    parser.add_argument(
+        "--savings-income",
+        type=Path,
+        default=None,
+        help="JSON file of dividend/interest income per year in EUR "
+        "({\"2024\": {\"dividends_eur\": 320, ...}}). Defaults to "
+        "<input-dir>/savings_income.json if present.",
+    )
+    args = parser.parse_args()
+    input_dir: Path = args.input_dir
+    output_dir: Path = args.output_dir
+    prior_losses_path: Path = args.prior_losses or (input_dir / "prior_losses.json")
+    opening_losses = load_prior_losses(prior_losses_path)
+    savings_income_path: Path = args.savings_income or (input_dir / "savings_income.json")
+    savings_income = load_savings_income(savings_income_path)
+
     print("Spanish Tax Engine for E-Trade RSUs and ESPP")
     print("Using FIFO Cost Basis (First In, First Out) & Progressive Savings Rate Scale")
     print()
 
     # Load events from Excel file
-    excel_path = Path("input/espp/BenefitHistory.xlsx")
+    excel_path = input_dir / "espp" / "BenefitHistory.xlsx"
     if not excel_path.exists():
         print(f"Error: {excel_path} not found")
         print("\nTo run the sample example, use: uv run tax-demo")
         return
 
-    espp_events = load_events_from_excel()
-    sell_events = load_orders_from_excel()
-    rsu_events = load_rsu_events()
-    options_events = load_options_stock_events()
+    espp_events = load_events_from_excel(input_dir)
+    sell_events = load_orders_from_excel(input_dir)
+    rsu_events = load_rsu_events(input_dir / "rsu")
+    options_events = load_options_stock_events(input_dir)
 
     # Combine all events (engine.process_all handles chronological sorting internally)
     events = espp_events + sell_events + rsu_events + options_events
@@ -468,11 +627,11 @@ def main() -> None:
 
     # Print results
     engine.print_ledger()
-    engine.print_tax_summary()
+    engine.print_tax_summary(opening_losses=opening_losses, savings_income=savings_income)
 
     # ESPP Analysis: 3-year holding period detection
-    espp_discounts = calculate_espp_discounts()
-    espp_map = build_espp_purchase_map()
+    espp_discounts = calculate_espp_discounts(input_dir)
+    espp_map = build_espp_purchase_map(input_dir)
     espp_early_sales, espp_early_details = detect_espp_early_sales(
         engine.processed_events, espp_map
     )
@@ -491,13 +650,12 @@ def main() -> None:
             print(f"    Total Taxable ESPP Discount (Rendimiento del Trabajo): €{amount:>12,.2f}")
             print(f"    (Because shares purchased in {year} were sold in the following transactions before 3 years)")
             print()
-            
+
             # Print details for this year
             for detail in espp_early_details:
                 if detail["acquisition_date"].year != year:
                     continue
-                    
-                acq_str = detail["acquisition_date"].strftime("%Y-%m-%d")
+
                 sell_str = detail["sell_date"].strftime("%Y-%m-%d")
                 days = detail["holding_days"]
                 y, m = divmod(days, 365)
@@ -530,15 +688,18 @@ def main() -> None:
     print(f"Total Portfolio Cost: €{engine.state.total_portfolio_cost_eur:,.4f}")
 
     # Generate PDF reports (English and Spanish for Hacienda)
+    output_dir.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-    pdf_path_en = f"tax_report_EN_{timestamp}.pdf"
-    pdf_path_es = f"tax_report_ES_{timestamp}.pdf"
+    pdf_path_en = str(output_dir / f"tax_report_EN_{timestamp}.pdf")
+    pdf_path_es = str(output_dir / f"tax_report_ES_{timestamp}.pdf")
     print(f"Generating English PDF report at: {pdf_path_en}...")
     engine.generate_pdf_report(pdf_path_en, lang="en", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales)
+                               espp_early_sale_discounts=espp_early_sales,
+                               opening_losses=opening_losses, savings_income=savings_income)
     print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
     engine.generate_pdf_report(pdf_path_es, lang="es", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales)
+                               espp_early_sale_discounts=espp_early_sales,
+                               opening_losses=opening_losses, savings_income=savings_income)
     print("PDF generation complete.")
 
 

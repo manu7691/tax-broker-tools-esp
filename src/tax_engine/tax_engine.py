@@ -10,9 +10,14 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from .models import (
+    CarryforwardLedger,
+    CarryforwardYear,
     EventType,
     FifoMatch,
     ProcessedEvent,
+    SavingsIncomeYear,
+    SavingsLedger,
+    SavingsLedgerYear,
     ShareLot,
     StockEvent,
     TaxEngineState,
@@ -160,7 +165,7 @@ class TaxEngine:
                 Decimal("0.0001"), ROUND_HALF_UP
             )
             total_realized_gain_loss -= fees_eur
-            
+
         # Update state
         self.state.total_shares -= shares_to_sell
         self.state.total_portfolio_cost_eur -= total_cost_basis_removed
@@ -308,6 +313,217 @@ class TaxEngine:
         """Get all yearly tax summaries, sorted by year."""
         return sorted(self.yearly_summaries.values(), key=lambda s: s.year)
 
+    def compute_carryforward(
+        self, opening_losses: dict[int, Decimal] | None = None
+    ) -> CarryforwardLedger:
+        """
+        Simulate the 4-year loss carryforward across the tracked years (Art. 49 LIRPF).
+
+        A net loss generated in year Y can offset net savings-base gains of years
+        Y+1 .. Y+4 only. Oldest losses are consumed first. Losses not used within
+        that window expire.
+
+        ``opening_losses`` optionally seeds the pool with pending net losses from
+        years *before* the imported data window, as ``{origin_year: magnitude}``
+        where magnitude is a positive Decimal.
+        """
+        # Pool entries are mutable [origin_year, remaining_magnitude] (remaining > 0).
+        pool: list[list] = []
+        for origin_year, magnitude in sorted((opening_losses or {}).items()):
+            mag = abs(Decimal(str(magnitude)))
+            if mag > 0:
+                pool.append([origin_year, mag])
+
+        summaries = {s.year: s for s in self.get_all_yearly_summaries()}
+        ledger = CarryforwardLedger()
+
+        for year in sorted(summaries):
+            # Expire losses that can no longer be used this year (origin <= year-5).
+            survivors: list[list] = []
+            for origin_year, remaining in pool:
+                if origin_year <= year - 5 and remaining > 0:
+                    ledger.expired.append((origin_year, remaining))
+                else:
+                    survivors.append([origin_year, remaining])
+            pool = survivors
+
+            net = summaries[year].net_gain_loss
+            applied = Decimal("0")
+            new_loss = Decimal("0")
+            taxable_after = max(Decimal("0"), net)
+
+            if net > 0:
+                gain_left = net
+                for entry in sorted(pool):  # oldest origin year first
+                    if gain_left <= 0:
+                        break
+                    use = min(entry[1], gain_left)
+                    entry[1] -= use
+                    gain_left -= use
+                    applied += use
+                pool = [e for e in pool if e[1] > 0]
+                taxable_after = gain_left
+            elif net < 0:
+                new_loss = -net
+                pool.append([year, new_loss])
+
+            ledger.rows.append(
+                CarryforwardYear(
+                    year=year,
+                    net_result=net,
+                    prior_losses_applied=applied,
+                    taxable_after=taxable_after,
+                    new_loss_carried=new_loss,
+                )
+            )
+
+        ledger.pending_end = sorted(
+            (origin_year, remaining, origin_year + 4)
+            for origin_year, remaining in pool
+            if remaining > 0
+        )
+        return ledger
+
+    @staticmethod
+    def _cross_category_cap(year: int) -> Decimal:
+        """
+        Cross-category offset cap for a year (Art. 49 LIRPF transitional regime).
+
+        A negative balance in one savings-base category may offset at most this
+        fraction of the positive balance in the other category.
+        """
+        caps = {2015: "0.10", 2016: "0.15", 2017: "0.20"}
+        if year <= 2015:
+            return Decimal(caps.get(year, "0.10"))
+        return Decimal(caps.get(year, "0.25"))  # 25% from 2018 onward
+
+    def compute_savings_ledger(
+        self,
+        savings_income: dict[int, SavingsIncomeYear],
+        opening_losses: dict[int, Decimal] | None = None,
+        opening_rcm_losses: dict[int, Decimal] | None = None,
+    ) -> SavingsLedger:
+        """
+        Simulate the full savings base across two categories (Art. 48 & 49 LIRPF):
+        capital gains/losses (G/L) and returns on movable capital (RCM = dividends
+        + interest). Each year, prior-year losses offset same-category gains first,
+        then a negative balance offsets up to the cross-category cap (typically 25%)
+        of the other category's positive balance; remaining losses carry forward 4
+        years and expire thereafter.
+
+        ``opening_losses`` / ``opening_rcm_losses`` seed pending losses (positive
+        magnitudes keyed by origin year) from before the data window.
+        """
+        gp_pool: list[list] = [
+            [y, abs(Decimal(str(m)))]
+            for y, m in sorted((opening_losses or {}).items())
+            if abs(Decimal(str(m))) > 0
+        ]
+        rcm_pool: list[list] = [
+            [y, abs(Decimal(str(m)))]
+            for y, m in sorted((opening_rcm_losses or {}).items())
+            if abs(Decimal(str(m))) > 0
+        ]
+
+        summaries = {s.year: s for s in self.get_all_yearly_summaries()}
+        years = sorted(set(summaries) | set(savings_income))
+        ledger = SavingsLedger()
+
+        def _expire(pool: list[list], bucket: str, year: int) -> list[list]:
+            survivors = []
+            for origin_year, remaining in pool:
+                if origin_year <= year - 5 and remaining > 0:
+                    ledger.expired.append((bucket, origin_year, remaining))
+                else:
+                    survivors.append([origin_year, remaining])
+            return survivors
+
+        def _consume(pool: list[list], gain: Decimal) -> Decimal:
+            """Consume oldest pool losses against a positive gain; return amount applied."""
+            applied = Decimal("0")
+            left = gain
+            for entry in sorted(pool):
+                if left <= 0:
+                    break
+                use = min(entry[1], left)
+                entry[1] -= use
+                left -= use
+                applied += use
+            pool[:] = [e for e in pool if e[1] > 0]
+            return applied
+
+        for year in years:
+            gp_pool = _expire(gp_pool, "G/L", year)
+            rcm_pool = _expire(rcm_pool, "RCM", year)
+
+            gp_net = summaries[year].net_gain_loss if year in summaries else Decimal("0")
+            inc = savings_income.get(year)
+            rcm_net = inc.rcm_net if inc else Decimal("0")
+            foreign_tax = inc.foreign_tax_eur if inc else Decimal("0")
+
+            # 1) Same-category prior-loss application against positive balances.
+            gp_after = gp_net
+            gp_applied = Decimal("0")
+            if gp_net > 0:
+                gp_applied = _consume(gp_pool, gp_net)
+                gp_after = gp_net - gp_applied
+
+            rcm_after = rcm_net
+            rcm_applied = Decimal("0")
+            if rcm_net > 0:
+                rcm_applied = _consume(rcm_pool, rcm_net)
+                rcm_after = rcm_net - rcm_applied
+
+            # 2) Cross-category offset (capped).
+            cap = self._cross_category_cap(year)
+            cross_offset = Decimal("0")
+            cross_direction = ""
+            if gp_after < 0 and rcm_after > 0:
+                cross_offset = min(-gp_after, (rcm_after * cap).quantize(Decimal("0.01"), ROUND_HALF_UP))
+                rcm_after -= cross_offset
+                gp_after += cross_offset
+                cross_direction = "gp->rcm"
+            elif rcm_after < 0 and gp_after > 0:
+                cross_offset = min(-rcm_after, (gp_after * cap).quantize(Decimal("0.01"), ROUND_HALF_UP))
+                gp_after -= cross_offset
+                rcm_after += cross_offset
+                cross_direction = "rcm->gp"
+
+            # 3) Remaining negatives carry forward; positives form the taxable base.
+            if gp_after < 0:
+                gp_pool.append([year, -gp_after])
+                gp_taxable = Decimal("0")
+            else:
+                gp_taxable = gp_after
+            if rcm_after < 0:
+                rcm_pool.append([year, -rcm_after])
+                rcm_taxable = Decimal("0")
+            else:
+                rcm_taxable = rcm_after
+
+            ledger.rows.append(
+                SavingsLedgerYear(
+                    year=year,
+                    gp_net=gp_net,
+                    rcm_net=rcm_net,
+                    gp_prior_applied=gp_applied,
+                    rcm_prior_applied=rcm_applied,
+                    cross_offset=cross_offset,
+                    cross_direction=cross_direction,
+                    gp_taxable=gp_taxable,
+                    rcm_taxable=rcm_taxable,
+                    foreign_tax_eur=foreign_tax,
+                )
+            )
+
+        ledger.gp_pending_end = sorted(
+            (oy, rem, oy + 4) for oy, rem in gp_pool if rem > 0
+        )
+        ledger.rcm_pending_end = sorted(
+            (oy, rem, oy + 4) for oy, rem in rcm_pool if rem > 0
+        )
+        return ledger
+
     def print_ledger(self) -> None:
         """Print the full transaction ledger in a readable format."""
         print("\n" + "=" * 120)
@@ -327,9 +543,12 @@ class TaxEngine:
             gain_str = f"€{pe.realized_gain_loss:,.4f}" if pe.realized_gain_loss != 0 else ""
 
             wash_sale_info = ""
-            if pe.event.event_type == EventType.SELL and pe.realized_gain_loss < 0:
-                if "Wash Sale Blocked Loss" in pe.event.notes:
-                    wash_sale_info = " (Wash Blocked)"
+            if (
+                pe.event.event_type == EventType.SELL
+                and pe.realized_gain_loss < 0
+                and "Wash Sale Blocked Loss" in pe.event.notes
+            ):
+                wash_sale_info = " (Wash Blocked)"
 
             print(
                 f"{e.event_date.isoformat():<12} {e.event_type.value:<6} "
@@ -348,7 +567,7 @@ class TaxEngine:
 
         print("=" * 120)
 
-    def print_tax_summary(self) -> None:
+    def print_tax_summary(self, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> None:
         """Print the yearly tax summary."""
         print("\n" + "=" * 95)
         print("YEARLY TAX SUMMARY (Spain)")
@@ -382,15 +601,347 @@ class TaxEngine:
             print(f"    Estimated Tax Due:         €{summary.tax_due:>12,.2f}")
             print()
 
+        if savings_income:
+            # Two-bucket savings base supersedes the single-bucket ledger to avoid
+            # contradictory pending balances (cross-offset changes what carries forward).
+            sledger = self.compute_savings_ledger(savings_income, opening_losses=opening_losses)
+            print("\nSAVINGS BASE — CAPITAL GAINS + DIVIDENDS/INTEREST (Art. 48 & 49 LIRPF)")
+            print("-" * 95)
+            print(
+                f"{'Year':<8} {'Capital G/L':>15} {'Div+Interest':>15} "
+                f"{'Cross Offset':>15} {'Savings Base':>15} {'Foreign Tax':>13}"
+            )
+            for r in sledger.rows:
+                print(
+                    f"{r.year:<8} €{r.gp_net:>14,.2f} €{r.rcm_net:>14,.2f} "
+                    f"€{r.cross_offset:>14,.2f} €{r.savings_base:>14,.2f} €{r.foreign_tax_eur:>12,.2f}"
+                )
+            if sledger.gp_pending_end:
+                print("\n  Pending capital losses carried forward:")
+                for oy, rem, ub in sledger.gp_pending_end:
+                    print(f"    From {oy}: €{rem:>12,.2f}  ->  use by {ub}")
+            if sledger.rcm_pending_end:
+                print("\n  Pending RCM (dividend/interest) losses carried forward:")
+                for oy, rem, ub in sledger.rcm_pending_end:
+                    print(f"    From {oy}: €{rem:>12,.2f}  ->  use by {ub}")
+            if sledger.expired:
+                print("\n  ⚠️  Losses that EXPIRED unused (4-year limit passed):")
+                for bucket, oy, amount in sledger.expired:
+                    print(f"    {bucket} from {oy}: €{amount:>12,.2f} lost")
+            if sledger.total_foreign_tax > 0:
+                print(
+                    f"\n  Foreign tax withheld total: €{sledger.total_foreign_tax:,.2f} "
+                    "(claim as deducción por doble imposición — advisor)."
+                )
+        else:
+            # 4-Year Loss Carryforward Ledger (capital gains only)
+            ledger = self.compute_carryforward(opening_losses)
+            print("\nLOSS CARRYFORWARD LEDGER (Art. 49 LIRPF)")
+            print("-" * 95)
+            if opening_losses:
+                seeded = ", ".join(f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items()))
+                print(f"Seeded with prior-year pending losses -> {seeded}")
+            print(
+                f"{'Year':<8} {'Net Result':>15} {'Prior Loss Applied':>20} "
+                f"{'Taxable After C/F':>20}"
+            )
+            for r in ledger.rows:
+                print(
+                    f"{r.year:<8} €{r.net_result:>14,.2f} €{r.prior_losses_applied:>19,.2f} "
+                    f"€{r.taxable_after:>19,.2f}"
+                )
+            if ledger.pending_end:
+                print("\n  Pending losses carried forward (still usable):")
+                for origin_year, remaining, use_by in ledger.pending_end:
+                    print(f"    From {origin_year}: €{remaining:>12,.2f}  ->  use by {use_by}")
+            if ledger.expired:
+                print("\n  ⚠️  Losses that EXPIRED unused (4-year limit passed):")
+                for origin_year, amount in ledger.expired:
+                    print(f"    From {origin_year}: €{amount:>12,.2f} lost")
+            if not ledger.pending_end and not ledger.expired and all(
+                r.prior_losses_applied == 0 for r in ledger.rows
+            ):
+                print("  No losses to carry forward.")
+
         print("\n" + "=" * 95)
         print("  NOTE: Transaction Fees (Commissions, SEC Fees) ARE DEDUCTED (Wire Transfers EXCLUDED)")
         print("  from your capital gains automatically, per Spanish Tax Law (Gastos Inherentes).")
+        print("  NOTE: 'Est. Tax' is an ISOLATED estimate on these stock gains only — your real")
+        print("  liability depends on total savings income and prior-year loss carryforward.")
         print("=" * 95 + "\n")
 
-    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None) -> str:
+    def _append_carryforward_section(
+        self, html: list[str], is_es: bool, opening_losses: dict[int, Decimal] | None
+    ) -> None:
+        """Append the single-bucket (capital-gains only) loss-carryforward ledger."""
+        ledger = self.compute_carryforward(opening_losses)
+        cf_title = (
+            "Loss Carryforward Ledger (Art. 49 LIRPF)"
+            if not is_es
+            else "Libro de Compensación de Pérdidas (Art. 49 LIRPF)"
+        )
+        html.append(f"<h2>{cf_title}</h2>")
+        if not is_es:
+            html.append(
+                "<p>Net losses in a year offset savings-base gains of the following "
+                "<strong>4 years</strong> (oldest losses first); unused losses then expire. "
+                "This ledger simulates that across the tracked years. Cross-category offset against "
+                "other savings income (dividends, interest) is still applied by your advisor at filing time.</p>"
+            )
+        else:
+            html.append(
+                "<p>Las pérdidas netas de un ejercicio compensan ganancias de la base del ahorro de los "
+                "<strong>4 ejercicios siguientes</strong> (primero las más antiguas); las no utilizadas caducan. "
+                "Este libro simula esa compensación entre los años analizados. La compensación con otras rentas "
+                "del ahorro (dividendos, intereses) la aplica tu asesor al presentar la declaración.</p>"
+            )
+        if opening_losses:
+            seeded = ", ".join(
+                f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items())
+            )
+            seed_label = (
+                f"Seeded with prior-year pending losses — {seeded}"
+                if not is_es
+                else f"Inicializado con pérdidas pendientes de años anteriores — {seeded}"
+            )
+            html.append(f"<p style='font-size: 11px; color: #555;'><em>{seed_label}</em></p>")
+
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Year</th><th>Net Result</th><th>Prior-Year Loss Applied</th><th>Taxable After Carryforward</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Año</th><th>Resultado Neto</th><th>Pérdida de Años Anteriores Aplicada</th><th>Base Tras Compensación</th></tr>"
+            )
+        for r in ledger.rows:
+            net_style = "gain" if r.net_result >= 0 else "loss"
+            html.append("<tr>")
+            html.append(f"<td>{r.year}</td>")
+            html.append(f"<td class='{net_style}'>€{r.net_result:,.2f}</td>")
+            html.append(f"<td>€{r.prior_losses_applied:,.2f}</td>")
+            html.append(f"<td><strong>€{r.taxable_after:,.2f}</strong></td>")
+            html.append("</tr>")
+        html.append("</table>")
+
+        if ledger.pending_end:
+            pend_label = (
+                "Pending losses carried forward (still usable):"
+                if not is_es
+                else "Pérdidas pendientes de compensar (aún utilizables):"
+            )
+            use_by_label = "use by" if not is_es else "usar antes de"
+            html.append(f"<p><strong>{pend_label}</strong></p><ul>")
+            for origin_year, remaining, use_by in ledger.pending_end:
+                html.append(
+                    f"<li class='loss'>{origin_year}: €{remaining:,.2f} — {use_by_label} {use_by}</li>"
+                )
+            html.append("</ul>")
+        if ledger.expired:
+            exp_label = (
+                "⚠️ Losses that EXPIRED unused (4-year limit passed):"
+                if not is_es
+                else "⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):"
+            )
+            html.append(f"<p style='color:#cc0000;'><strong>{exp_label}</strong></p><ul>")
+            for origin_year, amount in ledger.expired:
+                html.append(f"<li style='color:#cc0000;'>{origin_year}: €{amount:,.2f}</li>")
+            html.append("</ul>")
+        if not ledger.pending_end and not ledger.expired and all(
+            r.prior_losses_applied == 0 for r in ledger.rows
+        ):
+            no_loss = (
+                "No losses to carry forward."
+                if not is_es
+                else "No hay pérdidas pendientes de compensar."
+            )
+            html.append(f"<p><em>{no_loss}</em></p>")
+
+    def _append_savings_section(
+        self,
+        html: list[str],
+        is_es: bool,
+        savings_income: dict[int, SavingsIncomeYear],
+        opening_losses: dict[int, Decimal] | None,
+    ) -> None:
+        """Append the two-bucket savings base (G/L + RCM) with the 25% cross-offset."""
+        sledger = self.compute_savings_ledger(savings_income, opening_losses=opening_losses)
+        title = (
+            "Savings Base — Capital Gains + Dividends/Interest (Art. 49 LIRPF)"
+            if not is_es
+            else "Base del Ahorro — Ganancias + Dividendos/Intereses (Art. 49 LIRPF)"
+        )
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p>Combines your stock gains/losses with dividend & interest income (RCM). "
+                "A net loss in one category offsets up to the legal cap (25% from 2018) of the other "
+                "category's positive balance; the rest carries forward 4 years. "
+                "<strong>Foreign tax withheld is shown for reference only</strong> — the "
+                "<em>deducción por doble imposición internacional</em> is applied by your advisor.</p>"
+            )
+        else:
+            html.append(
+                "<p>Combina tus ganancias/pérdidas bursátiles con los dividendos e intereses (RCM). "
+                "Una pérdida neta en una categoría compensa hasta el límite legal (25% desde 2018) del saldo "
+                "positivo de la otra; el resto se arrastra 4 años. "
+                "<strong>La retención en origen se muestra solo a título informativo</strong> — la "
+                "<em>deducción por doble imposición internacional</em> la aplica tu asesor.</p>"
+            )
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Year</th><th>Capital G/L (net)</th><th>Dividends + Interest</th>"
+                "<th>Cross-Category Offset</th><th>Taxable Savings Base</th><th>Foreign Tax (info)</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Año</th><th>Ganancia/Pérdida (neta)</th><th>Dividendos + Intereses</th>"
+                "<th>Compensación entre Categorías</th><th>Base del Ahorro Imponible</th><th>Retención Origen (info)</th></tr>"
+            )
+        for r in sledger.rows:
+            gp_style = "gain" if r.gp_net >= 0 else "loss"
+            offset_txt = f"€{r.cross_offset:,.2f}" if r.cross_offset > 0 else "—"
+            html.append("<tr>")
+            html.append(f"<td>{r.year}</td>")
+            html.append(f"<td class='{gp_style}'>€{r.gp_net:,.2f}</td>")
+            html.append(f"<td>€{r.rcm_net:,.2f}</td>")
+            html.append(f"<td>{offset_txt}</td>")
+            html.append(f"<td><strong>€{r.savings_base:,.2f}</strong></td>")
+            html.append(f"<td>€{r.foreign_tax_eur:,.2f}</td>")
+            html.append("</tr>")
+        html.append("</table>")
+
+        if sledger.total_foreign_tax > 0:
+            ft_label = (
+                f"Total foreign tax withheld: €{sledger.total_foreign_tax:,.2f} — "
+                "claim as deducción por doble imposición internacional (advisor)."
+                if not is_es
+                else f"Retención total en origen: €{sledger.total_foreign_tax:,.2f} — "
+                "reclámala como deducción por doble imposición internacional (asesor)."
+            )
+            html.append(f"<p style='font-size: 11px; color: #555;'><em>{ft_label}</em></p>")
+
+        use_by = "use by" if not is_es else "usar antes de"
+        if sledger.gp_pending_end:
+            lbl = (
+                "Pending capital losses carried forward:"
+                if not is_es
+                else "Pérdidas patrimoniales pendientes de compensar:"
+            )
+            html.append(f"<p><strong>{lbl}</strong></p><ul>")
+            for oy, rem, ub in sledger.gp_pending_end:
+                html.append(f"<li class='loss'>{oy}: €{rem:,.2f} — {use_by} {ub}</li>")
+            html.append("</ul>")
+        if sledger.rcm_pending_end:
+            lbl = (
+                "Pending RCM (dividend/interest) losses carried forward:"
+                if not is_es
+                else "Pérdidas de RCM (dividendos/intereses) pendientes de compensar:"
+            )
+            html.append(f"<p><strong>{lbl}</strong></p><ul>")
+            for oy, rem, ub in sledger.rcm_pending_end:
+                html.append(f"<li class='loss'>{oy}: €{rem:,.2f} — {use_by} {ub}</li>")
+            html.append("</ul>")
+        if sledger.expired:
+            exp_label = (
+                "⚠️ Losses that EXPIRED unused (4-year limit passed):"
+                if not is_es
+                else "⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):"
+            )
+            html.append(f"<p style='color:#cc0000;'><strong>{exp_label}</strong></p><ul>")
+            for bucket, oy, amount in sledger.expired:
+                html.append(f"<li style='color:#cc0000;'>{bucket} {oy}: €{amount:,.2f}</li>")
+            html.append("</ul>")
+
+    def _append_modelo100_guide(self, html: list[str], is_es: bool) -> None:
+        """
+        Append a crosswalk from this report's figures to Modelo 100 sections.
+
+        Box numbers ("casillas") change almost every campaign, so this guide
+        anchors on the stable section names (*apartados*) and flags the casilla
+        numbers as values to verify against the current year's form.
+        """
+        title = "Modelo 100 Filing Guide (IRPF)" if not is_es else "Guía de Cumplimentación del Modelo 100 (IRPF)"
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verify the casilla numbers.</strong> "
+                "Modelo 100 box numbers change almost every year. The <em>section names</em> below are stable; "
+                "the casilla numbers are indicative — confirm them against the form for your filing year.</p>"
+            )
+        else:
+            html.append(
+                "<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verifica los números de casilla.</strong> "
+                "Las casillas del Modelo 100 cambian casi cada año. Los <em>nombres de apartado</em> de abajo son estables; "
+                "los números de casilla son orientativos — confírmalos en el modelo de tu ejercicio.</p>"
+            )
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Figure from this report</th><th>Modelo 100 section (apartado)</th><th>Casilla (verify)</th></tr>"
+            )
+            rows = [
+                ("Each sale: transmission value, acquisition value, gain/loss",
+                 "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
+                 "≈ 0328–0344"),
+                ("Net balance of gains/losses (savings base)",
+                 "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
+                 "≈ 0424 / 0425"),
+                ("Dividends & interest (RCM)",
+                 "Rendimientos del capital mobiliario a integrar en la base imponible del ahorro (dividends, interest)",
+                 "≈ 0027–0031"),
+                ("Foreign tax withheld (US)",
+                 "Deducción por doble imposición internacional",
+                 "≈ 0588 / 0589"),
+                ("Prior-year pending losses (this ledger's 'pending')",
+                 "Saldos netos negativos de ejercicios anteriores pendientes de compensar (one box per origin year)",
+                 "≈ 0439–0443"),
+                ("Resulting savings tax base",
+                 "Base imponible del ahorro",
+                 "≈ 0460"),
+                ("ESPP early-sale discount (if any)",
+                 "Rendimientos del trabajo — via Declaración Complementaria for the purchase year",
+                 "trabajo boxes"),
+            ]
+        else:
+            html.append(
+                "<tr><th>Dato de este informe</th><th>Apartado del Modelo 100</th><th>Casilla (verificar)</th></tr>"
+            )
+            rows = [
+                ("Cada venta: valor de transmisión, de adquisición y ganancia/pérdida",
+                 "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
+                 "≈ 0328–0344"),
+                ("Saldo neto de ganancias y pérdidas (base del ahorro)",
+                 "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
+                 "≈ 0424 / 0425"),
+                ("Dividendos e intereses (RCM)",
+                 "Rendimientos del capital mobiliario a integrar en la base imponible del ahorro (dividendos, intereses)",
+                 "≈ 0027–0031"),
+                ("Retención en origen (EE. UU.)",
+                 "Deducción por doble imposición internacional",
+                 "≈ 0588 / 0589"),
+                ("Pérdidas pendientes de años anteriores ('pendientes' de este libro)",
+                 "Saldos netos negativos de ejercicios anteriores pendientes de compensar (una casilla por año de origen)",
+                 "≈ 0439–0443"),
+                ("Base imponible del ahorro resultante",
+                 "Base imponible del ahorro",
+                 "≈ 0460"),
+                ("Descuento ESPP por venta anticipada (si lo hay)",
+                 "Rendimientos del trabajo — mediante Declaración Complementaria del año de compra",
+                 "casillas de trabajo"),
+            ]
+        for figure, apartado, casilla in rows:
+            html.append(
+                f"<tr><td>{figure}</td><td>{apartado}</td><td>{casilla}</td></tr>"
+            )
+        html.append("</table>")
+
+    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> str:
         """Generate HTML content for the tax report (supports English 'en' and Spanish 'es')."""
         is_es = lang.lower() == "es"
-        
+
         html = []
         html.append("<html><head><style>")
         html.append(
@@ -432,6 +983,13 @@ class TaxEngine:
                 "<li><strong>2-Month Wash Sale Rule</strong>: Losses from sales are blocked (deferred) if homogenous shares are acquired within 2 months before or after the sale date.</li>"
             )
             html.append(
+                "<li><strong style='color: #cc6600;'>SCOPE - Single Account</strong>: "
+                "The wash-sale rule applies per security across <strong>all</strong> your brokers/accounts, "
+                "but this report only sees data from this account. If you bought the same security elsewhere "
+                "(e.g. another broker) within the 2-month window, those repurchases are NOT detected here and "
+                "some blocked losses may be under-reported.</li>"
+            )
+            html.append(
                 "<li><strong style='color: green;'>NOTE - Fees Included</strong>: "
                 "This report <strong>INCLUDES and DEDUCTS</strong> transaction commissions and SEC fees "
                 "from your capital gains, applying the official ECB USD/EUR exchange rate of the transaction date. "
@@ -454,6 +1012,13 @@ class TaxEngine:
                 "<li><strong>Regla de los 2 Meses (Wash Sale)</strong>: Las pérdidas patrimoniales quedan bloqueadas (diferidas) si se adquieren acciones homogéneas dentro de los 2 meses anteriores o posteriores a la fecha de la venta.</li>"
             )
             html.append(
+                "<li><strong style='color: #cc6600;'>ALCANCE - Una Sola Cuenta</strong>: "
+                "La regla de los 2 meses se aplica por valor en <strong>todos</strong> tus brókers/cuentas, "
+                "pero este informe solo ve los datos de esta cuenta. Si compraste el mismo valor en otro lugar "
+                "(p. ej. otro bróker) dentro de la ventana de 2 meses, esas recompras NO se detectan aquí y "
+                "algunas pérdidas bloqueadas podrían estar infravaloradas.</li>"
+            )
+            html.append(
                 "<li><strong style='color: green;'>NOTA - Comisiones Incluidas</strong>: "
                 "Este informe <strong>INCLUYE y DEDUCE</strong> las comisiones de transacción y tasas SEC "
                 "como gastos inherentes a la transmisión, utilizando el tipo de cambio oficial del BCE de la fecha exacta de la transacción. "
@@ -461,17 +1026,21 @@ class TaxEngine:
             )
             html.append("</ul>")
 
-        # Yearly Tax Summary Table
-        summary_title = "Yearly Tax Summary" if not is_es else "Resumen Fiscal Anual"
+        # Yearly Tax Summary Table (Modelo 100 - Savings Base)
+        summary_title = (
+            "Yearly Tax Summary (Modelo 100 - Savings Base)"
+            if not is_es
+            else "Resumen Fiscal Anual (Modelo 100 - Base Imponible del Ahorro)"
+        )
         html.append(f"<h2>{summary_title}</h2>")
         html.append("<table>")
         if not is_es:
             html.append(
-                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Fees Deducted</th><th>Taxable Gain (Net)</th><th>Estimated Tax Due</th></tr>"
+                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Deductible Losses</th><th>Fees Deducted</th><th>Net Taxable Savings Base</th><th>Estimated Tax (Isolated)*</th></tr>"
             )
         else:
             html.append(
-                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Gastos Deducidos</th><th>Base Imponible Neta</th><th>Impuesto Estimado</th></tr>"
+                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Pérdidas Deducibles</th><th>Gastos Deducidos</th><th>Base Imponible del Ahorro</th><th>Impuesto Estimado (Aislado)*</th></tr>"
             )
 
         for summary in self.get_all_yearly_summaries():
@@ -481,6 +1050,7 @@ class TaxEngine:
             html.append(f"<td>€{summary.total_gains:,.2f}</td>")
             html.append(f"<td>€{summary.total_losses:,.2f}</td>")
             html.append(f"<td>€{summary.blocked_losses:,.2f}</td>")
+            html.append(f"<td>€{summary.deductible_losses:,.2f}</td>")
             html.append(f"<td>€{summary.total_fees_eur:,.2f}</td>")
             html.append(
                 f"<td class='{net_style}'><strong>€{summary.taxable_gain:,.2f}</strong></td>"
@@ -489,24 +1059,34 @@ class TaxEngine:
             html.append("</tr>")
         html.append("</table>")
 
-        # Modelo 100 Savings Base Table
-        m100_title = "Spanish Renta (Modelo 100 - Savings Base)" if not is_es else "Renta de España (Modelo 100 - Base Imponible del Ahorro)"
-        html.append(f"<h2>{m100_title}</h2>")
-        html.append("<table>")
         if not is_es:
-            html.append("<tr><th>Year</th><th>Total Gains</th><th>Total Deductible Losses</th><th>Blocked Losses (2-month)</th><th>Net Taxable Savings Base</th></tr>")
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>"
+                "<strong>* Isolated estimate.</strong> The tax column applies the savings-base scale to these "
+                "stock gains <em>alone</em>. Your actual liability depends on your <strong>total</strong> savings "
+                "income for the year (dividends, interest, gains from other assets) and any losses carried forward "
+                "from prior years (4-year limit, Art. 49 LIRPF). Use this figure as a guide, not as the final tax due.</p>"
+            )
         else:
-            html.append("<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Deducibles Totales</th><th>Pérdidas Bloqueadas (2 meses)</th><th>Base Imponible del Ahorro</th></tr>")
-        
-        for summary in self.get_all_yearly_summaries():
-            html.append("<tr>")
-            html.append(f"<td>{summary.year}</td>")
-            html.append(f"<td>€{summary.total_gains:,.2f}</td>")
-            html.append(f"<td>€{summary.deductible_losses:,.2f}</td>")
-            html.append(f"<td>€{summary.blocked_losses:,.2f}</td>")
-            html.append(f"<td><strong>€{summary.taxable_gain:,.2f}</strong></td>")
-            html.append("</tr>")
-        html.append("</table>")
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>"
+                "<strong>* Estimación aislada.</strong> La columna de impuesto aplica la escala del ahorro a estas "
+                "ganancias bursátiles de forma <em>aislada</em>. Tu cuota real depende de tu base del ahorro "
+                "<strong>total</strong> del ejercicio (dividendos, intereses, ganancias de otros activos) y de las "
+                "pérdidas pendientes de compensar de años anteriores (límite de 4 años, Art. 49 LIRPF). "
+                "Usa esta cifra como orientación, no como la cuota definitiva.</p>"
+            )
+
+        # Loss handling: the two-bucket savings ledger supersedes the single-bucket
+        # carryforward ledger when dividend/interest is supplied (the cross-offset
+        # changes what carries forward, so showing both would contradict).
+        if savings_income:
+            self._append_savings_section(html, is_es, savings_income, opening_losses)
+        else:
+            self._append_carryforward_section(html, is_es, opening_losses)
+
+        # Modelo 100 box guide (apartado names are stable; casillas shift yearly)
+        self._append_modelo100_guide(html, is_es)
 
         # ESPP 3-Year Holding Period Analysis
         if espp_early_sale_discounts or espp_discounts:
@@ -591,18 +1171,23 @@ class TaxEngine:
             event_type_str = e.event_type.value
             notes_str = e.notes
             if is_es:
-                if e.event_type == EventType.VEST: event_type_str = "Concesión"
-                elif e.event_type == EventType.SELL: event_type_str = "Venta"
-                elif e.event_type == EventType.BUY: event_type_str = "Compra"
-                elif e.event_type == EventType.EXERCISE: event_type_str = "Ejercicio"
-                
+                event_type_str = {
+                    EventType.VEST: "Concesión",
+                    EventType.SELL: "Venta",
+                    EventType.BUY: "Compra",
+                    EventType.EXERCISE: "Ejercicio",
+                }.get(e.event_type, event_type_str)
+
                 # Translate common notes
-                if "RSU Vest" in notes_str: notes_str = notes_str.replace("RSU Vest", "Concesión RSU")
-                if "ESPP Purchase" in notes_str: notes_str = notes_str.replace("ESPP Purchase", "Compra ESPP")
-                if "Sell-to-Cover" in notes_str: notes_str = notes_str.replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
-                if "Manual Sell" in notes_str: notes_str = notes_str.replace("Manual Sell", "Venta Manual")
-                if "Sell Order" in notes_str: notes_str = notes_str.replace("Sell Order", "Orden de Venta")
-                if "Includes" in notes_str: notes_str = notes_str.replace("Includes", "Incluye").replace("fees", "comisiones")
+                notes_str = (
+                    notes_str.replace("RSU Vest", "Concesión RSU")
+                    .replace("ESPP Purchase", "Compra ESPP")
+                    .replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
+                    .replace("Manual Sell", "Venta Manual")
+                    .replace("Sell Order", "Orden de Venta")
+                    .replace("Includes", "Incluye")
+                    .replace("fees", "comisiones")
+                )
 
             event_type_cell = f"{event_type_str}<br><small style='color:gray;'>{notes_str}</small>"
             event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
@@ -678,7 +1263,7 @@ class TaxEngine:
                     f"{gl_label}: <code>({e.price_eur:,.4f} - {match.acquisition_price_eur:,.4f}) * {match.shares:,.0f} = €{match.realized_gain_loss:,.2f}</code></li>"
                 )
             html.append("</ul>")
-            
+
             tot_label = "Total Realized Gain/Loss" if not is_es else "Total Ganancia/Pérdida Realizada"
             html.append(
                 f"<li><strong>{tot_label}</strong>: <strong>€{pe.realized_gain_loss:,.2f}</strong></li>"
@@ -695,7 +1280,7 @@ class TaxEngine:
         html.append("</body></html>")
         return "".join(html)
 
-    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None) -> None:
+    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> None:
         """Generate a PDF tax report using Playwright (supports lang='en' or lang='es')."""
         try:
             from playwright.sync_api import sync_playwright
@@ -704,7 +1289,7 @@ class TaxEngine:
             print("Please install it with: pip install playwright && playwright install")
             return
 
-        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts)
+        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts, opening_losses=opening_losses, savings_income=savings_income)
 
         try:
             with sync_playwright() as p:

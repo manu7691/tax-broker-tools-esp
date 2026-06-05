@@ -33,6 +33,7 @@ dev = [
 # CLI entry points (installed as global commands)
 tax-engine = "tax_engine.cli_main:main"
 tax-demo = "tax_engine.cli_demo:main"
+tax-savings-income = "tax_engine.cli_savings_income:main"
 tax-login = "tax_engine.etrade_login:login"
 tax-download = "tax_engine.download_all:main"
 tax-download-espp = "tax_engine.etrade_download_espp:download_benefit_history"

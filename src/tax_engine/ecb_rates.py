@@ -5,11 +5,14 @@ Fetches USD/EUR exchange rates from the European Central Bank
 Statistical Data Warehouse API.
 """
 
+import json
+import os
 import ssl
 import urllib.request
 import xml.etree.ElementTree as ET
 from datetime import date, timedelta
 from decimal import ROUND_HALF_UP, Decimal
+from pathlib import Path
 from typing import TYPE_CHECKING
 
 import certifi
@@ -24,6 +27,10 @@ class ECBRateFetcher:
 
     Uses the ECB Statistical Data Warehouse API to get official daily rates.
     These are the rates accepted by the Spanish Agencia Tributaria.
+
+    Resolved rates are persisted to a JSON file on disk so repeated runs do
+    not re-hit the ECB API and so reports can be generated offline once the
+    relevant rates have been fetched at least once.
     """
 
     # ECB API endpoint for USD/EUR daily exchange rates
@@ -32,8 +39,39 @@ class ECBRateFetcher:
         "?startPeriod={start}&endPeriod={end}&format=structurespecificdata"
     )
 
+    # On-disk cache location. Override with the ECB_RATE_CACHE env var.
+    CACHE_FILE = Path(os.environ.get("ECB_RATE_CACHE", ".ecb_rate_cache.json"))
+
     # Cache for rates (date -> rate)
     _rate_cache: dict[date, Decimal] = {}
+    _disk_cache_loaded: bool = False
+
+    @classmethod
+    def _load_disk_cache(cls) -> None:
+        """Load persisted rates from disk into the in-memory cache (once)."""
+        if cls._disk_cache_loaded:
+            return
+        cls._disk_cache_loaded = True
+        try:
+            with open(cls.CACHE_FILE, encoding="utf-8") as fh:
+                raw = json.load(fh)
+        except (FileNotFoundError, json.JSONDecodeError, OSError):
+            return
+        for iso_date, rate_str in raw.items():
+            try:
+                cls._rate_cache.setdefault(date.fromisoformat(iso_date), Decimal(rate_str))
+            except (ValueError, TypeError):
+                continue
+
+    @classmethod
+    def _save_disk_cache(cls) -> None:
+        """Persist the in-memory cache to disk (best-effort)."""
+        try:
+            serializable = {d.isoformat(): str(rate) for d, rate in cls._rate_cache.items()}
+            with open(cls.CACHE_FILE, "w", encoding="utf-8") as fh:
+                json.dump(serializable, fh, indent=0, sort_keys=True)
+        except OSError:
+            pass
 
     @classmethod
     def _fetch_rates_for_period(cls, start_date: date, end_date: date) -> dict[date, Decimal]:
@@ -79,6 +117,8 @@ class ECBRateFetcher:
         If the target date is a weekend or holiday (no rate published),
         returns the most recent available rate before that date.
         """
+        cls._load_disk_cache()
+
         # Check cache first
         if target_date in cls._rate_cache:
             return cls._rate_cache[target_date]
@@ -93,6 +133,7 @@ class ECBRateFetcher:
 
         # Find the rate for target date or most recent before it
         if target_date in rates:
+            cls._save_disk_cache()
             return rates[target_date]
 
         # Find the most recent rate before target date
@@ -101,6 +142,7 @@ class ECBRateFetcher:
             closest_date = available_dates[0]
             # Cache this lookup for the target date too
             cls._rate_cache[target_date] = rates[closest_date]
+            cls._save_disk_cache()
             return rates[closest_date]
 
         raise ValueError(f"No ECB rate available for or before {target_date}")
@@ -114,6 +156,12 @@ class ECBRateFetcher:
         """
         if not dates:
             return {}
+
+        cls._load_disk_cache()
+
+        # Skip the network call entirely if every requested date is already cached.
+        if all(d in cls._rate_cache for d in dates):
+            return {d: cls._rate_cache[d] for d in dates}
 
         # Find date range
         min_date = min(dates) - timedelta(days=10)  # Buffer for weekends
@@ -140,12 +188,14 @@ class ECBRateFetcher:
                 else:
                     raise ValueError(f"No ECB rate available for or before {target_date}")
 
+        cls._save_disk_cache()
         return result
 
     @classmethod
     def clear_cache(cls) -> None:
-        """Clear the rate cache."""
+        """Clear the in-memory rate cache (does not delete the disk cache)."""
         cls._rate_cache.clear()
+        cls._disk_cache_loaded = False
 
 
 def prefetch_ecb_rates(events: list["StockEvent"]) -> None:
