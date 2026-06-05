@@ -117,10 +117,19 @@ El proyecto incluye scripts autoejecutables que configuran automáticamente el e
 
 Cuando finaliza la ejecución, la herramienta genera:
 
-1. **Desglose en Terminal:** Muestra en tiempo real cada venta, el cruce FIFO detallado por lotes, las pérdidas bloqueadas por la regla de los 2 meses y los resúmenes anuales.
-2. **Informes PDF:** Se guardan en la raíz del proyecto:
-   * `tax_report_EN_*.pdf`: Informe de referencia en inglés.
-   * `tax_report_ES_*.pdf`: Informe en español con el formato y referencias legales listas para entregar a **Hacienda** o a tu **Asesor Fiscal**.
+1. **Desglose en Terminal:** cada venta, el cruce FIFO por lotes, las pérdidas bloqueadas (regla de los 2 meses) y los resúmenes anuales.
+2. **Informes PDF** en la raíz del proyecto: `tax_report_EN_*.pdf` (referencia) y `tax_report_ES_*.pdf` (con formato y referencias legales para **Hacienda** / tu **Asesor Fiscal**).
+
+El PDF se organiza en estas secciones:
+
+| Sección | Qué te dice |
+|---------|-------------|
+| **Resumen Fiscal Anual (Modelo 100 – Base del Ahorro)** | Por año: ganancias y pérdidas totales, pérdidas bloqueadas por la regla de los 2 meses, pérdidas deducibles, gastos, la base imponible del ahorro neta y un impuesto estimado *aislado*. Es la cifra principal para tu IRPF. |
+| **Libro de Compensación de Pérdidas** | Simula la compensación a 4 años (Art. 49): resultado neto de cada año, pérdidas de años anteriores aplicadas, base tras compensación, y pérdidas pendientes y **caducadas**. |
+| **Base del Ahorro – Ganancias + Dividendos/Intereses** | *Solo si aportaste `savings_income.json`.* Combina el resultado bursátil con dividendos/intereses, aplica la compensación cruzada del 25% y muestra la base combinada + la retención en origen. |
+| **Guía de Cumplimentación del Modelo 100** | Asigna cada dato a su *apartado* del Modelo 100 (con casillas a verificar por ejercicio). |
+| **Análisis del Período de Retención ESPP de 3 Años** | Señala acciones ESPP vendidas antes de 3 años, cuyo descuento de compra pasa a ser rendimiento del trabajo (Art. 42.3.f) y requiere declaración complementaria. |
+| **Libro de Transacciones** | El detalle FIFO completo por venta (lotes cruzados, ganancia/pérdida, notas de wash-sale) — la traza justificativa para tu asesor. |
 
 ---
 
