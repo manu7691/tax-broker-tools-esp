@@ -10,6 +10,8 @@ from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 
 from .models import (
+    CarryforwardLedger,
+    CarryforwardYear,
     EventType,
     FifoMatch,
     ProcessedEvent,
@@ -308,6 +310,77 @@ class TaxEngine:
         """Get all yearly tax summaries, sorted by year."""
         return sorted(self.yearly_summaries.values(), key=lambda s: s.year)
 
+    def compute_carryforward(
+        self, opening_losses: dict[int, Decimal] | None = None
+    ) -> CarryforwardLedger:
+        """
+        Simulate the 4-year loss carryforward across the tracked years (Art. 49 LIRPF).
+
+        A net loss generated in year Y can offset net savings-base gains of years
+        Y+1 .. Y+4 only. Oldest losses are consumed first. Losses not used within
+        that window expire.
+
+        ``opening_losses`` optionally seeds the pool with pending net losses from
+        years *before* the imported data window, as ``{origin_year: magnitude}``
+        where magnitude is a positive Decimal.
+        """
+        # Pool entries are mutable [origin_year, remaining_magnitude] (remaining > 0).
+        pool: list[list] = []
+        for origin_year, magnitude in sorted((opening_losses or {}).items()):
+            mag = abs(Decimal(str(magnitude)))
+            if mag > 0:
+                pool.append([origin_year, mag])
+
+        summaries = {s.year: s for s in self.get_all_yearly_summaries()}
+        ledger = CarryforwardLedger()
+
+        for year in sorted(summaries):
+            # Expire losses that can no longer be used this year (origin <= year-5).
+            survivors: list[list] = []
+            for origin_year, remaining in pool:
+                if origin_year <= year - 5 and remaining > 0:
+                    ledger.expired.append((origin_year, remaining))
+                else:
+                    survivors.append([origin_year, remaining])
+            pool = survivors
+
+            net = summaries[year].net_gain_loss
+            applied = Decimal("0")
+            new_loss = Decimal("0")
+            taxable_after = max(Decimal("0"), net)
+
+            if net > 0:
+                gain_left = net
+                for entry in sorted(pool):  # oldest origin year first
+                    if gain_left <= 0:
+                        break
+                    use = min(entry[1], gain_left)
+                    entry[1] -= use
+                    gain_left -= use
+                    applied += use
+                pool = [e for e in pool if e[1] > 0]
+                taxable_after = gain_left
+            elif net < 0:
+                new_loss = -net
+                pool.append([year, new_loss])
+
+            ledger.rows.append(
+                CarryforwardYear(
+                    year=year,
+                    net_result=net,
+                    prior_losses_applied=applied,
+                    taxable_after=taxable_after,
+                    new_loss_carried=new_loss,
+                )
+            )
+
+        ledger.pending_end = sorted(
+            (origin_year, remaining, origin_year + 4)
+            for origin_year, remaining in pool
+            if remaining > 0
+        )
+        return ledger
+
     def print_ledger(self) -> None:
         """Print the full transaction ledger in a readable format."""
         print("\n" + "=" * 120)
@@ -348,7 +421,7 @@ class TaxEngine:
 
         print("=" * 120)
 
-    def print_tax_summary(self) -> None:
+    def print_tax_summary(self, opening_losses: dict[int, Decimal] | None = None) -> None:
         """Print the yearly tax summary."""
         print("\n" + "=" * 95)
         print("YEARLY TAX SUMMARY (Spain)")
@@ -382,17 +455,34 @@ class TaxEngine:
             print(f"    Estimated Tax Due:         €{summary.tax_due:>12,.2f}")
             print()
 
-        # 4-Year Loss Carryforward (Art. 49 LIRPF)
-        carryforward_rows = [s for s in self.get_all_yearly_summaries() if s.net_gain_loss < 0]
-        print("\nLOSS CARRYFORWARD WORKSHEET (Art. 49 LIRPF)")
+        # 4-Year Loss Carryforward Ledger (Art. 49 LIRPF)
+        ledger = self.compute_carryforward(opening_losses)
+        print("\nLOSS CARRYFORWARD LEDGER (Art. 49 LIRPF)")
         print("-" * 95)
-        if carryforward_rows:
-            print("Net losses below can be offset against savings-base gains of the next 4 years:")
-            print()
-            for s in carryforward_rows:
-                print(f"  Year {s.year}: Net Loss €{s.net_gain_loss:>12,.2f}  ->  deductible through {s.year + 4}")
-        else:
-            print("  No years with a net loss to carry forward.")
+        if opening_losses:
+            seeded = ", ".join(f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items()))
+            print(f"Seeded with prior-year pending losses -> {seeded}")
+        print(
+            f"{'Year':<8} {'Net Result':>15} {'Prior Loss Applied':>20} "
+            f"{'Taxable After C/F':>20}"
+        )
+        for r in ledger.rows:
+            print(
+                f"{r.year:<8} €{r.net_result:>14,.2f} €{r.prior_losses_applied:>19,.2f} "
+                f"€{r.taxable_after:>19,.2f}"
+            )
+        if ledger.pending_end:
+            print("\n  Pending losses carried forward (still usable):")
+            for origin_year, remaining, use_by in ledger.pending_end:
+                print(f"    From {origin_year}: €{remaining:>12,.2f}  ->  use by {use_by}")
+        if ledger.expired:
+            print("\n  ⚠️  Losses that EXPIRED unused (4-year limit passed):")
+            for origin_year, amount in ledger.expired:
+                print(f"    From {origin_year}: €{amount:>12,.2f} lost")
+        if not ledger.pending_end and not ledger.expired and all(
+            r.prior_losses_applied == 0 for r in ledger.rows
+        ):
+            print("  No losses to carry forward.")
 
         print("\n" + "=" * 95)
         print("  NOTE: Transaction Fees (Commissions, SEC Fees) ARE DEDUCTED (Wire Transfers EXCLUDED)")
@@ -401,7 +491,78 @@ class TaxEngine:
         print("  liability depends on total savings income and prior-year loss carryforward.")
         print("=" * 95 + "\n")
 
-    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None) -> str:
+    def _append_modelo100_guide(self, html: list[str], is_es: bool) -> None:
+        """
+        Append a crosswalk from this report's figures to Modelo 100 sections.
+
+        Box numbers ("casillas") change almost every campaign, so this guide
+        anchors on the stable section names (*apartados*) and flags the casilla
+        numbers as values to verify against the current year's form.
+        """
+        title = "Modelo 100 Filing Guide (IRPF)" if not is_es else "Guía de Cumplimentación del Modelo 100 (IRPF)"
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verify the casilla numbers.</strong> "
+                "Modelo 100 box numbers change almost every year. The <em>section names</em> below are stable; "
+                "the casilla numbers are indicative — confirm them against the form for your filing year.</p>"
+            )
+        else:
+            html.append(
+                "<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verifica los números de casilla.</strong> "
+                "Las casillas del Modelo 100 cambian casi cada año. Los <em>nombres de apartado</em> de abajo son estables; "
+                "los números de casilla son orientativos — confírmalos en el modelo de tu ejercicio.</p>"
+            )
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Figure from this report</th><th>Modelo 100 section (apartado)</th><th>Casilla (verify)</th></tr>"
+            )
+            rows = [
+                ("Each sale: transmission value, acquisition value, gain/loss",
+                 "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
+                 "≈ 0328–0344"),
+                ("Net balance of gains/losses (savings base)",
+                 "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
+                 "≈ 0424 / 0425"),
+                ("Prior-year pending losses (this ledger's 'pending')",
+                 "Saldos netos negativos de ejercicios anteriores pendientes de compensar (one box per origin year)",
+                 "≈ 0439–0443"),
+                ("Resulting savings tax base",
+                 "Base imponible del ahorro",
+                 "≈ 0460"),
+                ("ESPP early-sale discount (if any)",
+                 "Rendimientos del trabajo — via Declaración Complementaria for the purchase year",
+                 "trabajo boxes"),
+            ]
+        else:
+            html.append(
+                "<tr><th>Dato de este informe</th><th>Apartado del Modelo 100</th><th>Casilla (verificar)</th></tr>"
+            )
+            rows = [
+                ("Cada venta: valor de transmisión, de adquisición y ganancia/pérdida",
+                 "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
+                 "≈ 0328–0344"),
+                ("Saldo neto de ganancias y pérdidas (base del ahorro)",
+                 "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
+                 "≈ 0424 / 0425"),
+                ("Pérdidas pendientes de años anteriores ('pendientes' de este libro)",
+                 "Saldos netos negativos de ejercicios anteriores pendientes de compensar (una casilla por año de origen)",
+                 "≈ 0439–0443"),
+                ("Base imponible del ahorro resultante",
+                 "Base imponible del ahorro",
+                 "≈ 0460"),
+                ("Descuento ESPP por venta anticipada (si lo hay)",
+                 "Rendimientos del trabajo — mediante Declaración Complementaria del año de compra",
+                 "casillas de trabajo"),
+            ]
+        for figure, apartado, casilla in rows:
+            html.append(
+                f"<tr><td>{figure}</td><td>{apartado}</td><td>{casilla}</td></tr>"
+            )
+        html.append("</table>")
+
+    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None) -> str:
         """Generate HTML content for the tax report (supports English 'en' and Spanish 'es')."""
         is_es = lang.lower() == "es"
         
@@ -540,52 +701,93 @@ class TaxEngine:
                 "Usa esta cifra como orientación, no como la cuota definitiva.</p>"
             )
 
-        # 4-Year Loss Carryforward Worksheet (Art. 49 LIRPF)
-        carryforward_rows = [
-            s for s in self.get_all_yearly_summaries() if s.net_gain_loss < 0
-        ]
+        # 4-Year Loss Carryforward Ledger (Art. 49 LIRPF)
+        ledger = self.compute_carryforward(opening_losses)
         cf_title = (
-            "Loss Carryforward Worksheet (Art. 49 LIRPF)"
+            "Loss Carryforward Ledger (Art. 49 LIRPF)"
             if not is_es
-            else "Hoja de Compensación de Pérdidas (Art. 49 LIRPF)"
+            else "Libro de Compensación de Pérdidas (Art. 49 LIRPF)"
         )
         html.append(f"<h2>{cf_title}</h2>")
         if not is_es:
             html.append(
-                "<p>Net losses in a year can be offset against savings-base gains of the following "
-                "<strong>4 years</strong>. This engine reports each year in isolation — your advisor must "
-                "apply the carryforward across years (and against other savings income) at filing time.</p>"
+                "<p>Net losses in a year offset savings-base gains of the following "
+                "<strong>4 years</strong> (oldest losses first); unused losses then expire. "
+                "This ledger simulates that across the tracked years. Cross-category offset against "
+                "other savings income (dividends, interest) is still applied by your advisor at filing time.</p>"
             )
         else:
             html.append(
-                "<p>Las pérdidas netas de un ejercicio pueden compensarse con ganancias de la base del ahorro "
-                "de los <strong>4 ejercicios siguientes</strong>. Este motor informa cada año de forma aislada — "
-                "tu asesor debe aplicar la compensación entre años (y contra otras rentas del ahorro) al presentar la declaración.</p>"
+                "<p>Las pérdidas netas de un ejercicio compensan ganancias de la base del ahorro de los "
+                "<strong>4 ejercicios siguientes</strong> (primero las más antiguas); las no utilizadas caducan. "
+                "Este libro simula esa compensación entre los años analizados. La compensación con otras rentas "
+                "del ahorro (dividendos, intereses) la aplica tu asesor al presentar la declaración.</p>"
             )
-        if carryforward_rows:
-            html.append("<table>")
-            if not is_es:
-                html.append(
-                    "<tr><th>Year of Loss</th><th>Net Loss</th><th>Deductible Through (incl.)</th></tr>"
-                )
-            else:
-                html.append(
-                    "<tr><th>Año de la Pérdida</th><th>Pérdida Neta</th><th>Compensable Hasta (incl.)</th></tr>"
-                )
-            for s in carryforward_rows:
-                html.append("<tr>")
-                html.append(f"<td>{s.year}</td>")
-                html.append(f"<td class='loss'>€{s.net_gain_loss:,.2f}</td>")
-                html.append(f"<td>{s.year + 4}</td>")
-                html.append("</tr>")
-            html.append("</table>")
-        else:
-            no_loss = (
-                "No years with a net loss to carry forward."
+        if opening_losses:
+            seeded = ", ".join(
+                f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items())
+            )
+            seed_label = (
+                f"Seeded with prior-year pending losses — {seeded}"
                 if not is_es
-                else "No hay ejercicios con pérdida neta pendiente de compensar."
+                else f"Inicializado con pérdidas pendientes de años anteriores — {seeded}"
+            )
+            html.append(f"<p style='font-size: 11px; color: #555;'><em>{seed_label}</em></p>")
+
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Year</th><th>Net Result</th><th>Prior-Year Loss Applied</th><th>Taxable After Carryforward</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Año</th><th>Resultado Neto</th><th>Pérdida de Años Anteriores Aplicada</th><th>Base Tras Compensación</th></tr>"
+            )
+        for r in ledger.rows:
+            net_style = "gain" if r.net_result >= 0 else "loss"
+            html.append("<tr>")
+            html.append(f"<td>{r.year}</td>")
+            html.append(f"<td class='{net_style}'>€{r.net_result:,.2f}</td>")
+            html.append(f"<td>€{r.prior_losses_applied:,.2f}</td>")
+            html.append(f"<td><strong>€{r.taxable_after:,.2f}</strong></td>")
+            html.append("</tr>")
+        html.append("</table>")
+
+        if ledger.pending_end:
+            pend_label = (
+                "Pending losses carried forward (still usable):"
+                if not is_es
+                else "Pérdidas pendientes de compensar (aún utilizables):"
+            )
+            use_by_label = "use by" if not is_es else "usar antes de"
+            html.append(f"<p><strong>{pend_label}</strong></p><ul>")
+            for origin_year, remaining, use_by in ledger.pending_end:
+                html.append(
+                    f"<li class='loss'>{origin_year}: €{remaining:,.2f} — {use_by_label} {use_by}</li>"
+                )
+            html.append("</ul>")
+        if ledger.expired:
+            exp_label = (
+                "⚠️ Losses that EXPIRED unused (4-year limit passed):"
+                if not is_es
+                else "⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):"
+            )
+            html.append(f"<p style='color:#cc0000;'><strong>{exp_label}</strong></p><ul>")
+            for origin_year, amount in ledger.expired:
+                html.append(f"<li style='color:#cc0000;'>{origin_year}: €{amount:,.2f}</li>")
+            html.append("</ul>")
+        if not ledger.pending_end and not ledger.expired and all(
+            r.prior_losses_applied == 0 for r in ledger.rows
+        ):
+            no_loss = (
+                "No losses to carry forward."
+                if not is_es
+                else "No hay pérdidas pendientes de compensar."
             )
             html.append(f"<p><em>{no_loss}</em></p>")
+
+        # Modelo 100 box guide (apartado names are stable; casillas shift yearly)
+        self._append_modelo100_guide(html, is_es)
 
         # ESPP 3-Year Holding Period Analysis
         if espp_early_sale_discounts or espp_discounts:
@@ -774,7 +976,7 @@ class TaxEngine:
         html.append("</body></html>")
         return "".join(html)
 
-    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None) -> None:
+    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None) -> None:
         """Generate a PDF tax report using Playwright (supports lang='en' or lang='es')."""
         try:
             from playwright.sync_api import sync_playwright
@@ -783,7 +985,7 @@ class TaxEngine:
             print("Please install it with: pip install playwright && playwright install")
             return
 
-        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts)
+        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts, opening_losses=opening_losses)
 
         try:
             with sync_playwright() as p:

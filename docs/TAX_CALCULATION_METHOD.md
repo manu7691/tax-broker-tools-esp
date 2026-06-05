@@ -18,7 +18,7 @@ The engine implements a fully compliant First-In, First-Out (FIFO) calculation s
 | **RSU Vesting Cost Basis** | ✅ Compliant | FMV at release date (prevents double taxation) |
 | **ESPP Purchase Cost Basis** | ✅ Compliant | FMV at purchase date |
 | **ESPP 3-Year Holding Period** | ✅ Auto-Detected | Art. 42.3.f LIRPF — Identifies early sales and salary tax |
-| **4-Year Loss Carryforward** | ❌ Out of Scope | Art. 49 LIRPF — Needs other years' data; manual in Modelo 100 (see §4.1) |
+| **4-Year Loss Carryforward** | ⚠️ Simulated | Art. 49 LIRPF — Carryforward Ledger across tracked years; seed pre-window losses via `prior_losses.json` (see §4.1) |
 | **Cross-Category Offset (25% cap)** | ❌ Out of Scope | Art. 49 LIRPF — Needs dividend/interest data; manual in Modelo 100 (see §4.1) |
 | **Modelo 720 (Foreign Assets)** | ❌ Out of Scope | Separate annual obligation (if assets abroad > €50,000) |
 
@@ -77,11 +77,11 @@ Discounts on ESPP purchases (up to €12,000/year) are tax-exempt if:
 
 ### 4.1 Loss Handling (Art. 48 & 49 LIRPF)
 
-The engine reports each year's gains and losses independently and never carries a balance across years or income types. Two manual rules apply at filing time:
+The engine's **Yearly Tax Summary** reports each year's gains and losses independently. On top of that, the **Loss Carryforward Ledger** simulates the year-to-year offset; cross-category offset still happens at filing time.
 
-**a) 4-year carryforward (Art. 49 LIRPF).** If your *savings base* (base del ahorro) is net negative in a year — total losses exceed total gains — the loss is not lost. It carries forward to offset gains over the **next 4 years**.
+**a) 4-year carryforward (Art. 49 LIRPF).** If your *savings base* (base del ahorro) is net negative in a year — total losses exceed total gains — the loss is not lost. It carries forward to offset gains over the **next 4 years**. The Carryforward Ledger applies this automatically across the tracked years (oldest losses first) and flags any that expire unused.
 
-> *Example:* 2024 nets −€3,000 (pay €0 tax, carry −€3,000 forward). 2025 has +€5,000 in gains → offset the carried −€3,000, so only €2,000 is taxed. The engine would show 2025 as a full €5,000 taxable gain, because it never saw the 2024 loss.
+> *Example:* 2024 nets −€3,000 (pay €0 tax, carry −€3,000 forward). 2025 has +€5,000 in gains → offset the carried −€3,000, so only €2,000 is taxed. The ledger now shows this directly. **Losses from before your imported data window** aren't visible to the engine — seed them with `input/prior_losses.json` (e.g. `{"2024": 3000}`) or `--prior-losses <file>`.
 
 **b) Cross-category offset, 25% cap (Art. 49 LIRPF).** The savings base has two ringfenced buckets: *capital gains/losses* (your stock sales) and *returns on movable capital* (dividends, interest). A net loss in one bucket may offset up to **25%** of the positive balance in the other.
 

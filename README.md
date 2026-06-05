@@ -121,16 +121,22 @@ It will generate a PDF file `tax_report_*.pdf`.
 
 ## 📝 Filing Spanish Renta (Modelo 100)
 
-The tax report output provides a dedicated **SPANISH RENTA (Modelo 100 - Base Imponible del Ahorro)** section.
+The tax report output provides a **Yearly Tax Summary (Modelo 100 - Savings Base)** section.
 
 For each tax year, it lists:
-- **Total Realized Gains:** Sum of all capital gains.
-- **Total Realized Losses:** Sum of all capital losses.
+- **Total Gains / Total Losses:** Sums of realized capital gains and losses.
 - **Blocked Losses:** Losses deferred due to the 2-month wash sale rule.
-- **Net Taxable Capital Gains:** The final net amount after applying the allowed losses to offset gains.
-- **Estimated Tax Due:** The calculated tax using Spanish savings progressive rates (19% to 28%).
+- **Deductible Losses:** Losses usable this year after removing blocked ones.
+- **Net Taxable Savings Base:** The final net amount after applying allowed losses against gains.
+- **Estimated Tax (Isolated):** Tax on *these stock gains alone* using the savings scale (19–28%). ⚠️ This is **not** your final liability — it ignores your total savings income (dividends, interest) and prior-year loss carryforward. Treat it as a guide.
 
-Copy the net taxable capital gains into the capital gains from stock transfers section of your annual IRPF tax return.
+The report also includes:
+- **Loss Carryforward Ledger (Art. 49 LIRPF):** simulates the 4-year offset of net losses against later gains and flags losses that expire unused. Seed pre-window losses via `input/prior_losses.json` (e.g. `{"2019": 1500}`) or `--prior-losses <file>`.
+- **Modelo 100 Filing Guide:** a crosswalk mapping each figure to its Modelo 100 *apartado* (casilla numbers are indicative — verify for your year).
+
+> **CLI options:** `uv run main.py` accepts `--input-dir`, `--output-dir`, and `--prior-losses` (all optional).
+
+Copy the net taxable savings base into the capital gains from stock transfers section of your annual IRPF tax return.
 
 ---
 
@@ -254,13 +260,19 @@ El motor generará el informe detallado en formato PDF (`tax_report_*.pdf`).
 
 ## 📝 Declarar en Renta (Modelo 100 España)
 
-El desglose final del informe PDF contiene una sección dedicada al **MODELO 100 de la Declaración de la Renta en España (Base Imponible del Ahorro)**.
+El informe PDF contiene una sección **Resumen Fiscal Anual (Modelo 100 - Base Imponible del Ahorro)**.
 
 Para cada ejercicio fiscal calcula:
-- **Ganancias Patrimoniales Totales:** Suma de todas las plusvalías realizadas.
-- **Pérdidas Patrimoniales Totales:** Suma de las pérdidas netas.
-- **Pérdidas Bloqueadas:** Pérdidas diferidas por aplicación de la regla de los 2 meses.
-- **Ganancia Neta Sujeta a Integración:** Importe neto a declarar tras compensar las pérdidas correspondientes.
-- **Cuota Fiscal Estimada:** Estimación del impuesto a ingresar según los tramos del ahorro vigentes (19% al 28%).
+- **Ganancias / Pérdidas Totales:** Sumas de las plusvalías y minusvalías realizadas.
+- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses.
+- **Pérdidas Deducibles:** Pérdidas utilizables en el ejercicio tras descontar las bloqueadas.
+- **Base Imponible del Ahorro:** Importe neto a declarar tras compensar las pérdidas correspondientes.
+- **Impuesto Estimado (Aislado):** Impuesto sobre *estas ganancias bursátiles de forma aislada* según los tramos del ahorro (19%–28%). ⚠️ **No** es tu cuota definitiva: ignora el resto de tu base del ahorro (dividendos, intereses) y la compensación de pérdidas de años anteriores. Úsalo como orientación.
 
-Introduce el valor de la "ganancia neta sujeta a integración" en el apartado de ganancias y pérdidas derivadas de la transmisión de valores en el borrador de tu declaración de la renta (IRPF).
+El informe incluye además:
+- **Libro de Compensación de Pérdidas (Art. 49 LIRPF):** simula la compensación a 4 años de pérdidas netas con ganancias posteriores y avisa de las que caducan. Inicializa pérdidas previas con `input/prior_losses.json` (p. ej. `{"2019": 1500}`) o `--prior-losses <archivo>`.
+- **Guía de Cumplimentación del Modelo 100:** asigna cada dato a su *apartado* (las casillas son orientativas — verifícalas para tu ejercicio).
+
+> **Opciones de línea de comandos:** `uv run main.py` admite `--input-dir`, `--output-dir` y `--prior-losses` (todas opcionales).
+
+Introduce el valor de la "base imponible del ahorro" en el apartado de ganancias y pérdidas derivadas de la transmisión de valores en el borrador de tu declaración de la renta (IRPF).

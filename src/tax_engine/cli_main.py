@@ -8,6 +8,7 @@ Main entry point for the application.
 """
 
 import argparse
+import json
 from datetime import date, datetime
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
@@ -22,6 +23,34 @@ from tax_engine import (
     prefetch_ecb_rates,
 )
 from tax_engine.options_parser import load_options_events
+
+
+def load_prior_losses(path: Path) -> dict[int, Decimal]:
+    """
+    Load pending net losses from years *before* the imported data window.
+
+    Expects a JSON object mapping origin-year (string) to loss magnitude
+    (positive number), e.g. {"2019": 1500.00, "2020": 300}. Returns an empty
+    dict if the file does not exist or cannot be parsed.
+    """
+    if not path.exists():
+        return {}
+    try:
+        with open(path, encoding="utf-8") as fh:
+            raw = json.load(fh)
+    except (json.JSONDecodeError, OSError) as e:
+        print(f"Warning: could not read prior-losses file {path}: {e}")
+        return {}
+
+    result: dict[int, Decimal] = {}
+    for year_str, amount in raw.items():
+        try:
+            result[int(year_str)] = abs(Decimal(str(amount)))
+        except (ValueError, InvalidOperation):
+            print(f"Warning: skipping invalid prior-loss entry {year_str!r}: {amount!r}")
+    if result:
+        print(f"Loaded prior-year pending losses for {len(result)} year(s) from {path}.")
+    return result
 
 
 def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
@@ -453,9 +482,18 @@ def main() -> None:
         default=Path("."),
         help="Directory where PDF reports are written (default: current directory).",
     )
+    parser.add_argument(
+        "--prior-losses",
+        type=Path,
+        default=None,
+        help="JSON file of pending losses from before the data window "
+        "({\"2019\": 1500, ...}). Defaults to <input-dir>/prior_losses.json if present.",
+    )
     args = parser.parse_args()
     input_dir: Path = args.input_dir
     output_dir: Path = args.output_dir
+    prior_losses_path: Path = args.prior_losses or (input_dir / "prior_losses.json")
+    opening_losses = load_prior_losses(prior_losses_path)
 
     print("Spanish Tax Engine for E-Trade RSUs and ESPP")
     print("Using FIFO Cost Basis (First In, First Out) & Progressive Savings Rate Scale")
@@ -488,7 +526,7 @@ def main() -> None:
 
     # Print results
     engine.print_ledger()
-    engine.print_tax_summary()
+    engine.print_tax_summary(opening_losses=opening_losses)
 
     # ESPP Analysis: 3-year holding period detection
     espp_discounts = calculate_espp_discounts(input_dir)
@@ -556,10 +594,12 @@ def main() -> None:
     pdf_path_es = str(output_dir / f"tax_report_ES_{timestamp}.pdf")
     print(f"Generating English PDF report at: {pdf_path_en}...")
     engine.generate_pdf_report(pdf_path_en, lang="en", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales)
+                               espp_early_sale_discounts=espp_early_sales,
+                               opening_losses=opening_losses)
     print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
     engine.generate_pdf_report(pdf_path_es, lang="es", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales)
+                               espp_early_sale_discounts=espp_early_sales,
+                               opening_losses=opening_losses)
     print("PDF generation complete.")
 
 

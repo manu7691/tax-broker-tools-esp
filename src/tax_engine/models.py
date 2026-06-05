@@ -187,6 +187,28 @@ class YearlyTaxSummary:
 
 
 @dataclass
+class CarryforwardYear:
+    """One year's row in the 4-year loss-carryforward ledger (Art. 49 LIRPF)."""
+
+    year: int
+    net_result: Decimal  # this year's net gain/loss (negative = loss)
+    prior_losses_applied: Decimal  # prior-year losses used against this year's gain
+    taxable_after: Decimal  # savings base from stock after applying carryforward
+    new_loss_carried: Decimal  # net loss generated this year, added to the pool
+
+
+@dataclass
+class CarryforwardLedger:
+    """Result of running the loss-carryforward simulation across all years."""
+
+    rows: list[CarryforwardYear] = field(default_factory=list)
+    expired: list[tuple[int, Decimal]] = field(default_factory=list)  # (origin_year, amount)
+    pending_end: list[tuple[int, Decimal, int]] = field(
+        default_factory=list
+    )  # (origin_year, remaining, use_by_year)
+
+
+@dataclass
 class TaxEngineState:
     """
     Current state of the tax engine.
