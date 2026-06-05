@@ -956,6 +956,14 @@ class TaxEngine:
         html.append(".gain { color: green; }")
         html.append(".loss { color: red; }")
         html.append("code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }")
+        # Print/PDF pagination: start each major section on its own page, keep the
+        # first section with the title page, and avoid splitting rows or orphaning
+        # a heading at the bottom of a page.
+        html.append("h2 { page-break-before: always; }")
+        html.append("h2:first-of-type { page-break-before: avoid; }")
+        html.append("h2, h3 { page-break-after: avoid; }")
+        html.append("table { page-break-inside: auto; }")
+        html.append("tr, li { page-break-inside: avoid; }")
         html.append("</style></head><body>")
 
         title = "Spanish Tax Report" if not is_es else "Informe Fiscal de España (FIFO)"
