@@ -7,6 +7,8 @@ for stocks acquired through RSU vesting and ESPP purchases.
 
 from .ecb_rates import ECBRateFetcher, prefetch_ecb_rates
 from .models import (
+    CarryforwardLedger,
+    CarryforwardYear,
     EventType,
     ProcessedEvent,
     StockEvent,
@@ -28,6 +30,8 @@ __all__ = [
     "StockEvent",
     "ProcessedEvent",
     "YearlyTaxSummary",
+    "CarryforwardLedger",
+    "CarryforwardYear",
     "TaxEngineState",
     "ECBRateFetcher",
     "prefetch_ecb_rates",

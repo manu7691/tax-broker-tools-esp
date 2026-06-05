@@ -15,7 +15,8 @@ Here is how data flows through the calculator:
 ```mermaid
 graph TD
     subgraph Inputs["Input Files (From E-Trade)"]
-        A["input/orders.xlsx<br>Transaction History"]
+        A["input/espp/BenefitHistory.xlsx<br>ESPP Purchase History"]
+        A2["input/orders/orders.xlsx<br>Transaction History"]
         B["input/rsu/*.pdf<br>RSU Release Confirmations"]
         C["input/options/*.pdf<br>Option Exercise Confirmations"]
     end
@@ -35,6 +36,7 @@ graph TD
     end
 
     A --> D
+    A2 --> D
     B --> D
     C --> D
     
@@ -65,7 +67,7 @@ The calculator automatically handles the complex Spanish tax rules that standard
 2. **ECB Currency Conversion:** Converts all acquisition and sale prices to EUR using the official European Central Bank rate on the exact transaction date.
 3. **2-Month Wash Sale Rule:** Blocks/defers capital losses from being declared if you purchased or vested replacement shares within a window of 2 months before or after the sale date (**Art. 33.5.f LIRPF**).
 4. **ESPP Early Sale Warnings:** Detects if ESPP shares were sold before the 3-year holding mark. If so, it flags the discount as taxable salary income (*Rendimiento del Trabajo*) in the year of purchase (**Art. 42.3.f LIRPF**).
-5. **Fee Deductions:** Deducts inherent E-Trade commissions, SEC fees, and wire transfer fees from your capital gains to lower your tax bill (**Art. 35 LIRPF**).
+5. **Fee Deductions:** Deducts inherent E-Trade commissions and SEC fees from your capital gains to lower your tax bill (**Art. 35 LIRPF**). Wire-transfer fees are **excluded** by default.
 
 ---
 
@@ -76,7 +78,7 @@ To run the engine, follow these simple steps:
 ### Step 1: Export your E-Trade Data
 1. **Excel Orders History:**
    * Go to E-Trade ➔ **Portfolios** ➔ **Transactions**.
-   * Download your complete transaction history as an Excel file, save it as `orders.xlsx`, and place it in the `input/` directory.
+   * Download your complete transaction history as an Excel file, save it as `orders.xlsx`, and place it in the `input/orders/` directory. The ESPP purchase history (`BenefitHistory.xlsx`) goes in `input/espp/`.
 2. **RSU Confirmation PDFs:**
    * Go to E-Trade ➔ **Documents** ➔ **Confirmations**.
    * Download the PDF confirmations for all your RSU releases (vesting events), place them in the `input/rsu/` directory.
@@ -88,12 +90,16 @@ Ensure your project folder structure looks like this:
 ```text
 tax-etrade/
 ├── input/
-│   ├── orders.xlsx
+│   ├── espp/
+│   │   └── BenefitHistory.xlsx
+│   ├── orders/
+│   │   └── orders.xlsx
 │   ├── rsu/
 │   │   ├── rsu_release_1.pdf
 │   │   └── rsu_release_2.pdf
-│   └── options/
-│       └── option_exercise_1.pdf
+│   ├── options/
+│   │   └── option_exercise_1.pdf
+│   └── prior_losses.json   # optional: pending losses from before your data window
 ```
 
 ### Step 3: Run the Script
@@ -119,6 +125,7 @@ Once the execution finishes, the tool produces the following results:
 
 ## 5. Important Reminders & Limitations
 
-* **Loss Carryforward:** Yearly capital losses are calculated independently. If you have net capital losses, your tax advisor must carry them forward manually in Modelo 100 (up to a 4-year limit).
+* **Loss Carryforward:** The report includes a **Loss Carryforward Ledger** that simulates the 4-year offset of net losses against later gains across the tracked years (Art. 49 LIRPF) and flags losses that expire unused. To seed losses from *before* your data window, add `input/prior_losses.json` (e.g. `{"2019": 1500, "2020": 300}`) or pass `--prior-losses <file>`. Cross-category offset against other savings income (dividends, interest) is still applied by your advisor at filing time.
+* **Modelo 100 Guide:** The report includes a crosswalk mapping each figure to its Modelo 100 *apartado*. Casilla numbers are indicative — verify them for your filing year.
 * **Single Ticker Limit:** The engine assumes all transactions correspond to a single company stock (e.g. your employer's stock). 
 * **Modelo 720:** If your foreign stock value exceeds €50,000, you must file Modelo 720 separately. The engine does not automate this.
