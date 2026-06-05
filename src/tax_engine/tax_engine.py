@@ -947,10 +947,19 @@ class TaxEngine:
         html.append(
             "body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }"
         )
+        # Use separated (not collapsed) borders: collapsed borders drop the last
+        # row's bottom edge at page breaks in Chromium's PDF renderer. The table
+        # draws the top/left edge and each cell draws its right/bottom edge, which
+        # yields a clean 1px grid that survives page breaks.
         html.append(
-            "table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 12px; }"
+            "table { border-collapse: separate; border-spacing: 0; width: 100%; "
+            "margin-bottom: 20px; font-size: 12px; border-top: 1px solid #ddd; "
+            "border-left: 1px solid #ddd; }"
         )
-        html.append("th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }")
+        html.append(
+            "th, td { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; "
+            "padding: 6px; text-align: left; }"
+        )
         html.append("th { background-color: #f2f2f2; }")
         html.append("h1, h2, h3 { color: #333; }")
         html.append(".gain { color: green; }")
