@@ -2,6 +2,8 @@
 
 This document outlines the technical and regulatory requirements to adapt the existing E*TRADE Spanish Tax Engine to be fully compliant with French tax legislation. It compares the two tax regimes, analyzes the algorithmic modifications needed, and outlines the impact on the codebase.
 
+> **Baseline note (synced with `main`).** Since this proposal was first written, the Spanish engine gained several features the France adaptation can **reuse or adapt rather than build from scratch**: a 4-year **loss-carryforward ledger** (`compute_carryforward`), a **dividend/interest (RCM) savings base with the 25% cross-category offset** (`compute_savings_ledger`, fed by USD payments converted at the ECB rate per date), **stock-options exercise** support, an **on-disk ECB rate cache**, a **Modelo 100 form-mapping** section in the report, and the `tax-savings-income` CLI. The comparison and codebase-impact sections below reflect that current baseline.
+
 ---
 
 ## 1. Executive Comparison: Spain vs. France
@@ -12,7 +14,8 @@ The core differences in how stock acquisitions and sales (RSUs, ESPPs, Stock Opt
 | :--- | :--- | :--- | :--- |
 | **Share Matching (Capital Gains)** | **Strict FIFO** (First-In, First-Out) | **PMP** (Prix Moyen Pondéré / Weighted Average Price) | Art. 150-0 D of CGI |
 | **Wash Sale Rules** | **2-Month Rule** (losses blocked if homogenous repurchases occur) | **None** (Wash sales are fully permitted) | N/A |
-| **Loss Carryforward** | Offset current year, carry forward **4 years** | Offset current year, carry forward **10 years** | Art. 156 of CGI |
+| **Loss Carryforward** | Offset current year, carry forward **4 years** (already simulated by the engine's carryforward ledger) | Offset current year, carry forward **10 years** | Art. 156 of CGI |
+| **Dividends & Interest (RCM)** | Savings base; a capital loss may offset up to **25% cross-category** of dividend/interest income (engine supports this via `savings_income.json`) | Taxed under **PFU 30%** (or progressive); capital losses offset capital gains only — **no cross-category** offset with dividends | Art. 200 A of CGI |
 | **Default Tax Rate (Capital Gains)** | Progressive Savings scale (**19% to 28%**) | Flat Tax (**PFU** - *Prélèvement Forfaitaire Unique*) of **30%** (12.8% Income Tax + 17.2% Social Charges) | Art. 200 A of CGI |
 | **Alternative Tax Rate** | N/A | Progressive income tax scale (based on income bracket + 17.2% social charges; 6.8% CSG deductible) | Art. 200 A of CGI |
 | **RSU / ESPP Acquisition Gains** | Taxed in the year of vest/purchase (under certain limits and holding periods) | **Imposition Différée** (Deferred Taxation): Acquisition gains are only taxed in the *year of sale* | Art. 80 quaterdecies of CGI |
@@ -64,16 +67,30 @@ Suppose a user has the following RSU vesting events (acquisitions) and subsequen
 
 ## 3. Codebase Impact Analysis
 
-Since the ingestion layer reads raw transaction files, the parser logic is unaffected. The required code adaptations are focused entirely on the models, calculations, and reporting layers:
+Since the ingestion layer reads raw transaction files, the parser logic is unaffected. The required code adaptations are focused on the models, calculations, and reporting layers:
 
 ```
 src/
 ├── tax_engine/
-│   ├── models.py          --> Update YearlyTaxSummary and TaxEngineState for France
-│   ├── tax_engine.py      --> Implement PMP logic, disable Spain wash-sales, branch on country
-│   ├── cli_main.py        --> Update CLI text and output summaries
-│   └── (parsers)          --> NO CHANGES (pdf/excel parsers are country-agnostic)
+│   ├── models.py             --> Add Country mode; PMP state on TaxEngineState; French summary
+│   ├── tax_engine.py         --> Implement PMP, disable Spain wash-sales, branch on country;
+│   │                             adapt compute_carryforward (4yr -> 10yr) & compute_savings_ledger
+│   ├── cli_main.py           --> French CLI text, output summaries, form mapping
+│   ├── cli_savings_income.py --> Reuse for French dividend/interest input (PFU)
+│   ├── ecb_rates.py          --> NO CHANGES (USD->EUR per-date conversion is country-agnostic)
+│   └── (parsers)             --> NO CHANGES (pdf/excel parsers are country-agnostic)
 ```
+
+**Reusable building blocks already on `main`** (adapt, don't rebuild):
+
+| Existing | France reuse |
+| :--- | :--- |
+| `compute_carryforward` + `CarryforwardLedger` (4-year ledger, expiry tracking) | Change the window to **10 years**; France has no wash-sale blocking to feed in. |
+| `compute_savings_ledger` + `SavingsLedger`/`SavingsIncomeYear` (dividends/interest, ECB per date) | Reuse the dividend/interest plumbing; **drop the 25% cross-category** step (not allowed in France) and tax under PFU. |
+| `cli_savings_income` (USD-payment entry, ECB-converted) | Reuse as-is for French RCM input. |
+| ECB on-disk cache (`ecb_rates.py`) | Reuse unchanged. |
+| Modelo 100 form-mapping section + report structure | Mirror as the **French form mapping** (2042 / 2042 C / 2074 / 3916). |
+| FIFO lot matching (`_process_sell`) | Keep for the *gain d'acquisition* salary trace; add **PMP** in parallel for *plus-value de cession*. |
 
 ### A. Data Models (`src/tax_engine/models.py`)
 *   **Introduce Country Mode:** Add a `Country` configuration or configuration flags (e.g., `SPAIN` or `FRANCE`) to guide the engine.
@@ -104,6 +121,6 @@ src/
 
 ### Key Milestones
 1.  **Refactor engine core** to support PMP calculations and dual-method tracking (PMP + FIFO).
-2.  **Add French tax parameters** (PFU 30%, social contributions, 10-year loss carryforward reporting).
+2.  **Add French tax parameters** (PFU 30%, social contributions) and **adapt the existing carryforward ledger from 4 to 10 years**.
 3.  **Implement unit tests** for PMP and French RSU sale scenarios.
 4.  **Create French-specific PDF report templates** and CLI prompts mapping to *impots.gouv.fr* tax forms.
