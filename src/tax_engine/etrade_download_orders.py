@@ -35,22 +35,20 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
     try:
         # Wait for the Order History div to become visible (it may take a moment to load)
         order_history_div = page.locator('div[data-test-id="orders.ordertbl.odrhistoryexpand"]').first
-        try:
+        with contextlib.suppress(Exception):
             order_history_div.wait_for(state="visible", timeout=5000)
-        except Exception:
-            pass
 
         # --- EXTRACT FEES ---
         try:
             fees = {"Commission": "0", "SEC Fees": "0", "Brokerage Assist Fee": "0"}
-            
+
             # Look for the specific Disbursement Details table based on user's exact DOM
             disb_table = page.locator('[data-test-id="orders.ordertbl.disbursementtbl"] table').first
-            
+
             # Find the Disbursement Details toggle button
             disb_toggle = page.locator("text=Disbursement Details").first
-            
-            # E-Trade often auto-expands this section when the row is opened. 
+
+            # E-Trade often auto-expands this section when the row is opened.
             # If we click it when it's already expanded, we accidentally close it!
             if disb_toggle.is_visible() and not disb_table.is_visible():
                 # Verify aria-expanded just to be perfectly safe
@@ -60,40 +58,41 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                     is_expanded = button.get_attribute("aria-expanded") == "true"
                 except Exception:
                     is_expanded = False
-                    
+
                 if not is_expanded:
                     with contextlib.suppress(Exception):
                         disb_toggle.click(timeout=1000)
                         time.sleep(0.5)
-                        
-            # VERY IMPORTANT: E-Trade loads this table asynchronously via AJAX after clicking. 
+
+            # VERY IMPORTANT: E-Trade loads this table asynchronously via AJAX after clicking.
             # We must wait for it to appear in the DOM.
-            try:
+            with contextlib.suppress(Exception):
                 disb_table.wait_for(state="visible", timeout=8000)
-            except Exception:
-                pass
-            
+
             if disb_table.is_visible():
                 headers = disb_table.locator("thead th").all_inner_texts()
                 cells = disb_table.locator("tbody td").all_inner_texts()
-                
+
                 headers = [h.strip() for h in headers]
                 cells = [c.replace('$', '').replace(',', '').strip() for c in cells]
-                
+
                 def get_cell(label: str) -> str:
                     for i, h in enumerate(headers):
                         if label in h:
                             return cells[i] if i < len(cells) else "0"
                     return "0"
-                    
+
                 comm = get_cell("Commission")
                 sec = get_cell("SEC Fee")
                 brokerage = get_cell("Brokerage Assist Fee")
-                
-                if comm != "0": fees["Commission"] = comm
-                if sec != "0": fees["SEC Fees"] = sec
-                if brokerage != "0": fees["Brokerage Assist Fee"] = brokerage
-                
+
+                if comm != "0":
+                    fees["Commission"] = comm
+                if sec != "0":
+                    fees["SEC Fees"] = sec
+                if brokerage != "0":
+                    fees["Brokerage Assist Fee"] = brokerage
+
             else:
                 # Fallback if the table doesn't have the data-test-id
                 def get_fee_fallback(label: str) -> str:
@@ -129,17 +128,19 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                     except Exception:
                         pass
                     return "0"
-                    
+
                 comm = get_fee_fallback("Commission")
-                if comm == "0": comm = get_fee_fallback("Estimated Commission")
+                if comm == "0":
+                    comm = get_fee_fallback("Estimated Commission")
                 sec = get_fee_fallback("SEC Fee")
-                if sec == "0": sec = get_fee_fallback("Estimated SEC Fee")
+                if sec == "0":
+                    sec = get_fee_fallback("Estimated SEC Fee")
                 brokerage = get_fee_fallback("Brokerage Assist Fee")
-                
+
                 fees["Commission"] = comm
                 fees["SEC Fees"] = sec
                 fees["Brokerage Assist Fee"] = brokerage
-            
+
             details.update(fees)
         except Exception as e:
             print(f"  WARNING: Could not parse fees: {e}")
@@ -181,9 +182,9 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
 
         details["execution_date"] = exec_dates[0]
         return details
-        
+
     finally:
-        # ALWAYS click the row again to collapse it. 
+        # ALWAYS click the row again to collapse it.
         # This prevents the DOM from getting bloated and ensures `page.locator.first` always works for the next row.
         try:
             row.locator("td").first.click()
@@ -343,8 +344,8 @@ def download_orders() -> None:
             if exec_details["Commission"] != "0" or exec_details["SEC Fees"] != "0":
                 print(f"    Found Fees: Commission={exec_details['Commission']}, SEC={exec_details['SEC Fees']}, Brokerage Assist={exec_details['Brokerage Assist Fee']}")
             else:
-                print(f"    No fees found for this order (may be a vest or no-fee transaction).")
-                
+                print("    No fees found for this order (may be a vest or no-fee transaction).")
+
             data.append(
                 {
                     "Execution Date": execution_date,

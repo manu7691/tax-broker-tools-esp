@@ -8,6 +8,7 @@ Main entry point for the application.
 """
 
 import argparse
+import contextlib
 import json
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
@@ -284,10 +285,8 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
             if fee_col in df.columns:
                 val = str(row[fee_col]).replace("$", "").replace(",", "").strip()
                 if val and val.lower() not in ("nan", "none", "0", "0.00", ""):
-                    try:
+                    with contextlib.suppress(Exception):
                         fees_usd += Decimal(val)
-                    except Exception:
-                        pass
 
         notes = f"Sell Order ({row.get('Benefit Type', 'Unknown')})"
         if fees_usd > 0:
@@ -366,9 +365,7 @@ def calculate_espp_discounts(input_dir: Path = Path("input")) -> dict[int, Decim
 
     discounts_by_year: dict[int, Decimal] = {}
 
-    for i, row in df.iterrows():
-        row_num = i + 2
-
+    for _i, row in df.iterrows():
         if row.get("Record Type") != "Purchase":
             continue
 
@@ -539,17 +536,20 @@ def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
 
     for sell in sells:
         is_sell_to_cover = False
-        
+
         # Check against RSU vests
         for vest in vests:
             # Must be within 3 days (often same day, but can vary by a day or two)
             days_diff = abs((sell.event_date - vest.event_date).days)
-            if days_diff <= 3:
-                # If quantity matches exactly the withheld shares from the PDF
-                if sell.shares == vest.shares_sold_to_cover and vest.shares_sold_to_cover > 0:
-                    is_sell_to_cover = True
-                    break
-        
+            # Within 3 days and quantity matches the withheld shares from the PDF
+            if (
+                days_diff <= 3
+                and sell.shares == vest.shares_sold_to_cover
+                and vest.shares_sold_to_cover > 0
+            ):
+                is_sell_to_cover = True
+                break
+
         if is_sell_to_cover:
             sell.notes = sell.notes.replace("Sell Order", "Sell-to-Cover (Auto-detected)")
         else:
@@ -650,13 +650,12 @@ def main() -> None:
             print(f"    Total Taxable ESPP Discount (Rendimiento del Trabajo): €{amount:>12,.2f}")
             print(f"    (Because shares purchased in {year} were sold in the following transactions before 3 years)")
             print()
-            
+
             # Print details for this year
             for detail in espp_early_details:
                 if detail["acquisition_date"].year != year:
                     continue
-                    
-                acq_str = detail["acquisition_date"].strftime("%Y-%m-%d")
+
                 sell_str = detail["sell_date"].strftime("%Y-%m-%d")
                 days = detail["holding_days"]
                 y, m = divmod(days, 365)

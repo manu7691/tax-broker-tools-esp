@@ -165,7 +165,7 @@ class TaxEngine:
                 Decimal("0.0001"), ROUND_HALF_UP
             )
             total_realized_gain_loss -= fees_eur
-            
+
         # Update state
         self.state.total_shares -= shares_to_sell
         self.state.total_portfolio_cost_eur -= total_cost_basis_removed
@@ -543,9 +543,12 @@ class TaxEngine:
             gain_str = f"€{pe.realized_gain_loss:,.4f}" if pe.realized_gain_loss != 0 else ""
 
             wash_sale_info = ""
-            if pe.event.event_type == EventType.SELL and pe.realized_gain_loss < 0:
-                if "Wash Sale Blocked Loss" in pe.event.notes:
-                    wash_sale_info = " (Wash Blocked)"
+            if (
+                pe.event.event_type == EventType.SELL
+                and pe.realized_gain_loss < 0
+                and "Wash Sale Blocked Loss" in pe.event.notes
+            ):
+                wash_sale_info = " (Wash Blocked)"
 
             print(
                 f"{e.event_date.isoformat():<12} {e.event_type.value:<6} "
@@ -938,7 +941,7 @@ class TaxEngine:
     def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> str:
         """Generate HTML content for the tax report (supports English 'en' and Spanish 'es')."""
         is_es = lang.lower() == "es"
-        
+
         html = []
         html.append("<html><head><style>")
         html.append(
@@ -1168,18 +1171,23 @@ class TaxEngine:
             event_type_str = e.event_type.value
             notes_str = e.notes
             if is_es:
-                if e.event_type == EventType.VEST: event_type_str = "Concesión"
-                elif e.event_type == EventType.SELL: event_type_str = "Venta"
-                elif e.event_type == EventType.BUY: event_type_str = "Compra"
-                elif e.event_type == EventType.EXERCISE: event_type_str = "Ejercicio"
-                
+                event_type_str = {
+                    EventType.VEST: "Concesión",
+                    EventType.SELL: "Venta",
+                    EventType.BUY: "Compra",
+                    EventType.EXERCISE: "Ejercicio",
+                }.get(e.event_type, event_type_str)
+
                 # Translate common notes
-                if "RSU Vest" in notes_str: notes_str = notes_str.replace("RSU Vest", "Concesión RSU")
-                if "ESPP Purchase" in notes_str: notes_str = notes_str.replace("ESPP Purchase", "Compra ESPP")
-                if "Sell-to-Cover" in notes_str: notes_str = notes_str.replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
-                if "Manual Sell" in notes_str: notes_str = notes_str.replace("Manual Sell", "Venta Manual")
-                if "Sell Order" in notes_str: notes_str = notes_str.replace("Sell Order", "Orden de Venta")
-                if "Includes" in notes_str: notes_str = notes_str.replace("Includes", "Incluye").replace("fees", "comisiones")
+                notes_str = (
+                    notes_str.replace("RSU Vest", "Concesión RSU")
+                    .replace("ESPP Purchase", "Compra ESPP")
+                    .replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
+                    .replace("Manual Sell", "Venta Manual")
+                    .replace("Sell Order", "Orden de Venta")
+                    .replace("Includes", "Incluye")
+                    .replace("fees", "comisiones")
+                )
 
             event_type_cell = f"{event_type_str}<br><small style='color:gray;'>{notes_str}</small>"
             event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
@@ -1255,7 +1263,7 @@ class TaxEngine:
                     f"{gl_label}: <code>({e.price_eur:,.4f} - {match.acquisition_price_eur:,.4f}) * {match.shares:,.0f} = €{match.realized_gain_loss:,.2f}</code></li>"
                 )
             html.append("</ul>")
-            
+
             tot_label = "Total Realized Gain/Loss" if not is_es else "Total Ganancia/Pérdida Realizada"
             html.append(
                 f"<li><strong>{tot_label}</strong>: <strong>€{pe.realized_gain_loss:,.2f}</strong></li>"
