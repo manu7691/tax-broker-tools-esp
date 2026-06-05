@@ -99,7 +99,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                     try:
                         el = page.locator(f"text={label}").first
                         if el.is_visible():
-                            return el.evaluate('''node => {
+                            val = el.evaluate('''node => {
                                 let th = node.closest("th");
                                 if (th) {
                                     let thead = th.closest("thead");
@@ -125,6 +125,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                                 if (match) return match[1];
                                 return "0";
                             }''')
+                            return str(val) if val is not None else "0"
                     except Exception:
                         pass
                     return "0"
@@ -192,45 +193,6 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
         except Exception:
             pass
 
-    if not executed_cells:
-        print(
-            f"  WARNING: No 'Order Executed' entries found for order dated {order_date}, using Order Date."
-        )
-        with contextlib.suppress(Exception):
-            row.locator("td").first.click()
-        return details
-
-    # Extract the date part (MM/DD/YYYY) from the adjacent "Date & Time" cell
-    exec_dates: list[str] = []
-    for exec_cell in executed_cells:
-        try:
-            # Date & Time is the immediately following sibling td
-            date_text = exec_cell.locator("xpath=following-sibling::td[1]").inner_text().strip()
-            # Format: "12/08/2025 02:52:41 PM ET" — take only the date part
-            exec_dates.append(date_text.split()[0])
-        except Exception as e:
-            print(f"  WARNING: Could not read execution date cell: {e}")
-
-    # Collapse the detail row again
-    with contextlib.suppress(Exception):
-        row.locator("td").first.click()
-
-    if not exec_dates:
-        print(
-            f"  WARNING: Could not parse any execution dates for order {order_date}, using Order Date."
-        )
-        return details
-
-    unique_dates = set(exec_dates)
-    if len(unique_dates) > 1:
-        print(
-            f"  WARNING: Order placed on {order_date} has executions on MULTIPLE dates: "
-            f"{sorted(unique_dates)}. Using the first execution date. "
-            f"This order may need manual review."
-        )
-
-    details["execution_date"] = exec_dates[0]
-    return details
 
 
 def download_orders() -> None:

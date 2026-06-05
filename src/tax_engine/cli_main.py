@@ -13,11 +13,13 @@ import json
 from datetime import date, datetime
 from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 import pandas as pd
 
 from tax_engine import (
     EventType,
+    ProcessedEvent,
     SavingsIncomeYear,
     StockEvent,
     TaxEngine,
@@ -55,7 +57,7 @@ def load_prior_losses(path: Path) -> dict[int, Decimal]:
     return result
 
 
-def _aggregate_usd_payments(payments: list) -> dict[int, SavingsIncomeYear]:
+def _aggregate_usd_payments(payments: list[dict[str, Any]]) -> dict[int, SavingsIncomeYear]:
     """
     Convert a list of USD dividend/interest payments to per-year EUR totals.
 
@@ -409,7 +411,7 @@ def calculate_espp_discounts(input_dir: Path = Path("input")) -> dict[int, Decim
     return discounts_by_year
 
 
-def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict:
+def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict[date, tuple[Decimal, Decimal]]:
     """
     Build a map of ESPP purchase dates to (fmv_usd, purchase_price_usd).
     Used for 3-year holding period analysis (Art. 42.3.f LIRPF).
@@ -428,7 +430,7 @@ def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict:
     except Exception:
         return {}
 
-    purchase_map: dict = {}
+    purchase_map: dict[date, tuple[Decimal, Decimal]] = {}
 
     for _, row in df.iterrows():
         if row.get("Record Type") != "Purchase":
@@ -457,9 +459,9 @@ def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict:
 
 
 def detect_espp_early_sales(
-    processed_events: list,
-    espp_map: dict,
-) -> tuple:
+    processed_events: list[ProcessedEvent],
+    espp_map: dict[date, tuple[Decimal, Decimal]],
+) -> tuple[dict[int, Decimal], list[dict[str, Any]]]:
     """
     Detect ESPP shares sold before the 3-year holding period (Art. 42.3.f LIRPF).
 
@@ -480,7 +482,7 @@ def detect_espp_early_sales(
             return d.replace(year=d.year + years, day=28)
 
     taxable_by_year: dict[int, Decimal] = {}
-    details: list[dict] = []
+    details: list[dict[str, Any]] = []
 
     for pe in processed_events:
         if pe.event.event_type != EventType.SELL:

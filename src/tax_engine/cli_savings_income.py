@@ -23,6 +23,7 @@ import json
 from datetime import date
 from decimal import Decimal, InvalidOperation
 from pathlib import Path
+from typing import Any
 
 TYPES = ("dividend", "interest")
 
@@ -32,7 +33,7 @@ def _json_num(d: Decimal) -> float | int:
     return int(d) if d == d.to_integral_value() else float(d)
 
 
-def load_payments(path: Path) -> list | None:
+def load_payments(path: Path) -> list[dict[str, Any]] | None:
     """
     Load the payments list, or [] if absent.
 
@@ -56,7 +57,7 @@ def load_payments(path: Path) -> list | None:
     return data if isinstance(data, list) else []
 
 
-def save_payments(path: Path, payments: list) -> None:
+def save_payments(path: Path, payments: list[dict[str, Any]]) -> None:
     """Write the payments list to disk, sorted by date."""
     path.parent.mkdir(parents=True, exist_ok=True)
     ordered = sorted(payments, key=lambda p: str(p.get("date", "")))
@@ -66,12 +67,12 @@ def save_payments(path: Path, payments: list) -> None:
 
 
 def append_payment(
-    payments: list,
+    payments: list[dict[str, Any]],
     date_str: str,
     ptype: str,
     amount_usd: Decimal,
     foreign_tax_usd: Decimal,
-) -> list:
+) -> list[dict[str, Any]]:
     """Return a new list with one validated payment appended."""
     pay_date = date.fromisoformat(date_str.strip())  # raises ValueError if invalid
     norm_type = "interest" if ptype.strip().lower().startswith("int") else "dividend"
@@ -105,7 +106,7 @@ def _prompt_decimal(label: str, default: str = "0") -> Decimal:
             print("    Please enter a number (e.g. 80.50).")
 
 
-def _interactive(payments: list, path: Path) -> None:
+def _interactive(payments: list[dict[str, Any]], path: Path) -> None:
     print("Record each dividend/interest payment in USD with its date.\n")
     while True:
         date_str = input("Payment date (YYYY-MM-DD): ").strip()

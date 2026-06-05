@@ -8,6 +8,7 @@ required by Spanish tax law (Agencia Tributaria) for capital gains calculations 
 from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
+from typing import Any
 
 from .models import (
     CarryforwardLedger,
@@ -328,7 +329,7 @@ class TaxEngine:
         where magnitude is a positive Decimal.
         """
         # Pool entries are mutable [origin_year, remaining_magnitude] (remaining > 0).
-        pool: list[list] = []
+        pool: list[list[Any]] = []
         for origin_year, magnitude in sorted((opening_losses or {}).items()):
             mag = abs(Decimal(str(magnitude)))
             if mag > 0:
@@ -339,7 +340,7 @@ class TaxEngine:
 
         for year in sorted(summaries):
             # Expire losses that can no longer be used this year (origin <= year-5).
-            survivors: list[list] = []
+            survivors: list[list[Any]] = []
             for origin_year, remaining in pool:
                 if origin_year <= year - 5 and remaining > 0:
                     ledger.expired.append((origin_year, remaining))
@@ -414,12 +415,12 @@ class TaxEngine:
         ``opening_losses`` / ``opening_rcm_losses`` seed pending losses (positive
         magnitudes keyed by origin year) from before the data window.
         """
-        gp_pool: list[list] = [
+        gp_pool: list[list[Any]] = [
             [y, abs(Decimal(str(m)))]
             for y, m in sorted((opening_losses or {}).items())
             if abs(Decimal(str(m))) > 0
         ]
-        rcm_pool: list[list] = [
+        rcm_pool: list[list[Any]] = [
             [y, abs(Decimal(str(m)))]
             for y, m in sorted((opening_rcm_losses or {}).items())
             if abs(Decimal(str(m))) > 0
@@ -429,7 +430,7 @@ class TaxEngine:
         years = sorted(set(summaries) | set(savings_income))
         ledger = SavingsLedger()
 
-        def _expire(pool: list[list], bucket: str, year: int) -> list[list]:
+        def _expire(pool: list[list[Any]], bucket: str, year: int) -> list[list[Any]]:
             survivors = []
             for origin_year, remaining in pool:
                 if origin_year <= year - 5 and remaining > 0:
@@ -438,7 +439,7 @@ class TaxEngine:
                     survivors.append([origin_year, remaining])
             return survivors
 
-        def _consume(pool: list[list], gain: Decimal) -> Decimal:
+        def _consume(pool: list[list[Any]], gain: Decimal) -> Decimal:
             """Consume oldest pool losses against a positive gain; return amount applied."""
             applied = Decimal("0")
             left = gain
@@ -645,10 +646,10 @@ class TaxEngine:
                 f"{'Year':<8} {'Net Result':>15} {'Prior Loss Applied':>20} "
                 f"{'Taxable After C/F':>20}"
             )
-            for r in ledger.rows:
+            for cf_row in ledger.rows:
                 print(
-                    f"{r.year:<8} €{r.net_result:>14,.2f} €{r.prior_losses_applied:>19,.2f} "
-                    f"€{r.taxable_after:>19,.2f}"
+                    f"{cf_row.year:<8} €{cf_row.net_result:>14,.2f} €{cf_row.prior_losses_applied:>19,.2f} "
+                    f"€{cf_row.taxable_after:>19,.2f}"
                 )
             if ledger.pending_end:
                 print("\n  Pending losses carried forward (still usable):")
@@ -659,7 +660,7 @@ class TaxEngine:
                 for origin_year, amount in ledger.expired:
                     print(f"    From {origin_year}: €{amount:>12,.2f} lost")
             if not ledger.pending_end and not ledger.expired and all(
-                r.prior_losses_applied == 0 for r in ledger.rows
+                cf_row.prior_losses_applied == 0 for cf_row in ledger.rows
             ):
                 print("  No losses to carry forward.")
 
