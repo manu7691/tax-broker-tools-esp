@@ -947,19 +947,21 @@ class TaxEngine:
         html.append(
             "body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }"
         )
-        # Use separated (not collapsed) borders: collapsed borders drop the last
-        # row's bottom edge at page breaks in Chromium's PDF renderer. The table
-        # draws the top/left edge and each cell draws its right/bottom edge, which
-        # yields a clean 1px grid that survives page breaks.
+        html.append("* { box-sizing: border-box; }")
         html.append(
-            "table { border-collapse: separate; border-spacing: 0; width: 100%; "
-            "margin-bottom: 20px; font-size: 12px; border-top: 1px solid #ddd; "
-            "border-left: 1px solid #ddd; }"
+            "table { border-collapse: collapse; width: 100%; "
+            "margin-bottom: 20px; font-size: 12px; }"
         )
-        html.append(
-            "th, td { border-right: 1px solid #ddd; border-bottom: 1px solid #ddd; "
-            "padding: 6px; text-align: left; }"
-        )
+        html.append("th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }")
+        # The Type/Tipo column holds long notes (e.g. RSU confirmation filenames),
+        # so it (and only it) is allowed to wrap. The wide detailed ledger (10
+        # columns) also uses a smaller font and a fixed Type width so the numeric
+        # columns keep their natural size and the table fits the page without
+        # squeezing the note into a tall, unreadable sliver.
+        html.append("td.tipo, th.tipo { overflow-wrap: anywhere; word-break: break-word; }")
+        html.append(".ledger { font-size: 9px; }")
+        html.append(".ledger td.tipo, .ledger th.tipo { width: 200px; }")
+        html.append(".ledger td, .ledger th { padding: 4px; }")
         html.append("th { background-color: #f2f2f2; }")
         html.append("h1, h2, h3 { color: #333; }")
         html.append(".gain { color: green; }")
@@ -1169,14 +1171,14 @@ class TaxEngine:
         # Transaction Ledger
         ledger_title = "Detailed Transaction Ledger" if not is_es else "Libro de Transacciones Detallado"
         html.append(f"<h2>{ledger_title}</h2>")
-        html.append("<table>")
+        html.append("<table class='ledger'>")
         if not is_es:
             html.append(
-                "<tr><th>Date</th><th>Type</th><th>Shares</th><th>Price (USD)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
+                "<tr><th>Date</th><th class='tipo'>Type</th><th>Shares</th><th>Price (USD)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
             )
         else:
             html.append(
-                "<tr><th>Fecha</th><th>Tipo</th><th>Acciones</th><th>Precio (USD)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
+                "<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Acciones</th><th>Precio (USD)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
             )
 
         for pe in self.processed_events:
@@ -1221,7 +1223,7 @@ class TaxEngine:
 
             html.append("<tr>")
             html.append(f"<td>{event_date_str}</td>")
-            html.append(f"<td>{event_type_cell}</td>")
+            html.append(f"<td class='tipo'>{event_type_cell}</td>")
             html.append(f"<td>{shares_str}</td>")
             html.append(f"<td>${e.price_usd:,.2f}</td>")
             html.append(f"<td>{e.resolved_fx_rate:.4f}</td>")
