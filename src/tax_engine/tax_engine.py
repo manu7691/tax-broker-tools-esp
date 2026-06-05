@@ -461,17 +461,21 @@ class TaxEngine:
             )
             html.append("</ul>")
 
-        # Yearly Tax Summary Table
-        summary_title = "Yearly Tax Summary" if not is_es else "Resumen Fiscal Anual"
+        # Yearly Tax Summary Table (Modelo 100 - Savings Base)
+        summary_title = (
+            "Yearly Tax Summary (Modelo 100 - Savings Base)"
+            if not is_es
+            else "Resumen Fiscal Anual (Modelo 100 - Base Imponible del Ahorro)"
+        )
         html.append(f"<h2>{summary_title}</h2>")
         html.append("<table>")
         if not is_es:
             html.append(
-                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Fees Deducted</th><th>Taxable Gain (Net)</th><th>Estimated Tax Due</th></tr>"
+                "<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Deductible Losses</th><th>Fees Deducted</th><th>Net Taxable Savings Base</th><th>Estimated Tax Due</th></tr>"
             )
         else:
             html.append(
-                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Gastos Deducidos</th><th>Base Imponible Neta</th><th>Impuesto Estimado</th></tr>"
+                "<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Pérdidas Deducibles</th><th>Gastos Deducidos</th><th>Base Imponible del Ahorro</th><th>Impuesto Estimado</th></tr>"
             )
 
         for summary in self.get_all_yearly_summaries():
@@ -481,30 +485,12 @@ class TaxEngine:
             html.append(f"<td>€{summary.total_gains:,.2f}</td>")
             html.append(f"<td>€{summary.total_losses:,.2f}</td>")
             html.append(f"<td>€{summary.blocked_losses:,.2f}</td>")
+            html.append(f"<td>€{summary.deductible_losses:,.2f}</td>")
             html.append(f"<td>€{summary.total_fees_eur:,.2f}</td>")
             html.append(
                 f"<td class='{net_style}'><strong>€{summary.taxable_gain:,.2f}</strong></td>"
             )
             html.append(f"<td><strong>€{summary.tax_due:,.2f}</strong></td>")
-            html.append("</tr>")
-        html.append("</table>")
-
-        # Modelo 100 Savings Base Table
-        m100_title = "Spanish Renta (Modelo 100 - Savings Base)" if not is_es else "Renta de España (Modelo 100 - Base Imponible del Ahorro)"
-        html.append(f"<h2>{m100_title}</h2>")
-        html.append("<table>")
-        if not is_es:
-            html.append("<tr><th>Year</th><th>Total Gains</th><th>Total Deductible Losses</th><th>Blocked Losses (2-month)</th><th>Net Taxable Savings Base</th></tr>")
-        else:
-            html.append("<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Deducibles Totales</th><th>Pérdidas Bloqueadas (2 meses)</th><th>Base Imponible del Ahorro</th></tr>")
-        
-        for summary in self.get_all_yearly_summaries():
-            html.append("<tr>")
-            html.append(f"<td>{summary.year}</td>")
-            html.append(f"<td>€{summary.total_gains:,.2f}</td>")
-            html.append(f"<td>€{summary.deductible_losses:,.2f}</td>")
-            html.append(f"<td>€{summary.blocked_losses:,.2f}</td>")
-            html.append(f"<td><strong>€{summary.taxable_gain:,.2f}</strong></td>")
             html.append("</tr>")
         html.append("</table>")
 
