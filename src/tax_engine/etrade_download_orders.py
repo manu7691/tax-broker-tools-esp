@@ -318,6 +318,11 @@ def download_orders() -> None:
                     "Commission": exec_details["Commission"],
                     "SEC Fees": exec_details["SEC Fees"],
                     "Brokerage Assist Fee": exec_details["Brokerage Assist Fee"],
+                    # Raw per-row order status (e.g. "Settled", "Executed", "Open").
+                    # An "Executed" sell has not settled yet, so its RSU confirmation
+                    # PDF may not exist — the tax engine uses this to avoid mislabelling
+                    # a pending sell-to-cover as a manual sale.
+                    "Status": status,
                 }
             )
 

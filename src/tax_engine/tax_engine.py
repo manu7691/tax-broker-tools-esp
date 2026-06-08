@@ -1203,6 +1203,7 @@ class TaxEngine:
                     notes_str.replace("RSU Vest", "Concesión RSU")
                     .replace("ESPP Purchase", "Compra ESPP")
                     .replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
+                    .replace("Pending Settlement", "Pendiente de Liquidación")
                     .replace("Manual Sell", "Venta Manual")
                     .replace("Sell Order", "Orden de Venta")
                     .replace("Includes", "Incluye")

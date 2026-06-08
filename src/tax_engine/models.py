@@ -64,6 +64,11 @@ class StockEvent:
     fees_usd: Decimal = Decimal("0")
     shares_sold_to_cover: Decimal = Decimal("0")  # For VEST events
     notes: str = ""
+    # Raw E-Trade order status for SELL events: "Settled", "Executed", "Open", etc.
+    # Empty when unknown (e.g. VEST/BUY events, or orders.xlsx downloaded before
+    # the Status column existed). Used to tell a settled sale from one whose RSU
+    # confirmation is not yet available (see auto_detect_sell_to_cover).
+    order_status: str = ""
     _fx_rate_resolved: Decimal | None = field(default=None, init=False, repr=False)
 
     @property

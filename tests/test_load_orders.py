@@ -57,8 +57,8 @@ def _load(orders_file: Path, rows: list[dict]) -> list:  # type: ignore[type-arg
 def _base_row(**overrides: object) -> dict:  # type: ignore[type-arg]
     return {
         "Order Date": "12/08/2025",
-        "Sold Qty.": "86",
-        "Execution Price": "$44.83",
+        "Sold Qty.": "100",
+        "Execution Price": "$50.00",
         "Benefit Type": "Restricted Stock",
         **overrides,
     }
@@ -121,12 +121,12 @@ class TestParsedValues:
         assert events[0].event_type == EventType.SELL
 
     def test_price_parsed_correctly(self, orders_file: Path) -> None:
-        events = _load(orders_file, [_base_row(**{"Execution Price": "$44.83"})])
-        assert events[0].price_usd == Decimal("44.83")
+        events = _load(orders_file, [_base_row(**{"Execution Price": "$50.00"})])
+        assert events[0].price_usd == Decimal("50.00")
 
     def test_quantity_parsed_correctly(self, orders_file: Path) -> None:
-        events = _load(orders_file, [_base_row(**{"Sold Qty.": "86"})])
-        assert events[0].shares == Decimal("86")
+        events = _load(orders_file, [_base_row(**{"Sold Qty.": "100"})])
+        assert events[0].shares == Decimal("100")
 
     def test_multiple_rows_all_loaded(self, orders_file: Path) -> None:
         rows = [
@@ -149,3 +149,18 @@ class TestParsedValues:
     def test_skips_invalid_price(self, orders_file: Path) -> None:
         events = _load(orders_file, [_base_row(**{"Execution Price": "invalid"})])
         assert events == []
+
+
+class TestOrderStatus:
+    def test_status_column_loaded(self, orders_file: Path) -> None:
+        events = _load(orders_file, [_base_row(**{"Status": "Executed"})])
+        assert events[0].order_status == "Executed"
+
+    def test_status_absent_defaults_empty(self, orders_file: Path) -> None:
+        """Legacy downloads without a Status column leave order_status empty."""
+        events = _load(orders_file, [_base_row()])
+        assert events[0].order_status == ""
+
+    def test_status_nan_defaults_empty(self, orders_file: Path) -> None:
+        events = _load(orders_file, [_base_row(**{"Status": None})])
+        assert events[0].order_status == ""

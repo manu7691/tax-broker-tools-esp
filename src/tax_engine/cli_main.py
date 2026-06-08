@@ -302,6 +302,14 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
         if fees_usd > 0:
             notes += f" (Includes ${fees_usd} fees)"
 
+        # Per-row settlement status (newer downloads only). Empty for older
+        # orders.xlsx files that predate the Status column.
+        order_status = ""
+        if "Status" in df.columns:
+            raw_status = row.get("Status")
+            if raw_status is not None and not pd.isna(raw_status):
+                order_status = str(raw_status).strip()
+
         events.append(
             StockEvent(
                 event_date=event_date,
@@ -310,6 +318,7 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
                 price_usd=price,
                 fees_usd=fees_usd,
                 notes=notes,
+                order_status=order_status,
             )
         )
 
@@ -535,12 +544,48 @@ def detect_espp_early_sales(
     return taxable_by_year, details
 
 
-def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
+# E-Trade order statuses that mean the trade has fully settled and its RSU
+# confirmation PDF is therefore available. Anything else ("Executed", "Open", ...)
+# is still in flight, so a matching VEST event may not exist yet.
+_SETTLED_STATUSES = {"settled", "complete", "completed"}
+
+# Fallback window (calendar days) used only when the order has no Status value
+# — older orders.xlsx files downloaded before the Status column existed. US
+# equities settle T+1, but RSU confirmation PDFs can lag a few business days.
+_PENDING_FALLBACK_DAYS = 7
+
+
+def _is_settled(sell: StockEvent, today: date) -> bool:
+    """Whether a sell's RSU confirmation should already be available.
+
+    Prefers the real per-row E-Trade status (deterministic, captured at download
+    time). Falls back to execution-date recency only when the status is unknown.
+    """
+    status = sell.order_status.strip().lower()
+    if status:
+        return status in _SETTLED_STATUSES
+    # No status (legacy download): assume settled once the window has elapsed.
+    return (today - sell.event_date).days > _PENDING_FALLBACK_DAYS
+
+
+def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = None) -> None:
     """
     Detects which SELL events are actually 'Sell-to-Cover' for RSU taxes.
-    Matches SELL events within 3 days of a VEST event where the sold quantity
-    exactly matches the shares_sold_to_cover from the RSU confirmation.
+
+    Classification is three-way:
+      * Sell-to-Cover (Auto-detected): the sold quantity matches a VEST's
+        shares_sold_to_cover within 3 days — confirmed against the RSU PDF.
+      * Pending Settlement: unmatched, but the order has not settled yet, so its
+        RSU confirmation PDF may simply not exist yet. We do NOT assert manual
+        vs sell-to-cover; re-running after settlement resolves it.
+      * Manual Sell: unmatched AND settled, so the data is complete and the sale
+        was genuinely user-initiated.
+
+    ``today`` is injectable for testing; defaults to the current date.
     """
+    if today is None:
+        today = date.today()
+
     vests = [e for e in events if e.event_type == EventType.VEST]
     sells = [e for e in events if e.event_type == EventType.SELL and "Sell Order" in e.notes]
 
@@ -562,6 +607,10 @@ def auto_detect_sell_to_cover(events: list[StockEvent]) -> None:
 
         if is_sell_to_cover:
             sell.notes = sell.notes.replace("Sell Order", "Sell-to-Cover (Auto-detected)")
+        elif not _is_settled(sell, today):
+            # Executed but not yet settled — the RSU confirmation PDF that would
+            # confirm a sell-to-cover may not exist yet. Stay neutral.
+            sell.notes = sell.notes.replace("Sell Order", "Pending Settlement")
         else:
             sell.notes = sell.notes.replace("Sell Order", "Manual Sell")
 
