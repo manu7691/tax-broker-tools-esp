@@ -137,3 +137,15 @@ class TestParsedValues:
         assert len(events) == 2
         assert events[0].event_date == date(2025, 12, 8)
         assert events[1].event_date == date(2025, 12, 9)
+
+    def test_skips_zero_price(self, orders_file: Path) -> None:
+        events = _load(orders_file, [_base_row(**{"Execution Price": "$0.00"})])
+        assert events == []
+
+    def test_skips_negative_price(self, orders_file: Path) -> None:
+        events = _load(orders_file, [_base_row(**{"Execution Price": "-$10.00"})])
+        assert events == []
+
+    def test_skips_invalid_price(self, orders_file: Path) -> None:
+        events = _load(orders_file, [_base_row(**{"Execution Price": "invalid"})])
+        assert events == []

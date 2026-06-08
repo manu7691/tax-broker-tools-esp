@@ -279,7 +279,15 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
             continue
 
         # Parse price
-        price = Decimal(str(row["Execution Price"]).replace("$", "").replace(",", ""))
+        price_str = str(row["Execution Price"]).replace("$", "").replace(",", "").strip()
+        try:
+            price = Decimal(price_str)
+        except InvalidOperation:
+            print(f"Error parsing price in row #{printable_index}: {price_str}")
+            continue
+        if price <= 0:
+            print(f"Skipping row #{printable_index}: zero or negative price ({price_str})")
+            continue
 
         # Sum up any fees from columns if they exist (excluding Wire/Disbursement Fees per user request)
         fees_usd = Decimal("0")
