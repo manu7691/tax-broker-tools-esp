@@ -19,6 +19,7 @@ from .models import (
     YearlyTaxSummary,
 )
 from .options_parser import load_options_events
+from .revolut_parser import load_revolut_events
 from .rsu_parser import load_rsu_events
 from .sample_data import (
     create_sample_events_with_ecb_rates,
@@ -46,4 +47,5 @@ __all__ = [
     "create_sample_events_with_ecb_rates",
     "load_rsu_events",
     "load_options_events",
+    "load_revolut_events",
 ]

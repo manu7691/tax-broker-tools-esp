@@ -143,6 +143,12 @@ None of this is needed for the core decisions — it's there if you want it.
   why a break-even here can differ from E-Trade's USD-only view.
 - **ESPP cost basis** uses the purchase-date FMV (fair market value), consistent with the
   rest of the tax engine.
+- **Revolut holdings of the same stock are included.** If you dropped a Revolut CSV into
+  `input/revolut/` (see the README), those buys/sells of your **tracked ticker** are folded
+  into the same position, so the charts show the **combined** E\*TRADE + Revolut picture,
+  matching the PDF report. The charts cover a single security only — other tickers you hold
+  on Revolut are not shown here (they have their own separate FIFO; see
+  [TAX_CALCULATION_METHOD.md](TAX_CALCULATION_METHOD.md)).
 
 For the underlying tax methodology, see
 [TAX_CALCULATION_METHOD.md](TAX_CALCULATION_METHOD.md) and

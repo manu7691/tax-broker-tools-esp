@@ -939,9 +939,92 @@ class TaxEngine:
             )
         html.append("</table>")
 
+    def _append_broker_breakdown(self, html: list[str], is_es: bool) -> None:
+        """Append a per-broker realized gain/loss subtotal table.
+
+        Results are attributed to the broker where the *disposal* (SELL) occurred.
+        Because FIFO runs across the merged queue, a sale may consume shares
+        acquired at another broker, so this is a by-selling-broker view of the
+        realized result, not a by-acquisition one.
+        """
+        gains: dict[str, Decimal] = {}
+        losses: dict[str, Decimal] = {}
+        for pe in self.processed_events:
+            if pe.event.event_type != EventType.SELL:
+                continue
+            b = pe.event.broker
+            if pe.realized_gain_loss > 0:
+                gains[b] = gains.get(b, Decimal("0")) + pe.realized_gain_loss
+            elif pe.realized_gain_loss < 0:
+                losses[b] = losses.get(b, Decimal("0")) + pe.realized_gain_loss
+
+        brokers = sorted(set(gains) | set(losses))
+        if not brokers:
+            return
+
+        title = (
+            "Realized Gains/Losses by Broker"
+            if not is_es
+            else "Ganancias/Pérdidas Realizadas por Bróker"
+        )
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>Attributed to the broker where each "
+                "sale occurred. Because FIFO is applied across all brokers, a sale may draw on "
+                "shares acquired at another broker; this table splits the <em>realized result</em> "
+                "by selling broker, not by acquisition.</p>"
+            )
+        else:
+            html.append(
+                "<p style='font-size: 11px; color: #555;'>Atribuidas al bróker donde se produjo "
+                "cada venta. Como el FIFO se aplica entre todos los brókers, una venta puede consumir "
+                "acciones adquiridas en otro bróker; esta tabla reparte el <em>resultado realizado</em> "
+                "por bróker vendedor, no por adquisición.</p>"
+            )
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Broker</th><th>Realized Gains</th><th>Realized Losses</th>"
+                "<th>Net Realized G/L</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Bróker</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas</th>"
+                "<th>G/P Neta Realizada</th></tr>"
+            )
+
+        total_gain = Decimal("0")
+        total_loss = Decimal("0")
+        for b in brokers:
+            gain_amt = gains.get(b, Decimal("0"))
+            loss_amt = losses.get(b, Decimal("0"))
+            net = gain_amt + loss_amt
+            total_gain += gain_amt
+            total_loss += loss_amt
+            net_style = "gain" if net >= 0 else "loss"
+            html.append(
+                f"<tr><td>{b}</td><td>€{gain_amt:,.2f}</td><td>€{loss_amt:,.2f}</td>"
+                f"<td class='{net_style}'><strong>€{net:,.2f}</strong></td></tr>"
+            )
+        net_total = total_gain + total_loss
+        net_style = "gain" if net_total >= 0 else "loss"
+        html.append(
+            f"<tr><td><strong>Total</strong></td><td><strong>€{total_gain:,.2f}</strong></td>"
+            f"<td><strong>€{total_loss:,.2f}</strong></td>"
+            f"<td class='{net_style}'><strong>€{net_total:,.2f}</strong></td></tr>"
+        )
+        html.append("</table>")
+
     def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> str:
         """Generate HTML content for the tax report (supports English 'en' and Spanish 'es')."""
         is_es = lang.lower() == "es"
+
+        # Distinct brokers across the processed transactions. Used to tag each
+        # ledger row and, when more than one broker is present (e.g. E*TRADE +
+        # Revolut), to add a per-broker realized G/L breakdown.
+        brokers = sorted({pe.event.broker for pe in self.processed_events})
+        multi_broker = len(brokers) > 1
 
         html = []
         html.append("<html><head><style>")
@@ -1002,19 +1085,37 @@ class TaxEngine:
             html.append(
                 "<li><strong>2-Month Wash Sale Rule</strong>: Losses from sales are blocked (deferred) if homogenous shares are acquired within 2 months before or after the sale date.</li>"
             )
-            html.append(
-                "<li><strong style='color: #cc6600;'>SCOPE - Single Account</strong>: "
-                "The wash-sale rule applies per security across <strong>all</strong> your brokers/accounts, "
-                "but this report only sees data from this account. If you bought the same security elsewhere "
-                "(e.g. another broker) within the 2-month window, those repurchases are NOT detected here and "
-                "some blocked losses may be under-reported.</li>"
-            )
+            if multi_broker:
+                html.append(
+                    "<li><strong style='color: #cc6600;'>SCOPE - Multiple Accounts</strong>: "
+                    f"This report combines data from <strong>{', '.join(brokers)}</strong>, so FIFO and the "
+                    "2-month wash-sale rule are applied across them together. If you also hold the same "
+                    "security at <strong>yet another</strong> broker/account not imported here, repurchases "
+                    "there within the 2-month window are NOT detected and some blocked losses may be "
+                    "under-reported.</li>"
+                )
+            else:
+                html.append(
+                    "<li><strong style='color: #cc6600;'>SCOPE - Single Account</strong>: "
+                    "The wash-sale rule applies per security across <strong>all</strong> your brokers/accounts, "
+                    "but this report only sees data from this account. If you bought the same security elsewhere "
+                    "(e.g. another broker) within the 2-month window, those repurchases are NOT detected here and "
+                    "some blocked losses may be under-reported.</li>"
+                )
             html.append(
                 "<li><strong style='color: green;'>NOTE - Fees Included</strong>: "
                 "This report <strong>INCLUDES and DEDUCTS</strong> transaction commissions and SEC fees "
                 "from your capital gains, applying the official ECB USD/EUR exchange rate of the transaction date. "
                 "<strong>NOTE: Wire transfer fees are EXCLUDED per user preference.</strong></li>"
             )
+            if multi_broker:
+                html.append(
+                    f"<li><strong>Multi-Broker Scope</strong>: Transactions from more than one "
+                    f"broker were combined ({', '.join(brokers)}). Each ledger row is tagged with its "
+                    "originating <strong>Broker</strong>, and FIFO matching plus the 2-month wash-sale "
+                    "rule are applied across all of them — as Spain requires for homogeneous securities "
+                    "(same ISIN). A per-broker realized gain/loss breakdown is shown below.</li>"
+                )
             html.append("</ul>")
         else:
             html.append(
@@ -1031,19 +1132,37 @@ class TaxEngine:
             html.append(
                 "<li><strong>Regla de los 2 Meses (Wash Sale)</strong>: Las pérdidas patrimoniales quedan bloqueadas (diferidas) si se adquieren acciones homogéneas dentro de los 2 meses anteriores o posteriores a la fecha de la venta.</li>"
             )
-            html.append(
-                "<li><strong style='color: #cc6600;'>ALCANCE - Una Sola Cuenta</strong>: "
-                "La regla de los 2 meses se aplica por valor en <strong>todos</strong> tus brókers/cuentas, "
-                "pero este informe solo ve los datos de esta cuenta. Si compraste el mismo valor en otro lugar "
-                "(p. ej. otro bróker) dentro de la ventana de 2 meses, esas recompras NO se detectan aquí y "
-                "algunas pérdidas bloqueadas podrían estar infravaloradas.</li>"
-            )
+            if multi_broker:
+                html.append(
+                    "<li><strong style='color: #cc6600;'>ALCANCE - Varias Cuentas</strong>: "
+                    f"Este informe combina datos de <strong>{', '.join(brokers)}</strong>, por lo que el FIFO "
+                    "y la regla de los 2 meses se aplican entre ellos en conjunto. Si además tienes el mismo "
+                    "valor en <strong>otra</strong> cuenta/bróker no importada aquí, las recompras allí dentro "
+                    "de la ventana de 2 meses NO se detectan y algunas pérdidas bloqueadas podrían estar "
+                    "infravaloradas.</li>"
+                )
+            else:
+                html.append(
+                    "<li><strong style='color: #cc6600;'>ALCANCE - Una Sola Cuenta</strong>: "
+                    "La regla de los 2 meses se aplica por valor en <strong>todos</strong> tus brókers/cuentas, "
+                    "pero este informe solo ve los datos de esta cuenta. Si compraste el mismo valor en otro lugar "
+                    "(p. ej. otro bróker) dentro de la ventana de 2 meses, esas recompras NO se detectan aquí y "
+                    "algunas pérdidas bloqueadas podrían estar infravaloradas.</li>"
+                )
             html.append(
                 "<li><strong style='color: green;'>NOTA - Comisiones Incluidas</strong>: "
                 "Este informe <strong>INCLUYE y DEDUCE</strong> las comisiones de transacción y tasas SEC "
                 "como gastos inherentes a la transmisión, utilizando el tipo de cambio oficial del BCE de la fecha exacta de la transacción. "
                 "<strong>NOTA: Las tarifas de transferencia bancaria (Wire fees) se EXCLUYEN por preferencia del usuario.</strong></li>"
             )
+            if multi_broker:
+                html.append(
+                    f"<li><strong>Ámbito Multi-Bróker</strong>: Se combinaron operaciones de más de un "
+                    f"bróker ({', '.join(brokers)}). Cada fila del libro indica su <strong>Bróker</strong> "
+                    "de origen, y la casación FIFO junto con la regla de los 2 meses se aplican entre todos "
+                    "ellos — como exige España para los valores homogéneos (mismo ISIN). Más abajo se "
+                    "muestra un desglose de ganancias/pérdidas realizadas por bróker.</li>"
+                )
             html.append("</ul>")
 
         # Yearly Tax Summary Table (Modelo 100 - Savings Base)
@@ -1096,6 +1215,10 @@ class TaxEngine:
                 "pérdidas pendientes de compensar de años anteriores (límite de 4 años, Art. 49 LIRPF). "
                 "Usa esta cifra como orientación, no como la cuota definitiva.</p>"
             )
+
+        # Per-broker realized G/L subtotal (only when more than one broker is present).
+        if multi_broker:
+            self._append_broker_breakdown(html, is_es)
 
         # Loss handling: the two-bucket savings ledger supersedes the single-bucket
         # carryforward ledger when dividend/interest is supplied (the cross-offset
@@ -1175,11 +1298,11 @@ class TaxEngine:
         html.append("<table class='ledger'>")
         if not is_es:
             html.append(
-                "<tr><th>Date</th><th class='tipo'>Type</th><th>Shares</th><th>Price (USD)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
+                "<tr><th>Date</th><th class='tipo'>Type</th><th>Broker</th><th>Shares</th><th>Price (USD)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
             )
         else:
             html.append(
-                "<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Acciones</th><th>Precio (USD)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
+                "<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Bróker</th><th>Acciones</th><th>Precio (USD)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
             )
 
         for pe in self.processed_events:
@@ -1206,6 +1329,8 @@ class TaxEngine:
                     .replace("Pending Settlement", "Pendiente de Liquidación")
                     .replace("Manual Sell", "Venta Manual")
                     .replace("Sell Order", "Orden de Venta")
+                    .replace("Revolut Buy", "Compra Revolut")
+                    .replace("Revolut Sell", "Venta Revolut")
                     .replace("Includes", "Incluye")
                     .replace("fees", "comisiones")
                 )
@@ -1226,6 +1351,7 @@ class TaxEngine:
             html.append("<tr>")
             html.append(f"<td>{event_date_str}</td>")
             html.append(f"<td class='tipo'>{event_type_cell}</td>")
+            html.append(f"<td>{e.broker}</td>")
             html.append(f"<td>{shares_str}</td>")
             html.append(f"<td>${e.price_usd:,.2f}</td>")
             html.append(f"<td>{e.resolved_fx_rate:.4f}</td>")
@@ -1241,7 +1367,8 @@ class TaxEngine:
                     html.append("<tr style='background-color:#fafafa; font-style:italic;'>")
                     html.append("<td></td>")
                     match_label = "FIFO Match:" if not is_es else "Cruce FIFO:"
-                    html.append(f"<td colspan='2' style='text-align:right;'>{match_label}</td>")
+                    # Span Type + Broker + Shares (the table gained a Broker column).
+                    html.append(f"<td colspan='3' style='text-align:right;'>{match_label}</td>")
                     if not is_es:
                         match_text = f"Matched {match.shares:,.0f} shares from acquisition on {match.acquisition_date} at €{match.acquisition_price_eur:,.4f}"
                     else:

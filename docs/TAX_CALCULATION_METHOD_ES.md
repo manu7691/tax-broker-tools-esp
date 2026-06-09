@@ -26,12 +26,41 @@ El motor fiscal implementa un sistema de cálculo FIFO (First-In, First-Out) tot
 
 ## 2. Metodología de Cálculo Principal
 
+### Flujo de Datos
+
+```mermaid
+flowchart TD
+    A["E*TRADE ESPP<br/>BenefitHistory.xlsx"] --> P
+    B["E*TRADE Órdenes<br/>orders.xlsx"] --> P
+    C["E*TRADE RSU (PDF)"] --> P
+    D["E*TRADE Opciones (PDF)"] --> P
+    E["CSV de Revolut<br/>(movimientos / ganancias)"] -->|"filtrar al ISIN/ticker analizado<br/>etiquetar bróker = Revolut"| P
+    P["Eventos combinados<br/>(un único valor)"] --> F["Motor FIFO<br/>+ regla de los 2 meses<br/>+ BCE USD→EUR por fecha"]
+    F --> R["Informe PDF (EN/ES)<br/>libro · subtotal por bróker · base del ahorro"]
+    F --> G["charts_dashboard.html"]
+```
+
+Cada fuente se convierte en el mismo flujo de `StockEvent`, se etiqueta con su bróker y pasa por una única cola FIFO. Las filas de Revolut se filtran al único valor analizado antes de unirse al conjunto (ver *Ámbito del FIFO* más abajo).
+
 ### Asignación de Lotes por FIFO (Primero en Entrar, Primero en Salir)
 Según el **Art. 37.2 de la LIRPF**, las acciones de una misma compañía se consideran homogéneas. Al realizar una venta, el motor descuenta las acciones empezando siempre por las compras o liberaciones más antiguas.
 * La ganancia o pérdida patrimonial se calcula por cada lote asignado:
   $$\text{Ganancia/Pérdida} = (\text{Precio de Venta en EUR} - \text{Coste de Adquisición en EUR}) \times \text{Acciones}$$
 * Si una orden de venta consume múltiples lotes de adquisición, el motor divide la transacción y computa la ganancia de forma independiente para cada lote.
 * Los lotes se eliminan del inventario activo cuando su número de acciones restantes llega a `0`.
+
+### Ámbito del FIFO: Por Valor, No Entre Valores
+El FIFO se aplica **por valor homogéneo** — es decir, por ISIN (Art. 37.2 LIRPF). Cada valor tiene su **propia cola FIFO independiente**: una venta de *DT* solo puede casarse con adquisiciones anteriores de *DT*, nunca con *TSLA* o *NVDA*. Nunca se cruza el FIFO entre tickers distintos.
+
+* **Este motor procesa un valor cada vez.** Asume que toda operación de entrada es el mismo valor homogéneo (en la práctica, las acciones de tu empleador, p. ej. DT) y mantiene una única cola FIFO. Por eso el import opcional de Revolut se **filtra a ese único valor** (por ISIN, o por ticker en el export de movimientos); las filas de otros tickers se descartan.
+* **Los demás valores también tributan y deben declararse aparte.** Si además compraste y vendiste *otros* tickers en Revolut (TSLA, NVDA, ADBE, …), cada uno es su propio cálculo FIFO que esta herramienta **no** computa. Ejecuta el motor una vez por ticker (ajustando `input/ticker.json`), o gestiónalos por separado, y combina los resultados como se indica abajo.
+
+**Cómo se agrega para Hacienda (Modelo 100, base del ahorro):**
+1. Calcula la ganancia/pérdida neta de cada valor con su **propia** cola FIFO (por ISIN).
+2. **Suma** los resultados de todos los valores en el único bloque de *ganancias y pérdidas patrimoniales* de la base del ahorro — las pérdidas de un valor compensan las ganancias de otro dentro de este bloque (no están aisladas por valor).
+3. Ese neto compensa luego (hasta el límite del 25%) con el bloque de dividendos/intereses (RCM), y el resto se arrastra 4 años (Art. 49 LIRPF).
+
+Por tanto, **el FIFO es por valor, pero el resultado imponible es el agregado** de todos ellos en la base del ahorro.
 
 ### Orden de Procesamiento del Mismo Día (Same-Day Events)
 Para garantizar la coherencia del inventario FIFO y evitar posiciones negativas temporales (especialmente en ventas automáticas para cubrir impuestos o "sell-to-cover"), las transacciones del mismo día natural se ordenan así:
@@ -91,7 +120,9 @@ El **Resumen Fiscal Anual** informa las ganancias y pérdidas de cada año de fo
 
 ### 4.2 Otras limitaciones
 
-2. **Un Solo Ticker:** El motor fiscal asume que todas las operaciones son sobre el mismo valor (en la práctica, las acciones de tu empleador). Si negocias diferentes acciones, debes procesar archivos independientes para no mezclar los lotes FIFO.
+2. **Un Solo Ticker:** El motor fiscal asume que todas las operaciones son sobre el mismo valor (en la práctica, las acciones de tu empleador). Si negocias diferentes acciones, debes procesar archivos independientes para no mezclar los lotes FIFO. *Excepción:* el CSV opcional de Revolut (`input/revolut/*.csv`) puede contener muchos tickers — el motor lo filtra al valor analizado (por **ISIN** en el export de ganancias realizadas, o por **ticker** en el export de movimientos de cuenta, que no tiene ISIN) según `input/ticker.json` y descarta el resto, de modo que solo entran acciones homogéneas en el conjunto FIFO. El export de movimientos aporta además las **compras** de acciones que nunca vendiste, completando el conjunto de coste de adquisición.
+
+   **Ámbito entre brókers (Revolut):** por defecto la regla de los 2 meses y el orden FIFO solo ven esta cuenta de E\*TRADE. Si tenías el *mismo* valor (mismo ISIN) en Revolut, colocar su CSV de pérdidas y ganancias en `input/revolut/` integra esas compras/ventas en la **misma cola FIFO**, por lo que el FIFO entre brókers y la regla de los 2 meses se evalúan correctamente entre ambos — como exige España para los valores homogéneos. Esto requiere el **historial completo de adquisiciones** de ese valor; de lo contrario la cola global puede quedar en negativo y el motor lanzará un error.
 3. **Modelo 720:** Si tus cuentas o valores en el extranjero superan conjuntamente los 50.000 € a 31 de diciembre (o en saldos medios del último trimestre), debes presentar la declaración informativa Modelo 720 de forma independiente.
 
 ---

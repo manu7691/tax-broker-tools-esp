@@ -194,6 +194,16 @@ Everything lives under `input/`. Menu options 1–2 create most of these automat
 | `input/options/*.pdf` | If you exercised options | E-Trade → Documents → option exercise confirmations |
 | `input/prior_losses.json` | Optional | Pending losses from before your data window, e.g. `{"2019": 1500}` |
 | `input/savings_income.json` | Optional | Dividends/interest (see *Filing Spanish Renta* above) |
+| `input/ticker.json` | For Revolut | Tracked security, e.g. `{"ticker": "DT", "isin": "US..."}` — the ISIN drives the Revolut filter |
+| `input/revolut/*.csv` | Optional | Revolut investment CSV — *Account statement* (preferred) or *Profit & Loss* (see below) |
+
+### Revolut (optional)
+
+If you also hold **the same company stock** on Revolut, export its **account statement** — the full transaction log (`Date, Ticker, Type, Quantity, Price per share, …`) — and drop the CSV (any name) into `input/revolut/`. It includes your **buys** even for shares you never sold, so they enter the cost-basis pool. Rows are filtered by **ticker** (this export has no ISIN) — set `"ticker"` in `input/ticker.json` (or pass `--revolut-symbol`). Non-trade rows (cash top-ups/withdrawals, internal transfers) are ignored; stock splits are normalized into post-split share terms so FIFO stays consistent.
+
+> An older **realized gains/losses** export (`Date acquired, Date sold, … ISIN, Gross proceeds`) is also accepted (filtered by ISIN; its "Other income & fees" section adds to dividend/interest totals), but it only lists *sells* — prefer the account statement above so your buys are included.
+
+Matched rows are folded into the **same FIFO pool** as your E\*TRADE shares, so FIFO ordering and the 2-month wash-sale rule apply across both brokers, as Spain requires for homogeneous securities. Gains are computed in EUR at the **official ECB rate per date** (Revolut's own FX column is ignored). Only USD (ECB-converted) and EUR (1:1) rows are processed; other currencies are skipped with a warning. **Requires the complete acquisition history for that security** so the global FIFO queue never goes negative. When more than one broker is present, the PDF tags each ledger row with a **Broker** column and adds a *Realized Gains/Losses by Broker* subtotal; the charts use the same combined position. Format reference: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
 
 ## ❓ Troubleshooting
 
@@ -398,6 +408,16 @@ Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría autom
 | `input/options/*.pdf` | Si ejerciste opciones | E-Trade → Documents → confirmaciones de ejercicio de opciones |
 | `input/prior_losses.json` | Opcional | Pérdidas pendientes de antes de tu ventana de datos, p. ej. `{"2019": 1500}` |
 | `input/savings_income.json` | Opcional | Dividendos/intereses (ver *Declarar en Renta* arriba) |
+| `input/ticker.json` | Para Revolut | Valor analizado, p. ej. `{"ticker": "DT", "isin": "US..."}` — el ISIN filtra el CSV de Revolut |
+| `input/revolut/*.csv` | Opcional | CSV de inversión de Revolut — *Extracto de cuenta* (preferido) o *Profit & Loss* (ver abajo) |
+
+### Revolut (opcional)
+
+Si además tienes **las mismas acciones de la empresa** en Revolut, exporta su **extracto de cuenta** — el registro completo de operaciones (`Date, Ticker, Type, Quantity, Price per share, …`) — y coloca el CSV (cualquier nombre) en `input/revolut/`. Incluye tus **compras** aunque nunca las hayas vendido, de modo que entran en el conjunto de coste de adquisición. Las filas se filtran por **ticker** (este export no tiene ISIN) — define `"ticker"` en `input/ticker.json` (o pasa `--revolut-symbol`). Las filas que no son operaciones (ingresos/retiradas de efectivo, transferencias internas) se ignoran; los *splits* se normalizan a términos post-split para mantener la coherencia del FIFO.
+
+> También se acepta un export más antiguo de **ganancias/pérdidas realizadas** (`Date acquired, Date sold, … ISIN, Gross proceeds`) (filtrado por ISIN; su sección "Other income & fees" se suma a dividendos/intereses), pero solo lista *ventas* — usa preferentemente el extracto de cuenta para que se incluyan tus compras.
+
+Las filas coincidentes se integran en el **mismo conjunto FIFO** que tus acciones de E\*TRADE, de modo que el orden FIFO y la regla de los 2 meses (*wash sale*) se aplican entre ambos brókers, como exige España para los valores homogéneos. Las ganancias se calculan en EUR al **tipo oficial del BCE de cada fecha** (se ignora la columna FX de Revolut). Solo se procesan filas en USD (convertidas con el BCE) y EUR (1:1); otras divisas se omiten con un aviso. **Requiere el historial completo de adquisiciones** de ese valor para que la cola FIFO global nunca quede en negativo. Cuando hay más de un bróker, el PDF marca cada fila del libro con una columna **Bróker** y añade un subtotal *Ganancias/Pérdidas Realizadas por Bróker*; los gráficos usan la misma posición combinada. Formato de referencia: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
 
 ## ❓ Solución de Problemas
 

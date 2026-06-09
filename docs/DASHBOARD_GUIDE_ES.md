@@ -150,6 +150,12 @@ las decisiones principales — está ahí por si lo quieres.
   concretos quedan. Por eso un equilibrio aquí puede diferir de la vista solo-USD de E-Trade.
 - **El coste base del ESPP** usa el FMV (valor de mercado) de la fecha de compra, coherente
   con el resto del motor fiscal.
+- **Se incluyen las posiciones del mismo valor en Revolut.** Si colocaste un CSV de Revolut
+  en `input/revolut/` (ver el README), esas compras/ventas de tu **ticker analizado** se
+  integran en la misma posición, de modo que los gráficos muestran la imagen **combinada**
+  de E\*TRADE + Revolut, igual que el informe PDF. Los gráficos cubren un único valor — los
+  demás tickers que tengas en Revolut no se muestran aquí (tienen su propio FIFO independiente;
+  ver [TAX_CALCULATION_METHOD_ES.md](TAX_CALCULATION_METHOD_ES.md)).
 
 Para la metodología fiscal de fondo, consulta
 [TAX_CALCULATION_METHOD_ES.md](TAX_CALCULATION_METHOD_ES.md) y

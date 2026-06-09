@@ -27,6 +27,7 @@ from tax_engine import (
     prefetch_ecb_rates,
 )
 from tax_engine.options_parser import load_options_events
+from tax_engine.revolut_parser import load_revolut_events, merge_savings_income
 
 
 def load_prior_losses(path: Path) -> dict[int, Decimal]:
@@ -145,6 +146,36 @@ def load_savings_income(path: Path) -> dict[int, SavingsIncomeYear]:
     if result:
         print(f"Loaded dividend/interest income for {len(result)} year(s) (EUR) from {path}.")
     return result
+
+
+def load_security_config(input_dir: Path) -> tuple[str | None, str | None]:
+    """
+    Load the tracked security's ticker and ISIN from ``input/ticker.json``.
+
+    Used to filter the optional Revolut export down to the same security the
+    E-Trade data tracks. Accepts either an object (``{"ticker": "DT",
+    "isin": "US..."}``) or a bare ticker string. Returns ``(symbol, isin)``,
+    either of which may be ``None``.
+    """
+    json_path = input_dir / "ticker.json"
+    if json_path.exists():
+        try:
+            data = json.loads(json_path.read_text(encoding="utf-8"))
+        except (json.JSONDecodeError, OSError):
+            return None, None
+        if isinstance(data, dict):
+            symbol = (data.get("ticker") or "").strip().upper() or None
+            isin = (data.get("isin") or "").strip().upper() or None
+            return symbol, isin
+        if isinstance(data, str):
+            return data.strip().upper() or None, None
+    txt_path = input_dir / "ticker.txt"
+    if txt_path.exists():
+        try:
+            return txt_path.read_text(encoding="utf-8").strip().upper() or None, None
+        except OSError:
+            pass
+    return None, None
 
 
 def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
@@ -647,6 +678,18 @@ def main() -> None:
         "({\"2024\": {\"dividends_eur\": 320, ...}}). Defaults to "
         "<input-dir>/savings_income.json if present.",
     )
+    parser.add_argument(
+        "--revolut-isin",
+        default=None,
+        help="ISIN of the tracked security, used to filter the optional Revolut "
+        "CSV (input/revolut/*.csv) to homogeneous shares. Overrides input/ticker.json.",
+    )
+    parser.add_argument(
+        "--revolut-symbol",
+        default=None,
+        help="Ticker to filter the optional Revolut CSV when no ISIN is available "
+        "(ISIN is preferred). Overrides input/ticker.json.",
+    )
     args = parser.parse_args()
     input_dir: Path = args.input_dir
     output_dir: Path = args.output_dir
@@ -671,8 +714,19 @@ def main() -> None:
     rsu_events = load_rsu_events(input_dir / "rsu")
     options_events = load_options_stock_events(input_dir)
 
+    # Optional Revolut export: same security (matched on ISIN), folded into the
+    # same FIFO pool so cross-broker FIFO and the 2-month wash-sale rule apply.
+    config_symbol, config_isin = load_security_config(input_dir)
+    revolut_isin = (args.revolut_isin or config_isin) or None
+    revolut_symbol = (args.revolut_symbol or config_symbol) or None
+    revolut_events, revolut_income = load_revolut_events(
+        input_dir, isin=revolut_isin, symbol=revolut_symbol
+    )
+    if revolut_income:
+        savings_income = merge_savings_income(savings_income, revolut_income)
+
     # Combine all events (engine.process_all handles chronological sorting internally)
-    events = espp_events + sell_events + rsu_events + options_events
+    events = espp_events + sell_events + rsu_events + options_events + revolut_events
 
     # Auto-detect sell-to-cover vs manual sells
     auto_detect_sell_to_cover(events)

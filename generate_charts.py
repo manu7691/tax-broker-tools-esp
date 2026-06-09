@@ -28,7 +28,9 @@ from tax_engine.cli_main import (
     load_options_stock_events,
     load_rsu_events,
     load_savings_income,
+    load_security_config,
 )
+from tax_engine.revolut_parser import load_revolut_trade_events
 from tax_engine.market_data import (
     fetch_company_name,
     fetch_historical_market_data,
@@ -234,8 +236,13 @@ def main():
     rsu_dir = input_dir / "rsu"
     rsu_events = load_rsu_events(rsu_dir) if rsu_dir.exists() else []
     options_events = load_options_stock_events(input_dir)
-    
-    all_events = espp_events + sell_events + rsu_events + options_events
+
+    # Optional Revolut holdings of the same security (matched on ISIN, ticker as
+    # fallback) so the charts reflect the same combined position as the PDF report.
+    _, config_isin = load_security_config(input_dir)
+    revolut_events = load_revolut_trade_events(input_dir, isin=config_isin, symbol=ticker)
+
+    all_events = espp_events + sell_events + rsu_events + options_events + revolut_events
     if not all_events:
         print("No events found. Please make sure your Excel sheets and PDFs are in the input folder.")
         return
@@ -340,6 +347,24 @@ def main():
     chart_data = build_chart_data(all_events)
     fx_history = build_fx_history(all_events)
 
+    # Per-broker breakdown for the dashboard: cost basis invested (acquisitions)
+    # and realized gain/loss (sells), attributed to the broker of each event. Only
+    # rendered when more than one broker is present (the template hides it otherwise).
+    broker_invested: dict[str, float] = {}
+    broker_realized: dict[str, float] = {}
+    for pe in engine.processed_events:
+        b = pe.event.broker
+        if pe.event.event_type == EventType.SELL:
+            broker_realized[b] = broker_realized.get(b, 0.0) + float(pe.realized_gain_loss)
+        else:
+            broker_invested[b] = broker_invested.get(b, 0.0) + float(pe.event.total_value_eur)
+    broker_names = sorted(set(broker_invested) | set(broker_realized))
+    broker_chart = {
+        "brokers": broker_names,
+        "invested": [round(broker_invested.get(b, 0.0), 2) for b in broker_names],
+        "realized": [round(broker_realized.get(b, 0.0), 2) for b in broker_names],
+    }
+
     # Unsold lots and ESPP tracker
     today_dt = date.today()
     current_reference_date = today_dt if today_dt.year >= 2026 else latest_event.event_date
@@ -408,6 +433,7 @@ def main():
     html_content = html_content.replace("__CHART_DATA__", json.dumps(chart_data))
     html_content = html_content.replace("__FX_HISTORY__", json.dumps(fx_history))
     html_content = html_content.replace("__DECOMP_DATA__", json.dumps(sales_decomposition))
+    html_content = html_content.replace("__BROKER_DATA__", json.dumps(broker_chart))
     html_content = html_content.replace("__HISTORICAL_QUOTES__", json.dumps(hist_quotes))
     html_content = html_content.replace("__ESPP_LOTS__", json.dumps(espp_active_lots))
     html_content = html_content.replace("__UNSOLD_LOTS__", json.dumps(unsold_lots_data))

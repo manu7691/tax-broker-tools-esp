@@ -26,12 +26,41 @@ The engine implements a fully compliant First-In, First-Out (FIFO) calculation s
 
 ## 2. Core Calculation Methodology
 
+### Data Flow
+
+```mermaid
+flowchart TD
+    A["E*TRADE ESPP<br/>BenefitHistory.xlsx"] --> P
+    B["E*TRADE Orders<br/>orders.xlsx"] --> P
+    C["E*TRADE RSU PDFs"] --> P
+    D["E*TRADE Options PDFs"] --> P
+    E["Revolut CSV<br/>(movements / realized gains)"] -->|"filter to tracked ISIN/ticker<br/>tag broker = Revolut"| P
+    P["Combined events<br/>(one security)"] --> F["FIFO engine<br/>+ 2-month wash sale<br/>+ ECB USD→EUR per date"]
+    F --> R["PDF report (EN/ES)<br/>ledger · per-broker subtotal · savings base"]
+    F --> G["charts_dashboard.html"]
+```
+
+Every source is converted into the same `StockEvent` stream, tagged with its broker, and fed through one FIFO queue. Revolut rows are filtered to the single tracked security before they join the pool (see *FIFO Scope* below).
+
 ### FIFO Lot Matching (First-In, First-Out)
 Under Spanish law (**Art. 37.2 LIRPF**), shares of the same company are homogeneous. When you execute a sell order, the engine matches the sold shares against your oldest available share acquisitions in chronological order.
 * Realized gain/loss is calculated per lot:
   $$\text{Realized Gain/Loss} = (\text{Selling Price in EUR} - \text{Acquisition Cost in EUR}) \times \text{Shares}$$
 * If a single sell transaction spans multiple purchase lots, the transaction is split and calculated on a per-lot basis.
 * Stale lots are completely cleared once their remaining shares reach `0`.
+
+### FIFO Scope: Per Security, Not Across Securities
+FIFO is applied **per homogeneous security** — i.e. per ISIN (Art. 37.2 LIRPF). Each security has its **own independent FIFO queue**: a sale of *DT* can only be matched against earlier acquisitions of *DT*, never against *TSLA* or *NVDA*. You never FIFO-match across different tickers.
+
+* **This engine processes one security at a time.** It assumes every input transaction is the same homogeneous security (in practice, your employer's stock, e.g. DT) and keeps a single FIFO queue. The optional Revolut import is therefore **filtered down to that one security** (by ISIN, or by ticker for the movements export); rows for other tickers are discarded.
+* **Other securities are still taxable and must be declared separately.** If you also bought and sold *other* tickers on Revolut (TSLA, NVDA, ADBE, …), each of those is its own FIFO calculation that this tool does **not** compute. Run the engine once per ticker (set `input/ticker.json` accordingly), or have those handled separately, and combine the results as below.
+
+**How it rolls up for Hacienda (Modelo 100, base del ahorro):**
+1. Compute each security's net gain/loss with its **own** FIFO queue (per ISIN).
+2. **Sum** all securities' results into the single *ganancias y pérdidas patrimoniales* bucket of the savings base — losses on one security offset gains on another within this bucket (they are not ring-fenced per security).
+3. That net then cross-offsets (up to the 25% cap) against the dividends/interest (RCM) bucket, and any remainder carries forward 4 years (Art. 49 LIRPF).
+
+So **FIFO is per security, but the taxable result is the aggregate** of all of them in the savings base.
 
 ### Transaction Processing Order (Same-Day Events)
 To prevent negative share inventory errors and ensure correct FIFO matching for same-day sell-to-cover actions, events occurring on the same calendar day are sorted as follows:
@@ -91,7 +120,9 @@ The engine's **Yearly Tax Summary** reports each year's gains and losses indepen
 
 ### 4.2 Other limitations
 
-2. **Single Ticker Assumption:** The engine assumes all input transactions apply to the same company stock (in practice, your employer's shares). If you trade multiple tickers, separate files must be processed to prevent FIFO lot mixing.
+2. **Single Ticker Assumption:** The engine assumes all input transactions apply to the same company stock (in practice, your employer's shares). If you trade multiple tickers, separate files must be processed to prevent FIFO lot mixing. *Exception:* the optional Revolut export (`input/revolut/*.csv`) may contain many tickers — the engine filters it down to the tracked security (by **ISIN** for the realized-gains export, or by **ticker** for the account-movements export, which has no ISIN) per `input/ticker.json`, and discards the rest, so only homogeneous shares enter the FIFO pool. The movements export also contributes **buys** for shares you never sold, completing the cost-basis pool.
+
+   **Cross-broker scope (Revolut):** by default the wash-sale rule and FIFO ordering only see this E\*TRADE account. If you held the *same* security (same ISIN) on Revolut, dropping its P&L CSV into `input/revolut/` merges those buys/sells into the **same FIFO queue**, so cross-broker FIFO and the 2-month rule are evaluated correctly across both — as Spain requires for valores homogéneos. This requires the **complete acquisition history** for that security; otherwise the global queue can go negative and the engine raises an error.
 3. **Modelo 720:** If your foreign bank accounts or stock portfolios (like E-Trade) exceed a value of €50,000 at any point during the year (or as of Dec 31st), you must file the Modelo 720 informative declaration. The engine does not generate this form.
 
 ---

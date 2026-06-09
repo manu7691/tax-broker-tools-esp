@@ -58,7 +58,7 @@ while true; do
     echo "=========================================="
     echo "1. Login to E-Trade (Required first)"
     echo "2. Download All Data (ESPP, Orders, RSU, Options)"
-    echo "3. Calculate Tax"
+    echo "3. Calculate Tax (incl. optional Revolut CSV)"
     echo "4. Add Dividend/Interest Income (optional)"
     echo "5. Run Demo"
     echo "6. Generate Charts & Tax Dashboard"
@@ -87,6 +87,9 @@ while true; do
         3)
             echo "------------------------------------------"
             echo "Calculating Tax..."
+            echo "(Optional: drop a Revolut investment CSV in input/revolut/*.csv."
+            echo " Set the tracked ticker (and ISIN if available) in input/ticker.json"
+            echo " so same-stock rows merge into the FIFO pool; other tickers are ignored.)"
             echo "------------------------------------------"
             .venv/bin/tax-engine
             echo ""

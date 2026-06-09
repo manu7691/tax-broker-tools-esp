@@ -64,6 +64,10 @@ class StockEvent:
     fees_usd: Decimal = Decimal("0")
     shares_sold_to_cover: Decimal = Decimal("0")  # For VEST events
     notes: str = ""
+    # Originating broker/account for this transaction. Defaults to E*TRADE (the
+    # primary source); the optional Revolut importer sets "Revolut". Used to tag
+    # rows and produce per-broker subtotals in the report.
+    broker: str = "E*TRADE"
     # Raw E-Trade order status for SELL events: "Settled", "Executed", "Open", etc.
     # Empty when unknown (e.g. VEST/BUY events, or orders.xlsx downloaded before
     # the Status column existed). Used to tell a settled sale from one whose RSU

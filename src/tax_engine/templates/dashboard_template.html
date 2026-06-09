@@ -718,6 +718,17 @@
 
     <!-- Tab 4: Advanced (for the curious) -->
     <div id="tab-advanced" class="dashboard tab-content">
+        <!-- Per-broker breakdown (only rendered when >1 broker is present) -->
+        <div id="broker-card" class="card full-width" style="display:none;">
+            <h2 data-i18n="broker_chart_title">Which broker did this position come from?</h2>
+            <div class="analysis-text" data-i18n="broker_chart_desc">
+                When you hold the same stock across more than one broker (e.g. E*TRADE + Revolut), this breaks the position down by broker.
+            </div>
+            <div class="chart-container">
+                <canvas id="brokerChart"></canvas>
+            </div>
+        </div>
+
         <!-- Dynamic Trend Chart -->
         <div class="card full-width">
             <h2 data-i18n="trend_chart_title">Stock Price Trend & Market Averages (USD)</h2>
@@ -1033,6 +1044,10 @@
                 trend_chart_desc: "Tracks the daily closing price of your stock (<strong>Blue line</strong>) alongside the 50-day average (<strong>Green line</strong>), the 200-day average (<strong>Red line</strong>), your stepping running purchase cost basis (<strong>Solid Orange line</strong>), and your current average cost basis (<strong>Orange dashed line</strong>) to easily see how the stock price has fluctuated relative to your investments over the duration of your stock list.",
                 decomp_chart_title: "Where did my sales profits come from?",
                 decomp_chart_desc: "When you sell US shares, your final profit in Euros depends on two factors: did the stock price go up (<strong>Blue Bar</strong>), or did the US Dollar get stronger against the Euro (<strong>Purple Bar</strong>)? This chart breaks down each sale's profit so you can see if you won due to stock growth or exchange rate luck.",
+                broker_chart_title: "Which broker did this position come from?",
+                broker_chart_desc: "When you hold the same stock across more than one broker (e.g. E*TRADE + Revolut), this breaks the position down by broker: how much you invested (<strong>cost basis, EUR</strong>) and the realized gain/loss booked at each. FIFO and the 2-month rule still run across all of them together, as Spanish law requires.",
+                broker_chart_invested: "Invested (cost basis, EUR)",
+                broker_chart_realized: "Realized gain/loss (EUR)",
                 price_chart_title: "Stock Price & Transaction History (USD)",
                 price_chart_desc: "Hover over the dots to see details of past transactions (Vests, Buys, Sells). <strong>💡 Tip: Click on any dot to open Yahoo Finance news for that date range to see what happened in the market.</strong>",
                 price_chart_tip: "Clicking a point opens Yahoo Finance news for a 10-day window around the transaction.",
@@ -1213,6 +1228,10 @@
                 trend_chart_desc: "Muestra el precio de cierre diario de su acción (<strong>Línea Azul</strong>) junto con la media de 50 días (<strong>Línea Verde</strong>), la media de 200 días (<strong>Línea Roja</strong>), su base de costo medio móvil (<strong>Línea Naranja continua</strong>), y su costo medio actual de referencia (<strong>Línea Naranja discontinua</strong>) para ver fácilmente si la acción cotiza por encima o por debajo de lo que pagó por ella.",
                 decomp_chart_title: "¿De dónde provinieron mis ganancias de venta?",
                 decomp_chart_desc: "Al vender acciones de EE. UU., su beneficio final en euros depende de dos factores: si el precio de la acción subió (<strong>Barra Azul</strong>) o si el dólar estadounidense se fortaleció frente al euro (<strong>Barra Morada</strong>). Este gráfico desglosa cada venta para ver si ganó por crecimiento de la acción o por suerte en el tipo de cambio.",
+                broker_chart_title: "¿De qué bróker proviene esta posición?",
+                broker_chart_desc: "Cuando tienes la misma acción en más de un bróker (p. ej. E*TRADE + Revolut), esto desglosa la posición por bróker: cuánto invertiste (<strong>coste de adquisición, EUR</strong>) y la ganancia/pérdida realizada en cada uno. El FIFO y la regla de los 2 meses se aplican entre todos en conjunto, como exige la ley española.",
+                broker_chart_invested: "Invertido (coste de adquisición, EUR)",
+                broker_chart_realized: "Ganancia/pérdida realizada (EUR)",
                 price_chart_title: "Historial de Precios y Transacciones (USD)",
                 price_chart_desc: "Pase el cursor sobre los puntos para ver los detalles de las transacciones pasadas (Vests, Compras, Ventas). <strong>💡 Consejo: Haga clic en cualquier punto para abrir las noticias de Yahoo Finance de ese rango de fechas y ver qué pasó en el mercado.</strong>",
                 price_chart_tip: "Hacer clic en un punto abre las noticias de Yahoo Finance para un período de 10 día alrededor de la transacción.",
@@ -2215,6 +2234,52 @@
                 }
             }
         });
+
+        // --- Per-broker breakdown (only when more than one broker is present) ---
+        const brokerData = __BROKER_DATA__;
+        if (brokerData && brokerData.brokers && brokerData.brokers.length > 1) {
+            document.getElementById('broker-card').style.display = '';
+            charts.broker = new Chart(document.getElementById('brokerChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: brokerData.brokers,
+                    datasets: [
+                        {
+                            label: locales[currentLang].broker_chart_invested,
+                            data: brokerData.invested,
+                            backgroundColor: '#3b82f6',
+                            borderColor: '#1e293b',
+                            borderWidth: 1
+                        },
+                        {
+                            label: locales[currentLang].broker_chart_realized,
+                            data: brokerData.realized,
+                            backgroundColor: brokerData.realized.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+                            borderColor: '#1e293b',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#f8fafc' } },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.dataset.label}: €${context.raw.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } },
+                        y: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } }
+                    }
+                }
+            });
+        }
 
         // --- RSU Hold vs Vest Strategy Bar Chart ---
         const rsuSellOnVest = __RSU_VEST_VAL__;
