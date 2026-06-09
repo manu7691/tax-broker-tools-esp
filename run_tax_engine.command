@@ -61,9 +61,10 @@ while true; do
     echo "3. Calculate Tax"
     echo "4. Add Dividend/Interest Income (optional)"
     echo "5. Run Demo"
-    echo "6. Exit"
+    echo "6. Generate Charts & Tax Dashboard"
+    echo "7. Exit"
     echo "=========================================="
-    read -p "Select an option (1-6): " choice
+    read -p "Select an option (1-7): " choice
 
     case $choice in
         1)
@@ -110,6 +111,20 @@ while true; do
             read -p "Press Enter to return to menu..."
             ;;
         6)
+            echo "------------------------------------------"
+            echo "Generate Charts & Tax Dashboard"
+            echo "(Stock ticker is auto-detected from your data.)"
+            echo "------------------------------------------"
+            CHART_ARGS=""
+            read -p "Enter current stock price in USD (or press Enter for live): " chart_price
+            if [ -n "$chart_price" ]; then
+                CHART_ARGS="--current-price $chart_price"
+            fi
+            "$PYTHON_BIN" generate_charts.py $CHART_ARGS
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
+        7)
             echo "Exiting..."
             exit 0
             ;;
@@ -119,3 +134,4 @@ while true; do
             ;;
     esac
 done
+

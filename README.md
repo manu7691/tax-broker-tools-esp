@@ -26,6 +26,9 @@ To share this repository with your teammates or show it to your tax advisor, the
 *   **Spanish FIFO Tax Methodology & Compliance Audit:**
     *   🇺🇸 [TAX_CALCULATION_METHOD.md](docs/TAX_CALCULATION_METHOD.md)
     *   🇪🇸 [TAX_CALCULATION_METHOD_ES.md](docs/TAX_CALCULATION_METHOD_ES.md)
+*   **Interactive Charts & Tax Dashboard Guide:**
+    *   🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md)
+    *   🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md)
 
 ---
 
@@ -147,6 +150,23 @@ Copy the net taxable savings base into the capital gains from stock transfers se
 
 ---
 
+## 📊 Interactive Charts & Tax Dashboard
+
+Beyond the PDF report, you can generate an **interactive HTML dashboard** that turns your data into a plain-language picture of your stock: what you own, what it's worth today, what you'd net after tax if you sold, and when each ESPP batch becomes tax-free. It is built for a non-finance audience and has a privacy-blur mode and an EN/ES toggle.
+
+Generate it from **menu option 6** ("Generate Charts & Tax Dashboard"), or directly:
+
+```bash
+uv run generate_charts.py            # auto-detects ticker, fetches the live price
+uv run generate_charts.py --current-price 45.50   # or pin a fixed USD price
+```
+
+It writes `charts_dashboard.html` (gitignored) — open it in any browser. Full walkthrough: 🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md) · 🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md).
+
+> ⚠️ The dashboard is informational only and fetches a **live market price from Yahoo Finance**. No personal data leaves your machine in the file itself.
+
+---
+
 ## 📋 Menu Options
 
 When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (Windows), you get this menu:
@@ -158,7 +178,8 @@ When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (
 | 3 | Calculate Tax | Runs the engine and generates the English + Spanish PDF reports. |
 | 4 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) for the savings base. |
 | 5 | Run Demo | Runs on sample data so you can see the output without your own data. |
-| 6 | Exit | Quit. |
+| 6 | Generate Charts & Tax Dashboard | Builds the interactive `charts_dashboard.html` (auto-detects ticker; fetches a live price). |
+| 7 | Exit | Quit. |
 
 ## 📂 Input Files
 
@@ -208,6 +229,9 @@ Para compartir este repositorio con tus compañeros de equipo o mostrárselo a t
 *   **Metodología Fiscal FIFO y Auditoría de Cumplimiento:**
     *   🇺🇸 [TAX_CALCULATION_METHOD.md](docs/TAX_CALCULATION_METHOD.md)
     *   🇪🇸 [TAX_CALCULATION_METHOD_ES.md](docs/TAX_CALCULATION_METHOD_ES.md)
+*   **Guía del Panel Interactivo de Gráficos e Impuestos:**
+    *   🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md)
+    *   🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md)
 
 ---
 
@@ -329,6 +353,23 @@ Introduce el valor de la "base imponible del ahorro" en el apartado de ganancias
 
 ---
 
+## 📊 Panel Interactivo de Gráficos e Impuestos
+
+Además del informe PDF, puedes generar un **panel HTML interactivo** que convierte tus datos en una imagen clara y sin tecnicismos de tus acciones: qué posees, cuánto valen hoy, cuánto te quedaría neto tras impuestos si vendieras y cuándo queda exento cada lote de ESPP. Está pensado para un público no financiero e incluye un modo de privacidad (difumina importes) y un selector EN/ES.
+
+Genéralo desde la **opción 6 del menú** ("Generate Charts & Tax Dashboard"), o directamente:
+
+```bash
+uv run generate_charts.py            # detecta el ticker y obtiene el precio en vivo
+uv run generate_charts.py --current-price 45.50   # o fija un precio en USD
+```
+
+Crea `charts_dashboard.html` (en `.gitignore`) — ábrelo en cualquier navegador. Guía completa: 🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md) · 🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md).
+
+> ⚠️ El panel es solo informativo y obtiene un **precio de mercado en vivo de Yahoo Finance**. Ningún dato personal sale de tu equipo en el propio archivo.
+
+---
+
 ## 📋 Opciones del Menú
 
 Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windows), aparece este menú:
@@ -340,7 +381,8 @@ Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windo
 | 3 | Calculate Tax | Ejecuta el motor y genera los informes PDF en inglés y español. |
 | 4 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
 | 5 | Run Demo | Ejecuta con datos de ejemplo para ver la salida sin tus propios datos. |
-| 6 | Exit | Salir. |
+| 6 | Generate Charts & Tax Dashboard | Crea el `charts_dashboard.html` interactivo (detecta el ticker; obtiene el precio en vivo). |
+| 7 | Exit | Salir. |
 
 ## 📂 Archivos de Entrada
 

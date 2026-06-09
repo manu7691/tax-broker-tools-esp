@@ -21,6 +21,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `--savings-income` flag; interactive `tax-savings-income` CLI; foreign tax
   withheld reported for reference.
 - "Add Dividend/Interest Income" option in the macOS/Linux and Windows launchers.
+- Interactive Charts & Tax Dashboard (`generate_charts.py`, launcher option 6):
+  a self-contained `charts_dashboard.html` organised as a plain-language, four-tab
+  narrative (My Stock / Should I Sell? / My Taxes / Advanced) for non-finance users.
+  Includes a "situation today" snapshot, a sell simulator with after-tax net cash and
+  an ESPP-lock warning, the ESPP secured/at-risk/lost split with a 3-year countdown,
+  fresh-start vs. full-portfolio break-even, a dividends/interest card feeding the
+  tax-bracket optimiser, an EN/ES toggle (localised dates and month names), and a
+  privacy-blur mode. The ticker is auto-detected from the data and the live price is
+  fetched from Yahoo Finance. Bilingual guide in `docs/DASHBOARD_GUIDE_{EN,ES}.md`.
 - Modelo 100 filing guide in the report, mapping each figure to its *apartado*
   (with casilla numbers flagged to verify per year).
 - ECB exchange-rate cache persisted to disk for reproducible, offline-capable

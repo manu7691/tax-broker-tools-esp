@@ -1,0 +1,2717 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Stock Performance & Tax Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+    <style>
+        :root {
+            --bg-primary: #0f172a;
+            --bg-secondary: #1e293b;
+            --text-primary: #f8fafc;
+            --text-secondary: #94a3b8;
+            --accent-green: #10b981;
+            --accent-red: #ef4444;
+            --accent-blue: #3b82f6;
+            --accent-purple: #8b5cf6;
+            --accent-yellow: #f59e0b;
+            --border: #334155;
+            --card-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.3), 0 4px 6px -4px rgba(0, 0, 0, 0.3);
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: var(--bg-primary);
+            color: var(--text-primary);
+            margin: 0;
+            padding: 24px;
+        }
+        
+        /* Privacy Masking Mode CSS rules */
+        .privacy-active .sensitive {
+            filter: blur(6px) !important;
+            user-select: none;
+            pointer-events: none;
+        }
+        .privacy-active canvas {
+            filter: blur(10px) !important;
+            user-select: none;
+            pointer-events: none;
+        }
+        
+        .header {
+            max-width: 1200px;
+            margin: 0 auto 24px auto;
+            text-align: center;
+        }
+        
+        h1 {
+            margin: 0 0 8px 0;
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #a78bfa, #f43f5e);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 1.1rem;
+            margin-bottom: 24px;
+        }
+
+        .header-controls {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 16px;
+            margin-bottom: 32px;
+            flex-wrap: wrap;
+        }
+
+        .privacy-toggle-btn {
+            background-color: var(--bg-secondary);
+            border: 1px solid var(--border);
+            color: var(--text-primary);
+            padding: 10px 20px;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            transition: background-color 0.2s, border-color 0.2s;
+        }
+
+        .privacy-toggle-btn:hover {
+            background-color: var(--border);
+            border-color: var(--text-secondary);
+        }
+
+        /* Custom Scrollbars */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: var(--bg-primary);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: var(--border);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: var(--text-secondary);
+        }
+
+        /* Range Slider Styling */
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--border);
+            height: 6px;
+            border-radius: 3px;
+            outline: none;
+            margin: 10px 0;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 18px;
+            height: 18px;
+            border-radius: 50%;
+            background: var(--accent-blue);
+            cursor: pointer;
+            box-shadow: 0 0 10px rgba(59, 130, 246, 0.6);
+            transition: transform 0.1s ease, background-color 0.1s ease;
+        }
+        input[type=range]::-webkit-slider-thumb:hover {
+            transform: scale(1.25);
+            background: #60a5fa;
+        }
+
+        /* Tab navigation styling */
+        .tab-bar {
+            display: flex;
+            background: rgba(30, 41, 59, 0.6);
+            backdrop-filter: blur(8px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 12px;
+            padding: 4px;
+            max-width: 600px;
+            margin: 0 auto;
+        }
+
+        .tab-btn {
+            flex: 1;
+            background: none;
+            border: none;
+            color: var(--text-secondary);
+            padding: 12px 16px;
+            border-radius: 8px;
+            font-weight: 700;
+            font-size: 0.95rem;
+            cursor: pointer;
+            transition: background-color 0.2s, color 0.2s, box-shadow 0.2s;
+            text-align: center;
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+            background-color: rgba(255, 255, 255, 0.02);
+        }
+
+        .tab-btn.active {
+            background: linear-gradient(135deg, var(--accent-blue), #2563eb);
+            color: var(--text-primary);
+            box-shadow: 0 4px 12px rgba(37, 99, 235, 0.3);
+        }
+
+        .tab-content {
+            display: none;
+        }
+
+        .tab-content.active {
+            display: grid;
+        }
+        
+        .dashboard {
+            max-width: 1200px;
+            margin: 0 auto;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 24px;
+        }
+        
+        .full-width {
+            grid-column: span 2;
+        }
+        
+        @media (max-width: 900px) {
+            .dashboard > div {
+                grid-column: span 2;
+            }
+        }
+        
+        .card {
+            background: rgba(30, 41, 59, 0.45);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            display: flex;
+            flex-direction: column;
+            transition: transform 0.25s ease, box-shadow 0.25s ease, border-color 0.25s ease;
+        }
+        
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 12px 40px 0 rgba(59, 130, 246, 0.12), 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+            border-color: rgba(59, 130, 246, 0.3);
+        }
+
+        
+        .card h2 {
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 1.35rem;
+            font-weight: 700;
+            border-bottom: 1px solid var(--border);
+            padding-bottom: 10px;
+            color: var(--text-primary);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+
+        .card h2 .badge {
+            font-size: 0.75rem;
+            padding: 4px 8px;
+            border-radius: 9999px;
+            font-weight: 500;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 350px;
+            width: 100%;
+            margin-top: auto;
+        }
+
+        .chart-container-large {
+            height: 420px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+        
+        .stat-item {
+            background: rgba(255, 255, 255, 0.02);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: transform 0.2s;
+        }
+
+        .stat-item:hover {
+            transform: translateY(-2px);
+        }
+        
+        .stat-label {
+            font-size: 0.875rem;
+            color: var(--text-secondary);
+            margin-bottom: 6px;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        
+        .stat-value {
+            font-size: 1.8rem;
+            font-weight: 800;
+        }
+
+        .analysis-text {
+            font-size: 0.95rem;
+            line-height: 1.6;
+            color: var(--text-secondary);
+            margin-bottom: 16px;
+        }
+
+        .analysis-text strong {
+            color: var(--text-primary);
+        }
+
+        /* Advisor box styles */
+        .advisor-box {
+            background: rgba(245, 158, 11, 0.05);
+            border: 1.5px solid var(--accent-yellow);
+            border-radius: 12px;
+            padding: 20px;
+            margin-bottom: 20px;
+        }
+
+        .advisor-title {
+            font-size: 1.1rem;
+            font-weight: bold;
+            color: var(--accent-yellow);
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .advisor-advice {
+            font-size: 0.95rem;
+            line-height: 1.5;
+            color: var(--text-primary);
+        }
+
+        /* Table styles */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 12px;
+            font-size: 0.9rem;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 12px;
+            border-bottom: 1px solid var(--border);
+        }
+
+        th {
+            color: var(--text-secondary);
+            font-weight: 600;
+            text-transform: uppercase;
+            font-size: 0.75rem;
+            letter-spacing: 0.05em;
+        }
+
+        tr:hover {
+            background: rgba(255, 255, 255, 0.01);
+        }
+
+        .status-badge {
+            padding: 4px 8px;
+            border-radius: 6px;
+            font-weight: bold;
+            font-size: 0.75rem;
+        }
+
+        .status-locked {
+            background-color: rgba(239, 68, 68, 0.15);
+            color: var(--accent-red);
+        }
+
+        .status-secured {
+            background-color: rgba(16, 185, 129, 0.15);
+            color: var(--accent-green);
+        }
+
+        /* Simulator Styles */
+        .sim-control-group {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+            background: rgba(255,255,255,0.02);
+            border: 1px solid var(--border);
+            padding: 16px;
+            border-radius: 12px;
+            flex-wrap: wrap;
+        }
+
+        .sim-control {
+            flex: 1;
+            min-width: 200px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .sim-control label {
+            font-size: 0.85rem;
+            font-weight: bold;
+            color: var(--text-secondary);
+        }
+
+        .sim-control input[type="range"] {
+            width: 100%;
+            cursor: pointer;
+        }
+
+        .sim-control-values {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.95rem;
+            font-weight: bold;
+        }
+        
+        .footer {
+            max-width: 1200px;
+            margin: 48px auto 0 auto;
+            text-align: center;
+            color: var(--text-secondary);
+            font-size: 0.875rem;
+            border-top: 1px solid var(--border);
+            padding-top: 24px;
+        }
+
+        .active-lang {
+            background-color: var(--accent-blue) !important;
+            border-color: var(--accent-blue) !important;
+            color: var(--text-primary) !important;
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1 data-i18n="header_title">My Stock Performance & Tax Dashboard</h1>
+        <div class="subtitle" data-i18n="header_subtitle">A simple summary of your RSU and ESPP shares, how much tax you saved, and your investment decisions.</div>
+        
+        <div class="header-controls">
+            <!-- Language Selector -->
+            <div class="lang-selector-container" style="display: inline-flex; gap: 8px; margin-right: 12px;">
+                <button id="lang-en-btn" class="privacy-toggle-btn active-lang" onclick="setLanguage('en')" style="padding: 10px 16px; font-weight: 700;">🇬🇧 EN</button>
+                <button id="lang-es-btn" class="privacy-toggle-btn" onclick="setLanguage('es')" style="padding: 10px 16px; font-weight: 700;">🇪🇸 ES</button>
+            </div>
+
+            <button id="privacyBtn" class="privacy-toggle-btn" onclick="togglePrivacy()">
+                <span>👁️</span> <span id="privacy-btn-text" data-i18n="privacy_btn_hide">Hide Sensitive Data</span>
+            </button>
+            <div class="tab-bar">
+                <button id="btn-mystock" class="tab-btn active" onclick="switchTab('mystock')" data-i18n="tab_mystock">📊 My Stock</button>
+                <button id="btn-sell" class="tab-btn" onclick="switchTab('sell')" data-i18n="tab_sell">💸 Should I Sell?</button>
+                <button id="btn-taxes" class="tab-btn" onclick="switchTab('taxes')" data-i18n="tab_taxes">🧾 My Taxes</button>
+                <button id="btn-advanced" class="tab-btn" onclick="switchTab('advanced')" data-i18n="tab_advanced">🔬 Advanced (for the curious)</button>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tab 1: My Stock (situation today) -->
+    <div id="tab-mystock" class="dashboard tab-content active">
+        <!-- HERO: Your situation today -->
+        <div class="card full-width">
+            <h2 data-i18n="hero_title">📊 Your situation today</h2>
+            <div class="analysis-text" data-i18n="hero_desc">
+                A plain snapshot of the company shares you still own right now: how many you have, what they are worth today, what you originally paid, and whether you are up or down overall. No jargon — just the numbers that matter.
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="hero_shares">Shares you still own</div>
+                    <div class="stat-value sensitive" id="hero-shares">0</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="hero_value">Worth today (EUR)</div>
+                    <div class="stat-value sensitive" id="hero-value" style="color: var(--accent-blue)">€0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="hero_paid">What you paid (EUR)</div>
+                    <div class="stat-value sensitive" id="hero-paid">€0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="hero_pl">Up / down so far (EUR)</div>
+                    <div class="stat-value sensitive" id="hero-pl">€0.00</div>
+                </div>
+            </div>
+            <div class="analysis-text" id="hero-note" style="margin-top: 8px; font-size: 0.85rem; color: var(--text-secondary);"></div>
+        </div>
+
+        <!-- Overview Stats Card -->
+        <div class="card full-width">
+            <h2 data-i18n="scorecard_title">Overall Scorecard (Did holding pay off?)</h2>
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="rsu_holding_pl">RSU Holding Profit/Loss</div>
+                    <div class="stat-value sensitive" id="rsu-delta-value">__RSU_DELTA_STR__</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="tax_secured">Tax Money Secured (Held ≥ 3 Years)</div>
+                    <div class="stat-value sensitive" style="color: var(--accent-green)">__ESPP_SECURED_STR__</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="tax_at_risk">Tax Exemption At Risk (Still Pending)</div>
+                    <div class="stat-value sensitive" style="color: var(--accent-yellow)">__ESPP_AT_RISK_STR__</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="tax_penalty">Extra Tax Penalty (Sold Too Early)</div>
+                    <div class="stat-value sensitive" style="color: var(--accent-red)">__ESPP_LOST_STR__</div>
+                </div>
+            </div>
+            <div class="analysis-text" data-i18n="scorecard_desc">
+                • <strong>RSU Holding Profit/Loss</strong>: Shows if holding your RSU shares was a good decision. 
+                  If it is <strong style="color: var(--accent-green)">Green</strong>, you made money by waiting. 
+                  If it is <strong style="color: var(--accent-red)">Red</strong>, you would have been better off selling them immediately on the day they vested.
+                <br><br>
+                • <strong>Tax Money Saved vs. Penalty</strong>: In Spain, if you buy company shares through the ESPP plan and keep them for <strong>at least 3 years</strong>, you do not pay income tax on the purchase discount (Tax Saved). If you sell them before 3 years, you lose this benefit and must pay normal income tax on the discount (Tax Penalty).
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Tab 2: Should I Sell? -->
+    <div id="tab-sell" class="dashboard tab-content">
+        <!-- Real-Time Sell Simulator & Scenario Planner -->
+        <div class="card full-width">
+            <h2 data-i18n="sim_title">Real-Time Sell Simulator & Currency Devaluation Planner</h2>
+            <div class="analysis-text" data-i18n="sim_desc">
+                Use the sliders to simulate selling your currently held shares (RSU + ESPP).
+                See exactly how much profit or loss you make in EUR, and track how a **weaker US Dollar (currency devaluation)** or **stock price drop** eats into your EUR savings.
+            </div>
+
+            <!-- ESPP lock warning: shown only when some held ESPP shares are still inside the 3-year window -->
+            <div id="espp-sell-warning" style="display: none; margin: 16px 0; padding: 14px 16px; background: rgba(245, 158, 11, 0.08); border: 1.5px solid var(--accent-yellow); border-radius: 10px; font-size: 0.9rem; line-height: 1.5; color: var(--text-primary);"></div>
+
+            <!-- Simulator Controls -->
+            <div class="sim-control-group">
+                <div class="sim-control">
+                    <div class="sim-control-values">
+                        <label data-i18n="label_sim_price">Simulated Stock Price (USD)</label>
+                        <span id="val-sim-price">$0.00</span>
+                    </div>
+                    <input type="range" id="slider-sim-price" min="10" max="100" step="0.1" value="0">
+                </div>
+                <div class="sim-control">
+                    <div class="sim-control-values">
+                        <label data-i18n="label_sim_fx">Simulated Exchange Rate (USD to EUR)</label>
+                        <span id="val-sim-fx">€0.0000</span>
+                    </div>
+                    <input type="range" id="slider-sim-fx" min="0.5" max="1.2" step="0.01" value="0">
+                </div>
+            </div>
+
+            <!-- Live Simulator Outcomes -->
+            <div class="stats">
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="label_sim_val">Simulated EUR Value</div>
+                    <div class="stat-value sensitive" id="outcome-value" style="color: var(--text-primary)">€0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="label_sim_gain">Simulated EUR Gain/Loss</div>
+                    <div class="stat-value sensitive" id="outcome-gain">€0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="label_sim_tax">Est. Tax Due (Hacienda)</div>
+                    <div class="stat-value sensitive" id="outcome-tax" style="color: var(--accent-yellow)">€0.00</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-label" data-i18n="label_sim_net">💰 Net cash in your pocket (after tax)</div>
+                    <div class="stat-value sensitive" id="outcome-net" style="color: var(--accent-green)">€0.00</div>
+                </div>
+            </div>
+
+            <!-- Hacienda Tax Bracket Optimizer Card -->
+            <div style="margin-top: 24px; padding: 20px; background: rgba(255, 255, 255, 0.02); border: 1.5px solid var(--border); border-radius: 12px; margin-bottom: 24px;">
+                <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-yellow); display: flex; align-items: center; gap: 8px;">
+                    🇪🇸 <span data-i18n="tax_opt_title">Hacienda Savings Tax Bracket Optimizer</span>
+                </h3>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 16px;" data-i18n="tax_opt_desc">
+                    Spanish capital gains taxes on savings are progressive. Keep your gains within lower brackets to optimize tax efficiency.
+                </p>
+                
+                <!-- Bracket Progress Indicator -->
+                <div style="margin-bottom: 16px;">
+                    <div style="display: flex; justify-content: space-between; font-size: 0.85rem; margin-bottom: 6px;">
+                        <span id="tax-bracket-current-label" style="font-weight: 600;">Current Bracket: 19%</span>
+                        <span id="tax-bracket-progress-text" style="color: var(--text-secondary);">€0 / €6,000 (0%)</span>
+                    </div>
+                    <div style="width: 100%; height: 8px; background: var(--bg-primary); border-radius: 4px; overflow: hidden; border: 1px solid var(--border);">
+                        <div id="tax-bracket-progress-bar" style="width: 0%; height: 100%; background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow)); transition: width 0.3s ease;"></div>
+                    </div>
+                </div>
+
+                <div id="tax-bracket-advice" style="font-size: 0.85rem; color: var(--text-primary); line-height: 1.5; padding: 12px; background: rgba(255, 255, 255, 0.01); border-radius: 8px; border-left: 4px solid var(--accent-yellow);">
+                    <!-- Dynamic Advisor Text -->
+                </div>
+            </div>
+
+            <!-- Currency & Market Scenario Planner -->
+            <h2 data-i18n="deval_title">Currency & Market Scenario Planner</h2>
+            <div class="analysis-text" data-i18n="deval_desc">
+                This table maps exactly what happens to your current value and gains under both positive and negative currency swings and stock movements.
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th data-i18n="th_scenario">Scenario Description</th>
+                        <th data-i18n="th_sim_price">Simulated Stock Price</th>
+                        <th data-i18n="th_sim_fx">Simulated USD/EUR FX Rate</th>
+                        <th data-i18n="th_sim_val">Simulated Portfolio Value (EUR)</th>
+                        <th data-i18n="th_sim_gain">Realized Gain / Loss (EUR)</th>
+                        <th data-i18n="th_loss_baseline">Impact vs. Baseline Today</th>
+                    </tr>
+                </thead>
+                <tbody id="scenario-planner-body">
+                    <!-- Dynamic Rows -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Breakeven Price & USD Devaluation Curve -->
+        <div class="card full-width">
+            <h2 style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
+                <span style="display: flex; align-items: center; gap: 8px;">
+                    <span style="font-size: 1.3rem;">🎯</span>
+                    <span data-i18n="breakeven_card_title">Breakeven Price & Exchange Rate Sensitivity</span>
+                </span>
+            </h2>
+            <div class="analysis-text" data-i18n="breakeven_card_desc" style="margin-bottom: 20px;">
+                Calculate the exact USD price required to sell all remaining shares without losing money, factoring in purchase costs, dollar devaluation, and past realized losses.
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; align-items: start;">
+                <!-- Calculator Stats Panel -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1.5px solid var(--border); border-radius: 12px; padding: 20px; display: flex; flex-direction: column; gap: 16px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-blue); border-bottom: 1.5px solid var(--border); padding-bottom: 8px; display: flex; align-items: center; gap: 8px;" data-i18n="be_stats_title">
+                        Real-Time Breakeven Calculator
+                    </h3>
+                    
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255,255,255,0.08); padding-bottom: 8px;">
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);" data-i18n="be_unsold_cost">Total Unsold Cost Basis (EUR)</span>
+                        <span id="be-val-unsold-cost" class="sensitive" style="font-size: 0.95rem; font-weight: 600; color: var(--text-primary);">€0.00</span>
+                    </div>
+
+                    <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px dashed rgba(255,255,255,0.08); padding-bottom: 8px;">
+                        <span style="font-size: 0.85rem; color: var(--text-secondary);" data-i18n="be_past_losses">Past Net Realized Gains/Losses (EUR)</span>
+                        <span id="be-val-past-losses" class="sensitive" style="font-size: 0.95rem; font-weight: 600;">€0.00</span>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(59, 130, 246, 0.05); padding: 12px; border-radius: 8px; border-left: 4px solid var(--accent-blue);">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);" data-i18n="be_target_price">Unsold Breakeven Price (USD)</span>
+                        <div style="display: flex; align-items: baseline; gap: 6px;">
+                            <span id="be-val-target-price" class="sensitive" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-blue);">$0.00</span>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">/ share</span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 4px; background: rgba(16, 185, 129, 0.05); padding: 12px; border-radius: 8px; border-left: 4px solid var(--accent-green);">
+                        <span style="font-size: 0.8rem; color: var(--text-secondary);" data-i18n="be_portfolio_price">Full Portfolio Breakeven Price (USD)</span>
+                        <div style="display: flex; align-items: baseline; gap: 6px;">
+                            <span id="be-val-portfolio-price" class="sensitive" style="font-size: 1.4rem; font-weight: 700; color: var(--accent-green);">$0.00</span>
+                            <span style="font-size: 0.75rem; color: var(--text-secondary);">/ share</span>
+                        </div>
+                    </div>
+                    
+                    <label style="display: flex; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-secondary); cursor: pointer; border-top: 1px solid var(--border); padding-top: 12px; margin-top: 4px;">
+                        <input type="checkbox" id="be-exclude-espp" onchange="updateSimulation()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-blue);">
+                        <span data-i18n="be_exclude_espp">Exclude ESPP shares (RSUs only)</span>
+                    </label>
+                </div>
+
+                <!-- Sensitivity Chart Panel -->
+                <div style="display: flex; flex-direction: column; gap: 10px;">
+                    <div style="position: relative; height: 320px; width: 100%;">
+                        <canvas id="breakevenChart"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Tab 3: My Taxes -->
+    <div id="tab-taxes" class="dashboard tab-content">
+        <!-- ESPP Lock Countdown Tracker Table -->
+        <div class="card full-width">
+            <h2 data-i18n="espp_tracker_title">ESPP Tax Exemption Lock Tracker (Active Lots)</h2>
+            <div class="analysis-text" data-i18n="espp_tracker_desc">
+                This table shows all your currently held ESPP shares. It tracks exactly how many days are left until the 3-year holding period expires and the shares become completely tax-free to sell.
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th data-i18n="th_purchase_date">Purchase Date</th>
+                        <th data-i18n="th_shares_held">Shares Held</th>
+                        <th data-i18n="th_acq_price">Acq Price (EUR)</th>
+                        <th data-i18n="th_unlock_date">Unlock Date (3y)</th>
+                        <th data-i18n="th_days_left">Days Left</th>
+                        <th data-i18n="th_exemption_status">Exemption Status</th>
+                        <th data-i18n="th_actionable_advice">Actionable Advice</th>
+                        <th data-i18n="th_calendar_alert">Alerts</th>
+                    </tr>
+                </thead>
+                <tbody id="espp-countdown-body">
+                    <!-- Dynamic rows -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Dividends & interest income (taxed together with stock gains) -->
+        <div class="card full-width">
+            <h2 data-i18n="div_title">💶 Dividends &amp; interest income</h2>
+            <div class="analysis-text" data-i18n="div_desc">
+                In Spain, the dividends and interest you receive are taxed in the <strong>same "savings" pot</strong> as your stock gains. So money you already earned here this year pushes you up the tax brackets <em>before</em> you even sell a single share. Add these via menu option 4 ("Add Dividend/Interest Income").
+            </div>
+            <div id="savings-income-content"></div>
+        </div>
+
+        <!-- ESPP holding efficiency chart -->
+        <div class="card">
+            <h2 data-i18n="espp_audit_title">ESPP Tax Exemption Audit</h2>
+            <div class="analysis-text" data-i18n="espp_audit_desc">
+                This pie chart shows how much of your ESPP discount you successfully kept tax-free (<strong>Green</strong>) vs. how much you sold too early, triggering a tax penalty (<strong>Red</strong>).
+            </div>
+            <div class="chart-container">
+                <canvas id="esppChart"></canvas>
+            </div>
+        </div>
+
+        <!-- RSU Hold vs Vest chart -->
+        <div class="card">
+            <h2 data-i18n="rsu_audit_title">Should I have sold my RSUs immediately?</h2>
+            <div class="analysis-text" data-i18n="rsu_audit_desc">
+                Compares the baseline strategy (selling all RSU shares immediately on the day you got them, shown in <strong>Blue</strong>) vs. your actual strategy (holding them to sell later, or still holding them today, shown in <strong>Green/Red</strong>).
+            </div>
+            <div class="chart-container">
+                <canvas id="rsuChart"></canvas>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tab 4: Advanced (for the curious) -->
+    <div id="tab-advanced" class="dashboard tab-content">
+        <!-- Dynamic Trend Chart -->
+        <div class="card full-width">
+            <h2 data-i18n="trend_chart_title">Stock Price Trend & Market Averages (USD)</h2>
+            <div class="analysis-text" data-i18n="trend_chart_desc">
+                Tracks the daily closing price of your stock (<strong>Blue line</strong>) alongside the 50-day average (<strong>Green line</strong>), the 200-day average (<strong>Red line</strong>), your stepping running purchase cost basis (<strong>Solid Orange line</strong>), and your current average cost basis (<strong>Orange dashed line</strong>) to easily see how the stock price has fluctuated relative to your investments over the duration of your stock list.
+            </div>
+            <div class="chart-container chart-container-large">
+                <canvas id="trendChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Gain/Loss Decomposition -->
+        <div class="card full-width">
+            <h2 data-i18n="decomp_chart_title">Where did my sales profits come from?</h2>
+            <div class="analysis-text" data-i18n="decomp_chart_desc">
+                When you sell US shares, your final profit in Euros depends on two factors:
+                did the stock price go up (<strong>Blue Bar</strong>), or did the US Dollar get stronger against the Euro (<strong>Purple Bar</strong>)? 
+                This chart breaks down each sale's profit so you can see if you won due to stock growth or exchange rate luck.
+            </div>
+            <div class="chart-container chart-container-large">
+                <canvas id="decompChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Stock Price Timeline & News Integration -->
+        <div class="card full-width">
+            <h2 data-i18n="price_chart_title">Stock Price & Transaction History (USD)</h2>
+            <div class="analysis-text" data-i18n="price_chart_desc">
+                Hover over the dots to see details of past transactions (Vests, Buys, Sells). 
+                <strong>💡 Tip: Click on any dot to open Yahoo Finance news for that date range to see what happened in the market.</strong>
+            </div>
+            <div class="chart-container chart-container-large">
+                <canvas id="priceChart"></canvas>
+            </div>
+            <div class="tooltip-instruction" data-i18n="price_chart_tip">Clicking a point opens Yahoo Finance news for a 10-day window around the transaction.</div>
+        </div>
+
+        <!-- FX rate Timeline -->
+        <div class="card full-width">
+            <h2 data-i18n="fx_chart_title">USD to EUR Exchange Rate Trend</h2>
+            <div class="analysis-text" data-i18n="fx_chart_desc">
+                Tracks the exchange rate over time. Shows how many Euros you got for 1 US Dollar on any transaction date.
+            </div>
+            <div class="chart-container">
+                <canvas id="fxChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Market Intelligence & Competitor Hub Card -->
+        <div class="card full-width">
+            <h2 data-i18n="intel_hub_title">Market Intelligence & Competitor Hub</h2>
+            <div class="analysis-text" data-i18n="intel_hub_desc">
+                Evaluate if it is a good time to sell based on competitor performance, macro conditions, and live market intelligence.
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; margin-top: 12px;">
+                <!-- Competitor Monitoring -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 16px; border-radius: 12px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-blue);" data-i18n="intel_competitors_title">Observability Peer Group</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary);" data-i18n="intel_competitors_desc">Track and compare real-time pricing, valuation multiples, and trends of key peer companies:</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+                        <a href="https://finance.yahoo.com/quote/DDOG" target="_blank" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-primary); border-radius: 6px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                            <span><strong>Datadog</strong> (DDOG)</span>
+                            <span style="color: var(--accent-blue);">👁️ View Live ➔</span>
+                        </a>
+                        <a href="https://finance.yahoo.com/quote/ESTC" target="_blank" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-primary); border-radius: 6px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                            <span><strong>Elastic</strong> (ESTC)</span>
+                            <span style="color: var(--accent-blue);">👁️ View Live ➔</span>
+                        </a>
+                        <a href="https://finance.yahoo.com/quote/CSCO" target="_blank" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-primary); border-radius: 6px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                            <span><strong>Cisco / Splunk</strong> (CSCO)</span>
+                            <span style="color: var(--accent-blue);">👁️ View Live ➔</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Live Comparison Tools -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 16px; border-radius: 12px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-green);" data-i18n="intel_tools_title">Market Comparisons</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary);" data-i18n="intel_tools_desc">Compare charts and valuation metrics side-by-side with peers:</p>
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 12px;">
+                        <a href="https://finance.yahoo.com/quote/DT/peers" target="_blank" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-primary); border-radius: 6px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                            <span data-i18n="intel_peer_analysis">DT Peer Valuation Analysis</span>
+                            <span style="color: var(--accent-green);" data-i18n="intel_btn_analyze">📊 Analyze ➔</span>
+                        </a>
+                        <a href="https://finance.yahoo.com/chart/DT" target="_blank" style="color: var(--text-primary); text-decoration: none; display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: var(--bg-primary); border-radius: 6px; border: 1.5px solid var(--border); transition: border-color 0.2s;">
+                            <span data-i18n="intel_interactive_chart">Interactive Performance Chart</span>
+                            <span style="color: var(--accent-green);" data-i18n="intel_btn_compare">📈 Compare ➔</span>
+                        </a>
+                    </div>
+                </div>
+
+                <!-- Macro Factors to Watch -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 16px; border-radius: 12px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-yellow);" data-i18n="intel_macro_title">Macro Factors & News</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary);" data-i18n="intel_macro_desc">Events that strongly dictate tech stock valuations:</p>
+                    <ul style="font-size: 0.85rem; margin: 0; padding-left: 18px; color: var(--text-secondary); line-height: 1.5;">
+                        <li style="margin-bottom: 8px;" data-i18n="intel_li_rates"><strong style="color: var(--text-primary);">Central Bank Interest Rates</strong>: Lower rates usually boost high-growth tech valuations; higher rates depress them.</li>
+                        <li style="margin-bottom: 8px;" data-i18n="intel_li_news"><strong style="color: var(--text-primary);">Live Earnings Reports</strong>: Track Dynatrace (DT) upcoming earnings reports and announcements to avoid selling right before volatile reports.</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- Market Sentinel & Sell Alert Configurator -->
+        <div class="card full-width">
+            <h2 data-i18n="alerts_card_title">Market Sentinel & Sell Alert Configurator</h2>
+            <div class="analysis-text" data-i18n="alerts_card_desc">
+                Set up automated push notifications, calendar alerts, and email notifications to know exactly when to sell without checking the dashboard daily.
+            </div>
+            
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-top: 16px; align-items: start;">
+                <!-- Step by step setups -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 20px; border-radius: 12px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-blue);" data-i18n="alerts_sec2_title">Real-Time Price & Indicator Alerts</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;" data-i18n="alerts_sec2_desc">Set up instant push notifications on your phone or email using TradingView or your broker when indicators cross:</p>
+                    <ul style="font-size: 0.85rem; padding-left: 18px; color: var(--text-secondary); line-height: 1.6; margin: 0;">
+                        <li style="margin-bottom: 10px;" data-i18n="alerts_rule_sma"><strong>SMA Crossover</strong>: Trigger when DT price crosses the 50-day or 200-day SMA (Bullish/Bearish signal changes).</li>
+                        <li style="margin-bottom: 10px;" data-i18n="alerts_rule_fx"><strong>Exchange Rate Threshold</strong>: Trigger when USD/EUR exchange rate drops below 0.90 (dollar devaluing) or rises above 0.95 (dollar strengthening).</li>
+                        <li style="margin-bottom: 10px;" data-i18n="alerts_rule_earnings"><strong>Broker Earnings Calendar</strong>: Enable notifications for Dynatrace (DT) and peer earnings reports to avoid selling right before massive volatility.</li>
+                    </ul>
+                    <div style="margin-top: 15px; display: flex; gap: 10px; flex-wrap: wrap;">
+                        <a href="https://www.tradingview.com/chart/?symbol=NYSE%3ADT" target="_blank" class="calendar-btn" style="padding: 8px 14px; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 500;" data-i18n="alerts_btn_tview">Set up TradingView Alerts</a>
+                        <a href="https://www.google.com/alerts" target="_blank" class="calendar-btn" style="padding: 8px 14px; background: rgba(168, 85, 247, 0.2); color: #c084fc; border: 1px solid rgba(168, 85, 247, 0.4); border-radius: 6px; text-decoration: none; font-size: 0.8rem; font-weight: 500;" data-i18n="alerts_btn_galerts">Set up Google Alerts</a>
+                    </div>
+                </div>
+
+                <!-- Interactive Alert Generator -->
+                <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid var(--border); padding: 20px; border-radius: 12px;">
+                    <h3 style="margin-top: 0; font-size: 1.1rem; color: var(--accent-green);" data-i18n="generator_title">Quick Alert Creator</h3>
+                    <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 12px;" data-i18n="generator_desc">Select a key metric to generate your recommended alert configuration:</p>
+                    
+                    <div style="margin-top: 12px; margin-bottom: 16px;">
+                        <label style="font-size: 0.8rem; color: var(--text-secondary); display: block; margin-bottom: 6px;" data-i18n="generator_label_select">Select Alert Type:</label>
+                        <select id="alertTypeSelect" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px; border-radius: 6px; font-size: 0.85rem; font-family: inherit; outline: none;" onchange="updateAlertGenerator()">
+                            <option value="fx" selected data-i18n="opt_fx">USD/EUR Exchange Rate</option>
+                            <option value="dt_sma" data-i18n="opt_dt_sma">Dynatrace (DT) Price vs SMA 200</option>
+                            <option value="ddog_earnings" data-i18n="opt_ddog_earnings">Datadog (DDOG) Earnings News</option>
+                            <option value="espp_unlock" data-i18n="opt_espp_unlock">ESPP Next Tax Unlock Date</option>
+                        </select>
+                    </div>
+
+                    <div id="generator-result-box" style="padding: 14px; background: rgba(255,255,255,0.01); border: 1.5px dashed var(--border); border-radius: 8px; font-size: 0.85rem; line-height: 1.5; min-height: 120px;">
+                        <!-- Dynamic Result Content -->
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Comparative Peer Group Performance Chart -->
+        <div class="card full-width">
+            <h2 data-i18n="peer_chart_title">Observability Peer Comparison (Normalized Performance)</h2>
+            <div class="analysis-text" data-i18n="peer_chart_desc">
+                Compares the percentage return of Dynatrace (DT) vs. Datadog (DDOG) and Elastic (ESTC) since your first transaction date. All lines start at 0% on day one.
+            </div>
+            <div class="chart-container chart-container-large">
+                <canvas id="peerChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Strategy Advisor & Technical Signals -->
+        <div class="card full-width">
+            <h2 data-i18n="strategy_title">Smart Holding & Selling Strategy</h2>
+            <div class="advisor-box">
+                <div class="advisor-title">
+                    <span>💡</span> <span data-i18n="trend_signal_prefix">Trend Signal:</span> <span id="trend-signal-val"></span>
+                </div>
+                <div class="advisor-advice" id="trend-advice-val">
+                </div>
+            </div>
+            <div class="analysis-text" data-i18n="strategy_desc">
+                <strong>How does this work?</strong> We look at the market prices of your stock starting from your first transaction date to today.
+                The 50-day average (short-term) and 200-day average (long-term) help indicate if the stock is in an upward growth trend or a downward decline.
+                If the price is above these averages, market momentum is strong!
+            </div>
+        </div>
+
+        <!-- Portfolio Concentration Risk Meter Card -->
+        <div class="card full-width">
+            <h2 data-i18n="risk_card_title">Portfolio Diversification Concentration Risk</h2>
+            <div class="analysis-text" data-i18n="risk_card_desc">
+                Holding a high percentage of your liquid wealth in a single company stock increases your downside risk. Track your exposure level:
+            </div>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; align-items: center; margin-top: 16px;">
+                <!-- Ring Gauge -->
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 10px;">
+                    <div style="position: relative; width: 140px; height: 140px; display: flex; align-items: center; justify-content: center;">
+                        <svg width="140" height="140" style="transform: rotate(-90deg);">
+                            <circle cx="70" cy="70" r="58" stroke="var(--border)" stroke-width="10" fill="transparent" />
+                            <circle id="risk-gauge-circle" cx="70" cy="70" r="58" stroke="var(--accent-red)" stroke-width="10" fill="transparent" stroke-dasharray="364.4" stroke-dashoffset="364.4" style="transition: stroke-dashoffset 0.5s ease, stroke 0.5s ease;" />
+                        </svg>
+                        <div style="position: absolute; display: flex; flex-direction: column; align-items: center;">
+                            <span id="risk-percent-text" style="font-size: 1.5rem; font-weight: 700; color: var(--text-primary);">0%</span>
+                            <span id="risk-badge-text" style="font-size: 0.75rem; text-transform: uppercase; font-weight: 600; padding: 2px 6px; border-radius: 4px; background: rgba(239, 68, 68, 0.2); color: #f87171; margin-top: 4px;">High Risk</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Input & Advice -->
+                <div>
+                    <div style="margin-bottom: 12px;">
+                        <label style="font-size: 0.85rem; color: var(--text-secondary); display: block; margin-bottom: 6px;" data-i18n="risk_net_worth_label">Enter Estimated Total Liquid Net Worth (EUR):</label>
+                        <input type="number" id="input-net-worth" value="100000" min="5000" step="5000" style="background: var(--bg-primary); border: 1.5px solid var(--border); color: var(--text-primary); padding: 10px 12px; border-radius: 6px; font-size: 0.9rem; font-family: inherit; width: 100%; box-sizing: border-box; outline: none; transition: border-color 0.2s;" oninput="updateConcentrationRisk()">
+                    </div>
+                    <div id="risk-advice-text" style="font-size: 0.85rem; line-height: 1.5; color: var(--text-secondary);">
+                        <!-- Dynamic exposure advice -->
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer" data-i18n="footer_text">
+        Generated automatically from E-Trade exports. Dashboard is gitignored and for informational purposes only.
+    </div>
+
+    <script>
+        const rawEvents = __CHART_DATA__;
+        const rawFxHistory = __FX_HISTORY__;
+        const decompData = __DECOMP_DATA__;
+        const historicalQuotes = __HISTORICAL_QUOTES__;
+        const esppLots = __ESPP_LOTS__;
+        const unsoldLots = __UNSOLD_LOTS__;
+        const savingsIncome = __SAVINGS_INCOME__;
+        const currentYearRcm = __CURRENT_YEAR_RCM__;
+
+        // --- Localized date helpers ---
+        const MONTHS_SHORT = {
+            en: ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'],
+            es: ['ene','feb','mar','abr','may','jun','jul','ago','sep','oct','nov','dic']
+        };
+        // Render an ISO date (YYYY-MM-DD) as DD/MM/YYYY (Spanish/European format).
+        function formatDate(iso) {
+            if (!iso) return iso;
+            const parts = String(iso).split('T')[0].split('-');
+            if (parts.length !== 3) return iso;
+            const [y, m, d] = parts;
+            return `${d}/${m}/${y}`;
+        }
+        // Format a timestamp as a localized "MMM YYYY" for chart month axes.
+        function fmtMonthYear(value) {
+            const dt = new Date(value);
+            if (isNaN(dt.getTime())) return value;
+            const lang = MONTHS_SHORT[currentLang] ? currentLang : 'en';
+            return `${MONTHS_SHORT[lang][dt.getMonth()]} ${dt.getFullYear()}`;
+        }
+
+        // Live Price, FX rate, and Average cost variables
+        const livePriceUsd = __LIVE_PRICE_USD__;
+        const liveFxRate = __LIVE_FX_RATE__;
+        const myAvgCostUsd = __MY_AVG_COST_USD__;
+        
+        const trendSignal = __TREND_SIGNAL__;
+        const trendAdvice = __TREND_ADVICE__;
+
+        const locales = {
+            en: {
+                header_title: "My Stock Performance & Tax Dashboard",
+                header_subtitle: "A simple summary of your RSU and ESPP shares, how much tax you saved, and your investment decisions.",
+                privacy_btn_hide: "Hide Sensitive Data",
+                privacy_btn_show: "Show Sensitive Data",
+                tab_mystock: "📊 My Stock",
+                tab_sell: "💸 Should I Sell?",
+                tab_taxes: "🧾 My Taxes",
+                tab_advanced: "🔬 Advanced (for the curious)",
+                hero_title: "📊 Your situation today",
+                hero_desc: "A plain snapshot of the company shares you still own right now: how many you have, what they are worth today, what you originally paid, and whether you are up or down overall. No jargon — just the numbers that matter.",
+                hero_shares: "Shares you still own",
+                hero_value: "Worth today (EUR)",
+                hero_paid: "What you paid (EUR)",
+                hero_pl: "Up / down so far (EUR)",
+                hero_word_up: "up",
+                hero_word_down: "down",
+                hero_note: "In plain words: if you sold everything you still hold at today's price ({price}, exchange rate {fx}), you would be {updown} about {pl} compared with what you paid. This counts only shares you still own — it ignores anything you already sold and any taxes.",
+                scorecard_title: "Overall Scorecard (Did holding pay off?)",
+                rsu_holding_pl: "RSU Holding Profit/Loss",
+                tax_secured: "ESPP Tax Money Secured (Held >= 3 Years)",
+                tax_at_risk: "ESPP Tax Exemption At Risk (Held < 3 Years)",
+                tax_penalty: "Extra ESPP Tax Penalty (Sold < 3 Years)",
+                scorecard_desc: "• <strong>RSU Holding Profit/Loss</strong>: Shows if holding your RSU shares was a good decision. RSUs do not have holding tax exemptions in Spain; they are taxed fully as salary on the vesting day. This metric compares your holding value today against selling immediately on vest. <em>Note: This automatically neutralizes 'Sell to Cover' shares sold immediately for taxes, meaning 100% of the displayed profit/loss applies only to the net shares you actually hold.</em><br><br>• <strong>ESPP Tax: Secured vs. At Risk vs. Penalty</strong>: In Spain, employee stock purchase plans (ESPP) offer a tax exemption: if you hold shares for <strong>at least 3 years</strong>, you pay no income tax on the purchase discount. These three figures reflect your <strong>current situation</strong>: <strong style=\"color: var(--accent-green)\">Secured</strong> is the discount on shares that have already cleared the 3-year mark (permanently tax-free). <strong style=\"color: var(--accent-yellow)\">At Risk</strong> is the discount on shares you still hold but that are <em>not yet</em> 3 years old — you keep it only if you wait. <strong style=\"color: var(--accent-red)\">Penalty</strong> is the discount you already lost by selling shares before 3 years.",
+                sim_title: "What if I sell? Try it with the sliders",
+                sim_desc: "Use the sliders to simulate selling your currently held shares (RSU + ESPP). See exactly how much profit or loss you make in EUR, and track how a **weaker US Dollar (currency devaluation)** or **stock price drop** eats into your EUR savings.",
+                label_sim_price: "Simulated Stock Price (USD)",
+                label_sim_fx: "Simulated Exchange Rate (USD to EUR)",
+                label_sim_val: "Simulated EUR Value",
+                label_sim_gain: "Simulated EUR Gain/Loss",
+                label_sim_tax: "Est. Tax Due (Hacienda)",
+                label_sim_net: "💰 Net cash in your pocket (after tax)",
+                espp_sell_warning: "Heads up: {shares} of the shares you hold are ESPP shares still inside the 3-year tax-free window. If you sell them now you would forfeit {atrisk} of tax exemption and have to pay income tax on that discount. Check the \"My Taxes\" tab to see exactly when each batch unlocks.",
+                div_title: "💶 Dividends & interest income",
+                div_desc: "In Spain, the dividends and interest you receive are taxed in the <strong>same \"savings\" pot</strong> as your stock gains. So money you already earned here this year pushes you up the tax brackets <em>before</em> you even sell a single share. Add these via menu option 4 (\"Add Dividend/Interest Income\").",
+                div_empty: "No dividend or interest income recorded yet. If your shares paid dividends, add them via the menu (option 4) so they are included in your tax-bracket planning.",
+                div_th_year: "Year",
+                div_th_dividends: "Dividends (EUR)",
+                div_th_interest: "Interest (EUR)",
+                div_th_total: "Total savings income (EUR)",
+                deval_title: "What happens in good and bad scenarios",
+                deval_desc: "This table projects exactly what happens to your current value and gains under both positive and negative currency swings and stock movements.",
+                th_scenario: "Scenario Description",
+                th_sim_price: "Simulated Stock Price",
+                th_sim_fx: "Simulated USD/EUR FX Rate",
+                th_sim_val: "Simulated Portfolio Value (EUR)",
+                th_sim_gain: "Realized Gain / Loss (EUR)",
+                th_loss_baseline: "Impact vs. Baseline Today",
+                strategy_title: "Smart Holding & Selling Strategy",
+                trend_signal_prefix: "Trend Signal:",
+                strategy_desc: "<strong>How does this work?</strong> We look at the market prices of your stock starting from your first transaction date to today. The 50-day average (short-term) and 200-day average (long-term) help indicate if the stock is in an upward growth trend or a downward decline. If the price is above these averages, market momentum is strong!",
+                espp_tracker_title: "When can I sell each ESPP batch tax-free?",
+                espp_tracker_desc: "This table shows all your currently held ESPP shares. It tracks exactly how many days are left until the 3-year holding period expires and the shares become completely tax-free to sell.",
+                th_purchase_date: "Purchase Date",
+                th_shares_held: "Shares Held",
+                th_acq_price: "Acq Price (EUR)",
+                th_unlock_date: "Unlock Date (3y)",
+                th_days_left: "Days Left",
+                th_exemption_status: "Exemption Status",
+                th_actionable_advice: "Actionable Advice",
+                espp_audit_title: "ESPP tax: kept vs. still pending vs. lost",
+                espp_audit_desc: "This pie chart shows how much of your ESPP discount you successfully kept tax-free (<strong>Green</strong>) vs. how much you sold too early, triggering a tax penalty (<strong>Red</strong>).",
+                rsu_audit_title: "Should I have sold my RSUs immediately?",
+                rsu_audit_desc: "Compares the baseline strategy (selling all RSU shares immediately on the day you got them, shown in <strong>Blue</strong>) vs. your actual strategy (holding them to sell later, or still holding them today, shown in <strong>Green/Red</strong>).",
+                trend_chart_title: "Stock Price Trend & Market Averages (USD)",
+                trend_chart_desc: "Tracks the daily closing price of your stock (<strong>Blue line</strong>) alongside the 50-day average (<strong>Green line</strong>), the 200-day average (<strong>Red line</strong>), your stepping running purchase cost basis (<strong>Solid Orange line</strong>), and your current average cost basis (<strong>Orange dashed line</strong>) to easily see how the stock price has fluctuated relative to your investments over the duration of your stock list.",
+                decomp_chart_title: "Where did my sales profits come from?",
+                decomp_chart_desc: "When you sell US shares, your final profit in Euros depends on two factors: did the stock price go up (<strong>Blue Bar</strong>), or did the US Dollar get stronger against the Euro (<strong>Purple Bar</strong>)? This chart breaks down each sale's profit so you can see if you won due to stock growth or exchange rate luck.",
+                price_chart_title: "Stock Price & Transaction History (USD)",
+                price_chart_desc: "Hover over the dots to see details of past transactions (Vests, Buys, Sells). <strong>💡 Tip: Click on any dot to open Yahoo Finance news for that date range to see what happened in the market.</strong>",
+                price_chart_tip: "Clicking a point opens Yahoo Finance news for a 10-day window around the transaction.",
+                fx_chart_title: "USD to EUR Exchange Rate Trend",
+                fx_chart_desc: "Tracks the exchange rate over time. Shows how many Euros you got for 1 US Dollar on any transaction date.",
+                footer_text: "Generated automatically from E-Trade exports. Dashboard is gitignored and for informational purposes only.",
+                
+                sc_baseline: "Today Baseline (Current Market)",
+                sc_baseline_desc: "Live values right now",
+                sc_weak_usd_5: "USD Devalues 5% (Weak Dollar)",
+                sc_weak_usd_5_desc: "USD weakens against EUR by 5%",
+                sc_weak_usd_10: "USD Devalues 10% (Strong EUR)",
+                sc_weak_usd_10_desc: "USD weakens against EUR by 10%",
+                sc_strong_usd_5: "USD Appreciates 5% (Strong USD)",
+                sc_strong_usd_5_desc: "USD strengthens against EUR by 5%",
+                sc_strong_usd_10: "USD Appreciates 10% (Weak EUR)",
+                sc_strong_usd_10_desc: "USD strengthens against EUR by 10%",
+                sc_drop_10: "Stock Market Drops 10%",
+                sc_drop_10_desc: "Stock price declines 10% in USD",
+                sc_up_10: "Market Recovery +10% (Bull Run)",
+                sc_up_10_desc: "Stock price rises 10% in USD",
+                sc_double_whammy: "Double Whammy (Stock -10% & FX -5%)",
+                sc_double_whammy_desc: "Both stock drops 10% and USD drops 5%",
+                sc_double_boost: "Double Boost (Stock +10% & FX +5%)",
+                sc_double_boost_desc: "Both stock rises 10% and USD rises 5%",
+                baseline_lbl: "Baseline",
+                loss_of_prefix: "Loss of",
+                gain_of_prefix: "Gain of",
+                days_suffix: " days",
+                no_espp_lots: "No active ESPP lots currently held in portfolio.",
+                
+                lbl_stock_price: "Stock Price",
+                lbl_sma50: "50-Day Avg (SMA)",
+                lbl_sma200: "200-Day Avg (SMA)",
+                lbl_running_cost: "Your Running Average Cost Basis ($ USD)",
+                lbl_current_cost: "Current Average Cost Basis ($ USD Reference)",
+                lbl_tax_exempt_saved: "Tax-Exempt Saved Discount",
+                lbl_tax_secured: "Secured Discount (Held ≥ 3 Years)",
+                lbl_tax_at_risk: "At-Risk Discount (Held < 3 Years)",
+                lbl_taxable_lost: "Taxable Lost Discount (Early Sales)",
+                lbl_portfolio_val: "Portfolio Value (EUR)",
+                lbl_sell_vest: "Sell immediately on Vest",
+                lbl_actual_strategy: "Actual Strategy (Hold / Sell Later)",
+                lbl_stock_contrib: "Stock Price Contribution (EUR)",
+                lbl_fx_contrib: "Currency FX Contribution (EUR)",
+                lbl_rsu_vests: "Vests (RSU)",
+                lbl_espp_buys: "Buys (ESPP)",
+                lbl_exercises: "Exercises",
+                lbl_sells: "Sells",
+                lbl_price_path: "Stock Price Path",
+                lbl_fx_rate: "USD / EUR FX Rate",
+                lbl_tx_rates: "Transaction Rates",
+                lbl_val_title: "Value: ",
+                lbl_fx_rate_title: "Rate (1 USD = X EUR)",
+                lbl_stock_price_usd: "Stock Price ($ USD)",
+                lbl_date: "Date",
+                lbl_total_realized_gain: "Total realized gain: ",
+                lbl_notes: "Notes: ",
+                lbl_type: "Type: ",
+                lbl_price: "Price: ",
+                lbl_shares: "Shares: ",
+                lbl_tx_fx: "Transaction FX: ",
+                intel_hub_title: "Market Intelligence & Competitor Hub",
+                intel_hub_desc: "Evaluate if it is a good time to sell based on competitor performance, macro conditions, and live market intelligence.",
+                intel_competitors_title: "Observability Peer Group",
+                intel_competitors_desc: "Track and compare real-time pricing, valuation multiples, and trends of key peer companies:",
+                intel_tools_title: "Market Comparisons",
+                intel_tools_desc: "Compare charts and valuation metrics side-by-side with peers:",
+                intel_peer_analysis: "DT Peer Valuation Analysis",
+                intel_interactive_chart: "Interactive Performance Chart",
+                intel_btn_analyze: "📊 Analyze ➔",
+                intel_btn_compare: "📈 Compare ➔",
+                intel_macro_title: "Macro Factors & News",
+                intel_macro_desc: "Events that strongly dictate tech stock valuations:",
+                intel_li_rates: "<strong style=\"color: var(--text-primary);\">Central Bank Interest Rates</strong>: Lower rates usually boost high-growth tech valuations; higher rates depress them.",
+                intel_li_news: "<strong style=\"color: var(--text-primary);\">Live Earnings Reports</strong>: Track Dynatrace (DT) upcoming earnings reports and announcements to avoid selling right before volatile reports.",
+                th_calendar_alert: "Alerts",
+                add_to_calendar: "Add Reminder",
+                alerts_card_title: "Market Sentinel & Sell Alert Configurator",
+                alerts_card_desc: "Set up automated push notifications, calendar alerts, and email notifications to know exactly when to sell without checking the dashboard daily.",
+                alerts_sec2_title: "Real-Time Price & Indicator Alerts",
+                alerts_sec2_desc: "Set up instant push notifications on your phone or email using TradingView or your broker when indicators cross:",
+                alerts_rule_sma: "<strong>SMA Crossover</strong>: Trigger when DT price crosses the 50-day or 200-day SMA (Bullish/Bearish signal changes).",
+                alerts_rule_fx: "<strong>Exchange Rate Threshold</strong>: Trigger when USD/EUR exchange rate drops below 0.90 (dollar devaluing) or rises above 0.95 (dollar strengthening).",
+                alerts_rule_earnings: "<strong>Broker Earnings Calendar</strong>: Enable notifications for Dynatrace (DT) and peer earnings reports to avoid selling right before massive volatility.",
+                alerts_btn_tview: "Set up TradingView Alerts",
+                alerts_btn_galerts: "Set up Google Alerts",
+                generator_title: "Quick Alert Creator",
+                generator_desc: "Select a key metric to generate your recommended alert configuration:",
+                generator_label_select: "Select Alert Type:",
+                opt_fx: "USD/EUR Exchange Rate",
+                opt_dt_sma: "Dynatrace (DT) Price vs SMA 200",
+                opt_ddog_earnings: "Datadog (DDOG) Earnings News",
+                opt_espp_unlock: "ESPP Next Tax Unlock Date",
+                tax_opt_title: "Hacienda Savings Tax Bracket Optimizer",
+                tax_opt_desc: "Spanish savings income (capital gains) tax is progressive. Keep your gains within lower brackets to optimize tax efficiency.",
+                risk_card_title: "How much of my money is in this one stock?",
+                risk_card_desc: "Holding a high percentage of your liquid wealth in a single company stock increases your downside risk. Track your exposure level:",
+                risk_net_worth_label: "Enter Estimated Total Liquid Net Worth (EUR):",
+                peer_chart_title: "How my stock compares to similar companies",
+                peer_chart_desc: "Compares the percentage return of Dynatrace (DT) vs. Datadog (DDOG) and Elastic (ESTC) since your first transaction date. All lines start at 0% on day one.",
+                breakeven_card_title: "The price I'd need to sell at to not lose money",
+                breakeven_card_desc: "Calculate the exact USD price required to sell all remaining shares without losing money, factoring in purchase costs, dollar devaluation, and past realized losses.",
+                be_stats_title: "Real-Time Breakeven Calculator",
+                be_unsold_cost: "Total Unsold Cost Basis (EUR)",
+                be_past_losses: "Past Net Realized Gains/Losses (EUR)",
+                be_target_price: "Fresh-Start Breakeven (USD) — current shares only, ignores past sales",
+                be_portfolio_price: "Full Portfolio Breakeven (USD) — incl. past realized gains/losses",
+                be_chart_label_unsold: "Fresh-Start Breakeven (0% gain/loss on current shares only)",
+                be_chart_label_port: "Full Portfolio Breakeven (Offsets past net gains/losses)",
+                be_chart_label_current: "Current Simulated Position",
+                be_exclude_espp: "Exclude ESPP shares (RSUs only)"
+            },
+            es: {
+                header_title: "Mi Panel de Rendimiento de Acciones e Impuestos",
+                header_subtitle: "Un resumen sencillo de sus acciones de RSU y ESPP, cuánto impuesto ahorró y sus decisiones de inversión.",
+                privacy_btn_hide: "Ocultar Datos Sensibles",
+                privacy_btn_show: "Mostrar Datos Sensibles",
+                tab_mystock: "📊 Mis Acciones",
+                tab_sell: "💸 ¿Debería Vender?",
+                tab_taxes: "🧾 Mis Impuestos",
+                tab_advanced: "🔬 Avanzado (para los curiosos)",
+                hero_title: "📊 Su situación hoy",
+                hero_desc: "Un resumen sencillo de las acciones de la empresa que aún posee: cuántas tiene, cuánto valen hoy, cuánto pagó originalmente y si va ganando o perdiendo en conjunto. Sin tecnicismos, solo los números que importan.",
+                hero_shares: "Acciones que aún posee",
+                hero_value: "Valor hoy (EUR)",
+                hero_paid: "Lo que pagó (EUR)",
+                hero_pl: "Gana / pierde hasta ahora (EUR)",
+                hero_word_up: "ganando",
+                hero_word_down: "perdiendo",
+                hero_note: "En palabras sencillas: si vendiera hoy todo lo que aún conserva al precio actual ({price}, tipo de cambio {fx}), estaría {updown} unos {pl} en comparación con lo que pagó. Esto cuenta solo las acciones que todavía posee: ignora lo que ya vendió y cualquier impuesto.",
+                scorecard_title: "Cuadro de Mando General (¿Valió la pena mantener?)",
+                rsu_holding_pl: "Pérdida/Ganancia por Mantener RSU",
+                tax_secured: "Ahorro Fiscal Asegurado en ESPP (Mantenido >= 3 años)",
+                tax_at_risk: "Exención Fiscal en Riesgo de ESPP (Mantenido < 3 años)",
+                tax_penalty: "Penalización Fiscal Extra de ESPP (Vendido < 3 años)",
+                scorecard_desc: "• <strong>Pérdida/Ganancia por Mantener RSU</strong>: Muestra si mantener sus acciones de RSU fue una buena decisión. Las RSU no tienen exención fiscal por mantenerlas en España; tributan completamente como rendimiento del trabajo en la fecha del vest. Esta métrica compara su valor de tenencia actual frente a haber vendido inmediatamente al recibir el vest. <em>Nota: Esto neutraliza automáticamente las acciones vendidas para cubrir impuestos ('Sell to Cover'), por lo que el 100% de la ganancia/pérdida mostrada se aplica exclusivamente a las acciones netas que usted realmente conserva y puede vender.</em><br><br>• <strong>Fiscalidad ESPP: Asegurado vs. En Riesgo vs. Penalización</strong>: En España, el plan de compra de acciones para empleados (ESPP) ofrece una exención fiscal: si mantiene las acciones durante <strong>al menos 3 años</strong>, no tributa por el descuento de compra. Estas tres cifras reflejan su <strong>situación actual</strong>: <strong style=\"color: var(--accent-green)\">Asegurado</strong> es el descuento de las acciones que ya han superado los 3 años (exentas de forma permanente). <strong style=\"color: var(--accent-yellow)\">En Riesgo</strong> es el descuento de las acciones que aún conserva pero que <em>todavía no</em> tienen 3 años: solo lo conserva si espera. <strong style=\"color: var(--accent-red)\">Penalización</strong> es el descuento que ya perdió al vender acciones antes de 3 años.",
+                sim_title: "¿Y si vendo? Pruébelo con los controles",
+                sim_desc: "Use los controles deslizantes para simular la venta de sus acciones actualmente retenidas (RSU + ESPP). Vea exactamente cuánta ganancia o pérdida obtiene en EUR y realice el seguimiento de cómo un **dólar estadounidense más débil (devaluación)** o una **caída en el precio de la acción** afectan sus ahorros en EUR.",
+                label_sim_price: "Precio de Acción Simulado (USD)",
+                label_sim_fx: "Tipo de Cambio Simulado (USD a EUR)",
+                label_sim_val: "Valor en EUR Simulado",
+                label_sim_gain: "Ganancia/Pérdida en EUR Simulada",
+                label_sim_tax: "Impuesto Estimado (Hacienda)",
+                label_sim_net: "💰 Dinero neto en su bolsillo (después de impuestos)",
+                espp_sell_warning: "Atención: {shares} de las acciones que posee son acciones ESPP que todavía están dentro de la ventana de 3 años exenta de impuestos. Si las vende ahora, perdería {atrisk} de exención fiscal y tendría que pagar IRPF por ese descuento. Consulte la pestaña \"Mis Impuestos\" para ver exactamente cuándo se desbloquea cada lote.",
+                div_title: "💶 Ingresos por dividendos e intereses",
+                div_desc: "En España, los dividendos e intereses que recibe tributan en la <strong>misma \"base del ahorro\"</strong> que sus ganancias de acciones. Así que el dinero que ya ganó por aquí este año le sube de tramo fiscal <em>antes</em> incluso de vender una sola acción. Añádalos con la opción 4 del menú (\"Añadir Ingresos por Dividendos/Intereses\").",
+                div_empty: "Aún no hay ingresos por dividendos o intereses registrados. Si sus acciones pagaron dividendos, añádalos desde el menú (opción 4) para incluirlos en la planificación de tramos fiscales.",
+                div_th_year: "Año",
+                div_th_dividends: "Dividendos (EUR)",
+                div_th_interest: "Intereses (EUR)",
+                div_th_total: "Total ingresos del ahorro (EUR)",
+                deval_title: "Qué pasa en escenarios buenos y malos",
+                deval_desc: "Esta tabla proyecta exactamente qué sucede con su valor actual y sus ganancias bajo fluctuaciones tanto positivas como negativas de divisa y de la acción.",
+                th_scenario: "Descripción del Escenario",
+                th_sim_price: "Precio de Acción Simulado",
+                th_sim_fx: "Tipo de Cambio USD/EUR Simulado",
+                th_sim_val: "Valor de Cartera Simulado (EUR)",
+                th_sim_gain: "Ganancia / Pérdida Realizada (EUR)",
+                th_loss_baseline: "Impacto vs. Línea Base de Hoy",
+                strategy_title: "Estrategia Inteligente de Venta y Mantenimiento",
+                trend_signal_prefix: "Señal de Tendencia:",
+                strategy_desc: "<strong>¿Cómo funciona esto?</strong> Analizamos los precios de mercado de su acción desde su primera fecha de transacción hasta hoy. La media de 50 días (corto plazo) y la media de 200 días (largo plazo) ayudan a indicar si la acción está en una tendencia de crecimiento alcista o en un declive bajista. Si el precio está por encima de estas medias, ¡el impulso de mercado es fuerte!",
+                espp_tracker_title: "¿Cuándo puedo vender cada lote de ESPP sin impuestos?",
+                espp_tracker_desc: "Esta tabla muestra todas sus acciones ESPP actualmente retenidas. Realiza un seguimiento de cuántos días quedan hasta que expire el período de mantenimiento de 3 años y las acciones queden libres de impuestos.",
+                th_purchase_date: "Fecha de Compra",
+                th_shares_held: "Acciones Retenidas",
+                th_acq_price: "Precio de Adq. (EUR)",
+                th_unlock_date: "Fecha de Desbloqueo (3 años)",
+                th_days_left: "Días Restantes",
+                th_exemption_status: "Estado de Exención",
+                th_actionable_advice: "Consejo Práctico",
+                espp_audit_title: "Impuesto ESPP: conservado vs. pendiente vs. perdido",
+                espp_audit_desc: "Este gráfico muestra cuánto descuento de ESPP logró mantener libre de impuestos (<strong>Verde</strong>) frente a cuánto vendió demasiado pronto, incurriendo en penalización (<strong>Rojo</strong>).",
+                rsu_audit_title: "¿Debería haber vendido mis RSUs inmediatamente?",
+                rsu_audit_desc: "Compara la estrategia de referencia (vender todas las RSU inmediatamente el día de su entrega, en <strong>Azul</strong>) frente a su estrategia real (mantenerlas para venderlas más tarde, o mantenerlas hoy, en <strong>Verde/Rojo</strong>).",
+                trend_chart_title: "Tendencia de Precio y Medias de Mercado (USD)",
+                trend_chart_desc: "Muestra el precio de cierre diario de su acción (<strong>Línea Azul</strong>) junto con la media de 50 días (<strong>Línea Verde</strong>), la media de 200 días (<strong>Línea Roja</strong>), su base de costo medio móvil (<strong>Línea Naranja continua</strong>), y su costo medio actual de referencia (<strong>Línea Naranja discontinua</strong>) para ver fácilmente si la acción cotiza por encima o por debajo de lo que pagó por ella.",
+                decomp_chart_title: "¿De dónde provinieron mis ganancias de venta?",
+                decomp_chart_desc: "Al vender acciones de EE. UU., su beneficio final en euros depende de dos factores: si el precio de la acción subió (<strong>Barra Azul</strong>) o si el dólar estadounidense se fortaleció frente al euro (<strong>Barra Morada</strong>). Este gráfico desglosa cada venta para ver si ganó por crecimiento de la acción o por suerte en el tipo de cambio.",
+                price_chart_title: "Historial de Precios y Transacciones (USD)",
+                price_chart_desc: "Pase el cursor sobre los puntos para ver los detalles de las transacciones pasadas (Vests, Compras, Ventas). <strong>💡 Consejo: Haga clic en cualquier punto para abrir las noticias de Yahoo Finance de ese rango de fechas y ver qué pasó en el mercado.</strong>",
+                price_chart_tip: "Hacer clic en un punto abre las noticias de Yahoo Finance para un período de 10 día alrededor de la transacción.",
+                fx_chart_title: "Tendencia del Tipo de Cambio USD a EUR",
+                fx_chart_desc: "Muestra el tipo de cambio a lo largo del tiempo. Indica cuántos euros obtuvo por 1 dólar estadounidense en cualquier fecha de transacción.",
+                footer_text: "Generado automáticamente a partir de las exportaciones de E-Trade. El panel está en gitignore y es solo para fines informativos.",
+                
+                sc_baseline: "Línea Base Hoy (Mercado Actual)",
+                sc_baseline_desc: "Valores en tiempo real ahora mismo",
+                sc_weak_usd_5: "Dólar se devalúa un 5% (USD Débil)",
+                sc_weak_usd_5_desc: "El dólar se debilita frente al euro un 5%",
+                sc_weak_usd_10: "Dólar se devalúa un 10% (Euro Fuerte)",
+                sc_weak_usd_10_desc: "El dólar se debilita frente al euro un 10%",
+                sc_strong_usd_5: "Dólar se aprecia un 5% (USD Fuerte)",
+                sc_strong_usd_5_desc: "El dólar se fortalece frente al euro un 5%",
+                sc_strong_usd_10: "Dólar se aprecia un 10% (Euro Débil)",
+                sc_strong_usd_10_desc: "El dólar se fortalece frente al euro un 10%",
+                sc_drop_10: "Caída del Mercado de 10%",
+                sc_drop_10_desc: "El precio de la acción baja un 10% en USD",
+                sc_up_10: "Recuperación de Mercado +10%",
+                sc_up_10_desc: "El precio de la acción sube un 10% en USD",
+                sc_double_whammy: "Doble Golpe (Acción -10% y FX -5%)",
+                sc_double_whammy_desc: "Tanto la acción cae un 10% como el dólar cae un 5%",
+                sc_double_boost: "Doble Impulso (Acción +10% y FX +5%)",
+                sc_double_boost_desc: "Tanto la acción sube un 10% como el dólar sube un 5%",
+                baseline_lbl: "Línea Base",
+                loss_of_prefix: "Pérdida de",
+                gain_of_prefix: "Ganancia de",
+                days_suffix: " días",
+                no_espp_lots: "No hay lotes de ESPP activos retenidos actualmente.",
+                
+                lbl_stock_price: "Precio de la Acción",
+                lbl_sma50: "Media de 50 días (SMA)",
+                lbl_sma200: "Media de 200 días (SMA)",
+                lbl_running_cost: "Tu Base de Coste Medio Móvil ($ USD)",
+                lbl_current_cost: "Base de Coste Medio Actual ($ USD Referencia)",
+                lbl_tax_exempt_saved: "Descuento Ahorrado Exento de Impuestos",
+                lbl_tax_secured: "Descuento Asegurado (Mantenido ≥ 3 años)",
+                lbl_tax_at_risk: "Descuento en Riesgo (Mantenido < 3 años)",
+                lbl_taxable_lost: "Descuento Gravable Perdido (Ventas Tempranas)",
+                lbl_portfolio_val: "Valor de la Cartera (EUR)",
+                lbl_sell_vest: "Vender inmediatamente al Vestear",
+                lbl_actual_strategy: "Estrategia Real (Mantener / Vender Después)",
+                lbl_stock_contrib: "Contribución del Precio de Acción (EUR)",
+                lbl_fx_contrib: "Contribución del Tipo de Cambio FX (EUR)",
+                lbl_rsu_vests: "Vests (RSU)",
+                lbl_espp_buys: "Compras (ESPP)",
+                lbl_exercises: "Ejercicios",
+                lbl_sells: "Ventas",
+                lbl_price_path: "Precio Histórico de la Acción",
+                lbl_fx_rate: "Tipo de Cambio USD / EUR",
+                lbl_tx_rates: "Tasas en Transacciones",
+                lbl_val_title: "Valor: ",
+                lbl_fx_rate_title: "Tipo de Cambio (1 USD = X EUR)",
+                lbl_stock_price_usd: "Precio de la Acción ($ USD)",
+                lbl_date: "Fecha",
+                lbl_total_realized_gain: "Ganancia total realizada: ",
+                lbl_notes: "Notas: ",
+                lbl_type: "Tipo: ",
+                lbl_price: "Precio: ",
+                lbl_shares: "Acciones: ",
+                lbl_tx_fx: "FX en Transacción: ",
+                intel_hub_title: "Centro de Inteligencia de Mercado y Competidores",
+                intel_hub_desc: "Evalúe si es un buen momento para vender en función del rendimiento de los competidores, las condiciones macroeconómicas y la inteligencia de mercado en vivo.",
+                intel_competitors_title: "Grupo de Pares de Observabilidad",
+                intel_competitors_desc: "Realice el seguimiento y compare precios en tiempo real, múltiplos de valoración y tendencias de competidores clave:",
+                intel_tools_title: "Comparativas de Mercado",
+                intel_tools_desc: "Compare gráficos y métricas de valoración de forma paralela con sus pares:",
+                intel_peer_analysis: "Análisis de Valoración de Pares de DT",
+                intel_interactive_chart: "Gráfico de Rendimiento Interactivo",
+                intel_btn_analyze: "📊 Analizar ➔",
+                intel_btn_compare: "📈 Comparar ➔",
+                intel_macro_title: "Factores Macroeconómicos y Noticias",
+                intel_macro_desc: "Eventos que condicionan fuertemente la valoración de las acciones tecnológicas:",
+                intel_li_rates: "<strong style=\"color: var(--text-primary);\">Tipos de Interés de Bancos Centrales</strong>: Tipos más bajos suelen impulsar las valoraciones tecnológicas de alto crecimiento; tipos más altos las deprimen.",
+                intel_li_news: "<strong style=\"color: var(--text-primary);\">Informes de Resultados en Directo</strong>: Siga los próximos informes de resultados y anuncios de Dynatrace (DT) para evitar vender justo antes de informes volátiles.",
+                th_calendar_alert: "Alertas",
+                add_to_calendar: "Recordatorio",
+                alerts_card_title: "Centinela del Mercado y Configurador de Alertas",
+                alerts_card_desc: "Configure notificaciones push automáticas, alertas de calendario y correos para saber exactamente cuándo vender sin necesidad de revisar este panel todos los días.",
+                alerts_sec2_title: "Alertas de Precio e Indicadores en Tiempo Real",
+                alerts_sec2_desc: "Configure notificaciones push en su móvil o email usando TradingView o su bróker cuando los indicadores crucen:",
+                alerts_rule_sma: "<strong>Cruce de SMA</strong>: Activar cuando el precio de DT cruce la SMA de 50 o 200 días (cambio de señal alcista/bajista).",
+                alerts_rule_fx: "<strong>Límite de Tipo de Cambio</strong>: Activar cuando el tipo USD/EUR caiga por debajo de 0.90 (dólar devaluándose) o suba por encima de 0.95 (dólar fortaleciéndose).",
+                alerts_rule_earnings: "<strong>Calendario de Resultados del Bróker</strong>: Active avisos para los informes de resultados de Dynatrace (DT) y sus pares para evitar vender antes de alta volatilidad.",
+                alerts_btn_tview: "Configurar Alertas en TradingView",
+                alerts_btn_galerts: "Configurar Alertas de Google",
+                generator_title: "Creador Rápido de Alertas",
+                generator_desc: "Seleccione una métrica clave para generar la configuración recomendada de su alerta:",
+                generator_label_select: "Seleccione Tipo de Alerta:",
+                opt_fx: "Tipo de Cambio USD/EUR",
+                opt_dt_sma: "Precio Dynatrace (DT) vs SMA 200",
+                opt_ddog_earnings: "Resultados Financieros de Datadog (DDOG)",
+                opt_espp_unlock: "Próxima Fecha de Desbloqueo de ESPP",
+                tax_opt_title: "Optimizador de Tramos de IRPF del Ahorro (Hacienda)",
+                tax_opt_desc: "La tributación sobre las ganancias patrimoniales (base imponible del ahorro) en España es progresiva. Mantenga sus plusvalías en tramos más bajos para optimizar su factura fiscal.",
+                risk_card_title: "¿Cuánto de mi dinero está en esta sola acción?",
+                risk_card_desc: "Mantener un porcentaje elevado de su patrimonio líquido en acciones de una sola empresa aumenta su exposición a caídas. Siga su nivel de exposición:",
+                risk_net_worth_label: "Introduzca su Patrimonio Líquido Estimado Total (EUR):",
+                peer_chart_title: "Cómo se compara mi acción con empresas similares",
+                peer_chart_desc: "Compara el rendimiento porcentual de Dynatrace (DT) frente a Datadog (DDOG) y Elastic (ESTC) desde la fecha de su primera transacción. Todas las líneas comienzan en el 0% el primer día.",
+                breakeven_card_title: "El precio al que tendría que vender para no perder dinero",
+                breakeven_card_desc: "Calcule el precio exacto en USD necesario para vender todas sus acciones restantes sin perder dinero, teniendo en cuenta los costes de compra, la devaluación del dólar y las pérdidas realizadas acumuladas del pasado.",
+                be_stats_title: "Calculadora de Punto de Equilibrio en Tiempo Real",
+                be_unsold_cost: "Base de Coste Total No Vendido (EUR)",
+                be_past_losses: "Pérdidas/Ganancias Netas Realizadas del Pasado (EUR)",
+                be_target_price: "Equilibrio Desde Cero (USD) — solo acciones actuales, ignora ventas pasadas",
+                be_portfolio_price: "Equilibrio del Portafolio Completo (USD) — incl. ganancias/pérdidas pasadas",
+                be_chart_label_unsold: "Equilibrio Desde Cero (0% ganancia/pérdida solo en acciones actuales)",
+                be_chart_label_port: "Equilibrio de Portafolio Completo (Compensa ganancias/pérdidas pasadas)",
+                be_chart_label_current: "Posición Simulada Actual",
+                be_exclude_espp: "Excluir acciones ESPP (solo RSUs)"
+            }
+        };
+
+        let currentLang = 'en';
+
+        function setLanguage(lang) {
+            currentLang = lang;
+            
+            // Toggle active state on buttons
+            document.getElementById('lang-en-btn').classList.toggle('active-lang', lang === 'en');
+            document.getElementById('lang-es-btn').classList.toggle('active-lang', lang === 'es');
+            
+            // Translate DOM elements with data-i18n
+            document.querySelectorAll('[data-i18n]').forEach(el => {
+                const key = el.getAttribute('data-i18n');
+                if (locales[lang][key]) {
+                    el.innerHTML = locales[lang][key];
+                }
+            });
+            
+            // Translate privacy button text
+            const privacyBtnText = document.getElementById('privacy-btn-text');
+            if (privacyBtnText) {
+                privacyBtnText.textContent = privacyActive ? locales[lang].privacy_btn_show : locales[lang].privacy_btn_hide;
+            }
+            
+            // Update Advisor Signal text
+            const trendSignalVal = document.getElementById('trend-signal-val');
+            const trendAdviceVal = document.getElementById('trend-advice-val');
+            if (trendSignalVal) trendSignalVal.textContent = trendSignal[lang];
+            if (trendAdviceVal) trendAdviceVal.textContent = trendAdvice[lang];
+            
+            // Re-render components relying on translated strings
+            updateSituationToday();
+            updateSimulation();
+            updateEsppSellWarning();
+            renderSavingsIncome();
+            renderScenarios();
+            renderEsppTable();
+            updateAlertGenerator();
+            
+            // Re-translate charts datasets and options
+            updateChartTranslations();
+        }
+
+        function updateChartTranslations() {
+            if (charts.espp) {
+                charts.espp.data.labels = [
+                    locales[currentLang].lbl_tax_secured,
+                    locales[currentLang].lbl_tax_at_risk,
+                    locales[currentLang].lbl_taxable_lost
+];
+                charts.espp.update();
+            }
+            if (charts.rsu) {
+                charts.rsu.data.datasets[0].label = locales[currentLang].lbl_portfolio_val;
+                charts.rsu.data.labels = [
+                    locales[currentLang].lbl_sell_vest,
+                    locales[currentLang].lbl_actual_strategy
+                ];
+                charts.rsu.options.plugins.tooltip.callbacks.label = function(context) {
+                    return ` ${locales[currentLang].lbl_val_title}€${context.raw.toFixed(2)}`;
+                };
+                charts.rsu.update();
+            }
+            if (charts.trend) {
+                charts.trend.data.datasets[0].label = locales[currentLang].lbl_stock_price;
+                charts.trend.data.datasets[1].label = locales[currentLang].lbl_sma50;
+                charts.trend.data.datasets[2].label = locales[currentLang].lbl_sma200;
+                charts.trend.data.datasets[3].label = locales[currentLang].lbl_running_cost;
+                charts.trend.data.datasets[4].label = locales[currentLang].lbl_current_cost;
+                charts.trend.options.scales.y.title.text = locales[currentLang].lbl_stock_price_usd;
+                charts.trend.update();
+            }
+            if (charts.decomp) {
+                charts.decomp.data.datasets[0].label = locales[currentLang].lbl_stock_contrib;
+                charts.decomp.data.datasets[1].label = locales[currentLang].lbl_fx_contrib;
+                charts.decomp.options.plugins.tooltip.callbacks.afterBody = function(context) {
+                    const index = context[0].dataIndex;
+                    const item = decompData[index];
+                    return `\n${locales[currentLang].lbl_total_realized_gain}€${item.total_gain.toFixed(2)}\n${locales[currentLang].lbl_notes}${item.notes}`;
+                };
+                charts.decomp.update();
+            }
+            if (charts.price) {
+                charts.price.data.datasets[0].label = locales[currentLang].lbl_rsu_vests;
+                charts.price.data.datasets[1].label = locales[currentLang].lbl_espp_buys;
+                charts.price.data.datasets[2].label = locales[currentLang].lbl_exercises;
+                charts.price.data.datasets[3].label = locales[currentLang].lbl_sells;
+                charts.price.data.datasets[4].label = locales[currentLang].lbl_price_path;
+                charts.price.options.scales.y.title.text = locales[currentLang].lbl_stock_price_usd;
+                charts.price.options.scales.x.title.text = locales[currentLang].lbl_date;
+                charts.price.options.plugins.tooltip.callbacks.label = function(context) {
+                    const point = context.raw;
+                    if (point.info) {
+                        return [
+                            `${locales[currentLang].lbl_type}${point.info.type}`,
+                            `${locales[currentLang].lbl_price}$${point.info.price_usd.toFixed(2)} / share`,
+                            `${locales[currentLang].lbl_shares}${point.info.shares}`,
+                            `${locales[currentLang].lbl_val_eur}€${point.info.price_eur.toFixed(2)} (FX: ${point.info.fx_rate.toFixed(4)})`,
+                            `${locales[currentLang].lbl_notes}${point.info.notes}`
+                        ];
+                    }
+                    return `${locales[currentLang].lbl_price}$${context.raw.y.toFixed(2)}`;
+                };
+                charts.price.update();
+            }
+            if (charts.fx) {
+                charts.fx.data.datasets[0].label = locales[currentLang].lbl_fx_rate;
+                charts.fx.data.datasets[1].label = locales[currentLang].lbl_tx_rates;
+                charts.fx.options.scales.y.title.text = locales[currentLang].lbl_fx_rate_title;
+                charts.fx.options.scales.x.title.text = locales[currentLang].lbl_date;
+                charts.fx.options.plugins.tooltip.callbacks.label = function(context) {
+                    const point = context.raw;
+                    if (point.info) {
+                        return `${locales[currentLang].lbl_tx_fx}${point.info.fx_rate.toFixed(4)} on ${formatDate(point.info.date)} (${point.info.type})`;
+                    }
+                    return `${locales[currentLang].lbl_fx_rate}: ${context.raw.y.toFixed(4)}`;
+                };
+                charts.fx.update();
+            }
+            if (charts.peers) {
+                charts.peers.options.scales.y.title.text = (currentLang === 'es') ? 'Rendimiento Normalizado (%)' : 'Normalized Return (%)';
+                charts.peers.update();
+            }
+            if (charts.breakeven) {
+                charts.breakeven.data.datasets[0].label = locales[currentLang].be_chart_label_unsold;
+                charts.breakeven.data.datasets[1].label = locales[currentLang].be_chart_label_port;
+                charts.breakeven.data.datasets[2].label = locales[currentLang].be_chart_label_current;
+                charts.breakeven.options.scales.x.title.text = (currentLang === 'es') ? 'Tipo de Cambio USD/EUR' : 'USD/EUR Exchange Rate';
+                charts.breakeven.options.scales.y.title.text = (currentLang === 'es') ? 'Precio de la Acción (USD)' : 'Stock Price (USD)';
+                charts.breakeven.update();
+            }
+        }
+
+        let privacyActive = false;
+        function togglePrivacy() {
+            privacyActive = !privacyActive;
+            const body = document.body;
+            const btn = document.getElementById('privacyBtn');
+            const btnText = document.getElementById('privacy-btn-text');
+            if (privacyActive) {
+                body.classList.add('privacy-active');
+                if (btnText) btnText.textContent = locales[currentLang].privacy_btn_show;
+            } else {
+                body.classList.remove('privacy-active');
+                if (btnText) btnText.textContent = locales[currentLang].privacy_btn_hide;
+            }
+        }
+        
+        // Globals to keep chart instances for resizing on tab switch
+        const charts = {};
+        
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-btn').forEach(btn => btn.classList.remove('active'));
+            document.querySelectorAll('.tab-content').forEach(content => content.classList.remove('active'));
+            
+            document.getElementById('btn-' + tabId).classList.add('active');
+            document.getElementById('tab-' + tabId).classList.add('active');
+            
+            setTimeout(() => {
+                Object.values(charts).forEach(chart => {
+                    chart.resize();
+                    chart.update();
+                });
+            }, 50);
+        }
+
+        // --- Spanish savings tax rate bands calculator ---
+        function calculateSpanishSavingsTax(taxableBase) {
+            if (taxableBase <= 0) return 0;
+            let remaining = taxableBase;
+            let tax = 0;
+            
+            const bands = [
+                { limit: 6000, rate: 0.19 },
+                { limit: 44000, rate: 0.21 },
+                { limit: 150000, rate: 0.23 },
+                { limit: 100000, rate: 0.27 },
+                { limit: null, rate: 0.28 }
+            ];
+            
+            for (let i = 0; i < bands.length; i++) {
+                const b = bands[i];
+                if (b.limit === null || remaining <= b.limit) {
+                    tax += remaining * b.rate;
+                    break;
+                } else {
+                    tax += b.limit * b.rate;
+                    remaining -= b.limit;
+                }
+            }
+            return tax;
+        }
+
+        // --- Real-time Simulator Logic ---
+        const sliderPrice = document.getElementById('slider-sim-price');
+        const sliderFx = document.getElementById('slider-sim-fx');
+        const valPrice = document.getElementById('val-sim-price');
+        const valFx = document.getElementById('val-sim-fx');
+        
+        // Set slider starting ranges and values
+        sliderPrice.min = (livePriceUsd * 0.5).toFixed(1);
+        sliderPrice.max = (livePriceUsd * 1.5).toFixed(1);
+        sliderPrice.value = livePriceUsd.toFixed(2);
+        
+        sliderFx.value = liveFxRate.toFixed(4);
+
+        function updateSimulation() {
+            const simPrice = parseFloat(sliderPrice.value);
+            const simFx = parseFloat(sliderFx.value);
+            
+            valPrice.textContent = `$${simPrice.toFixed(2)}`;
+            valFx.textContent = `€${simFx.toFixed(4)}`;
+            
+            let totalValueEur = 0;
+            let totalCostEur = 0;
+            
+            unsoldLots.forEach(lot => {
+                const costBasisEur = lot.shares * lot.price_eur;
+                const simValueEur = lot.shares * (simPrice * simFx);
+                
+                totalCostEur += costBasisEur;
+                totalValueEur += simValueEur;
+            });
+            
+            const totalGainEur = totalValueEur - totalCostEur;
+            const estimatedTax = calculateSpanishSavingsTax(totalGainEur);
+            
+            // Render outputs
+            document.getElementById('outcome-value').textContent = `€${totalValueEur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            
+            const gainElem = document.getElementById('outcome-gain');
+            gainElem.textContent = `${totalGainEur >= 0 ? '+' : ''}€${totalGainEur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            gainElem.style.color = totalGainEur >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            
+            document.getElementById('outcome-tax').textContent = `€${estimatedTax.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+
+            // Net cash you actually walk away with: sale value minus the tax on the gain.
+            const netCashEur = totalValueEur - estimatedTax;
+            const netElem = document.getElementById('outcome-net');
+            if (netElem) {
+                netElem.textContent = `€${netCashEur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+
+            simulatedTotalValueEur = totalValueEur;
+            updateHaciendaOptimizer(totalGainEur);
+            updateConcentrationRisk(totalValueEur);
+            updateBreakevenCalculator(simPrice, simFx);
+        }
+        
+        sliderPrice.addEventListener('input', updateSimulation);
+        sliderFx.addEventListener('input', updateSimulation);
+
+        function updateHaciendaOptimizer(totalGainEur) {
+            const currentLabel = document.getElementById('tax-bracket-current-label');
+            const progressText = document.getElementById('tax-bracket-progress-text');
+            const progressBar = document.getElementById('tax-bracket-progress-bar');
+            const adviceDiv = document.getElementById('tax-bracket-advice');
+            if (!currentLabel || !progressText || !progressBar || !adviceDiv) return;
+
+            const isEs = (currentLang === 'es');
+            // The Spanish "savings base" combines stock capital gains with dividend/
+            // interest income already received this year, so both push you up the
+            // brackets. currentYearRcm is 0 when no dividend data has been recorded.
+            const gain = Math.max(0, totalGainEur + currentYearRcm);
+
+            // Progressive Bracket Limits in Spain:
+            // 0 - 6,000 at 19%
+            // 6,000 - 50,000 at 21%
+            // 50,000 - 200,000 at 23%
+            // 200,000 - 300,000 at 27%
+            // > 300,000 at 28%
+            const thresholds = [6000, 50000, 200000, 300000];
+            const rates = [19, 21, 23, 27, 28];
+
+            let activeIndex = 0;
+            for (let i = 0; i < thresholds.length; i++) {
+                if (gain >= thresholds[i]) {
+                    activeIndex = i + 1;
+                } else {
+                    break;
+                }
+            }
+
+            const currentRate = rates[activeIndex];
+            currentLabel.innerHTML = isEs ? `Tramo Actual: <strong>${currentRate}%</strong>` : `Current Bracket: <strong>${currentRate}%</strong>`;
+
+            let rangeMin = activeIndex === 0 ? 0 : thresholds[activeIndex - 1];
+            let rangeMax = activeIndex < thresholds.length ? thresholds[activeIndex] : null;
+
+            let pct = 0;
+            if (rangeMax === null) {
+                pct = 100;
+                progressText.textContent = `€${gain.toLocaleString(undefined, {maximumFractionDigits: 0})} (> €300,000)`;
+            } else {
+                const rangeWidth = rangeMax - rangeMin;
+                const progressInRange = gain - rangeMin;
+                pct = Math.min(100, Math.max(0, (progressInRange / rangeWidth) * 100));
+                progressText.textContent = `€${gain.toLocaleString(undefined, {maximumFractionDigits: 0})} / €${rangeMax.toLocaleString(undefined, {maximumFractionDigits: 0})} (${pct.toFixed(0)}%)`;
+            }
+            progressBar.style.width = `${pct}%`;
+
+            // Dynamic Advice
+            let advice = '';
+            if (rangeMax !== null) {
+                const headroom = rangeMax - gain;
+                const currentSimPrice = parseFloat(sliderPrice.value);
+                const currentSimFx = parseFloat(sliderFx.value);
+                const valPerShareEur = currentSimPrice * currentSimFx;
+                
+                // Approximate shares to reach next bracket
+                const sharesCanSell = Math.floor(headroom / (valPerShareEur || 1));
+                
+                if (isEs) {
+                    advice = `💡 <strong>Optimización de Hacienda:</strong> Su ganancia actual tributa al <strong>${currentRate}%</strong>. Puede materializar hasta <strong>€${headroom.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong> más en ganancias antes de saltar al siguiente tramo tributario (${rates[activeIndex + 1]}%). <br>Aproximadamente, puede vender <strong>${sharesCanSell}</strong> acciones más este año a precios actuales sin pagar más tipo impositivo.`;
+                } else {
+                    advice = `💡 <strong>Hacienda Optimization:</strong> Your current gains are taxed at <strong>${currentRate}%</strong>. You can realize up to <strong>€${headroom.toLocaleString(undefined, {maximumFractionDigits: 0})}</strong> more in gains before jumping to the next tax bracket (${rates[activeIndex + 1]}%). <br>Approximately, you can sell <strong>${sharesCanSell}</strong> more shares this calendar year at current prices to stay below the threshold.`;
+                }
+            } else {
+                if (isEs) {
+                    advice = `🔥 <strong>Tramo Máximo:</strong> Sus ganancias superan los €300,000, tributando al tipo marginal del <strong>28%</strong>. No hay límites adicionales para optimizar este año.`;
+                } else {
+                    advice = `🔥 <strong>Maximum Bracket reached:</strong> Your gains exceed €300,000 and are taxed at the highest bracket of <strong>28%</strong>. No further optimization headroom remains for this calendar year.`;
+                }
+            }
+            adviceDiv.innerHTML = advice;
+        }
+
+        function updateConcentrationRisk(val) {
+            const netWorthInput = document.getElementById('input-net-worth');
+            const percentText = document.getElementById('risk-percent-text');
+            const badgeText = document.getElementById('risk-badge-text');
+            const circle = document.getElementById('risk-gauge-circle');
+            const adviceText = document.getElementById('risk-advice-text');
+            if (!netWorthInput || !percentText || !badgeText || !circle || !adviceText) return;
+
+            const isEs = (currentLang === 'es');
+            const netWorth = parseFloat(netWorthInput.value) || 100000;
+            const valEur = (typeof val === 'number') ? val : simulatedTotalValueEur;
+            
+            const pct = Math.min(100, Math.max(0, (valEur / netWorth) * 100));
+            percentText.textContent = `${pct.toFixed(1)}%`;
+
+            // SVG circle circumference = 364.4 (for radius 58)
+            const circumference = 364.4;
+            const offset = circumference - (pct / 100 * circumference);
+            circle.style.strokeDashoffset = offset;
+
+            let level = 'high';
+            if (pct < 10) {
+                level = 'safe';
+            } else if (pct <= 20) {
+                level = 'moderate';
+            }
+
+            if (level === 'safe') {
+                circle.style.stroke = 'var(--accent-green)';
+                badgeText.style.background = 'rgba(16, 185, 129, 0.2)';
+                badgeText.style.color = '#34d399';
+                badgeText.textContent = isEs ? 'Seguro' : 'Safe';
+                adviceText.innerHTML = isEs ? 
+                    `✅ Su exposición a acciones de la empresa es baja (menor al 10% de su patrimonio líquido). Su diversificación es saludable.` : 
+                    `✅ Your exposure to company stock is low (under 10% of your liquid wealth). Your portfolio diversification is healthy.`;
+            } else if (level === 'moderate') {
+                circle.style.stroke = 'var(--accent-yellow)';
+                badgeText.style.background = 'rgba(245, 158, 11, 0.2)';
+                badgeText.style.color = '#fbbf24';
+                badgeText.textContent = isEs ? 'Moderado' : 'Moderate';
+                adviceText.innerHTML = isEs ? 
+                    `⚠️ Su exposición es moderada (10% - 20%). Empieza a concentrar riesgo. Considere vender lotes desbloqueados de ESPP para equilibrar.` : 
+                    `⚠️ Your exposure is moderate (10% - 20%). Risk concentration is beginning. Consider selling unlocked ESPP lots to balance.`;
+            } else {
+                circle.style.stroke = 'var(--accent-red)';
+                badgeText.style.background = 'rgba(239, 68, 68, 0.2)';
+                badgeText.style.color = '#f87171';
+                badgeText.textContent = isEs ? 'Alto Riesgo' : 'High Risk';
+                adviceText.innerHTML = isEs ? 
+                    `🚨 <strong>Riesgo de Concentración Alto:</strong> Más del 20% de su patrimonio neto líquido está en una sola acción. Si la acción cae o el dólar se devalúa, afectará gravemente su riqueza. Se aconseja un plan de venta sistemático para diversificar en fondos de índice global.` : 
+                    `🚨 <strong>High Concentration Risk:</strong> More than 20% of your liquid net worth is in a single stock. A market drop or USD devaluation will heavily hit your wealth. A systematic selling plan to diversify into index funds is highly recommended.`;
+            }
+        }
+
+        // --- Breakeven Price Calculator ---
+        function updateBreakevenCalculator(simPrice, simFx) {
+            const excludeEspp = document.getElementById('be-exclude-espp') && document.getElementById('be-exclude-espp').checked;
+
+            let filteredLots = unsoldLots;
+            let filteredDecomp = decompData;
+            if (excludeEspp) {
+                filteredLots = unsoldLots.filter(lot => !lot.notes.includes('ESPP'));
+                filteredDecomp = decompData.filter(d => !d.is_espp);
+            }
+
+            const remainingShares = filteredLots.reduce((acc, lot) => acc + lot.shares, 0);
+            const remainingCostBasisEur = filteredLots.reduce((acc, lot) => acc + (lot.shares * lot.price_eur), 0);
+            const pastRealizedGainsEur = filteredDecomp.reduce((acc, d) => acc + d.total_gain, 0);
+
+            // Display cost basis and past losses
+            const unsoldCostElem = document.getElementById('be-val-unsold-cost');
+            if (unsoldCostElem) {
+                unsoldCostElem.textContent = `€${remainingCostBasisEur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            }
+            
+            const pastLossesElem = document.getElementById('be-val-past-losses');
+            if (pastLossesElem) {
+                pastLossesElem.textContent = `${pastRealizedGainsEur >= 0 ? '+' : ''}€${pastRealizedGainsEur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+                pastLossesElem.style.color = pastRealizedGainsEur >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            }
+
+            if (remainingShares <= 0) {
+                const targetPriceElem = document.getElementById('be-val-target-price');
+                if (targetPriceElem) targetPriceElem.textContent = "$0.00";
+                const portfolioPriceElem = document.getElementById('be-val-portfolio-price');
+                if (portfolioPriceElem) portfolioPriceElem.textContent = "$0.00";
+                if (charts.breakeven) {
+                    charts.breakeven.data.datasets[0].data = [];
+                    charts.breakeven.data.datasets[1].data = [];
+                    charts.breakeven.data.datasets[2].data = [];
+                    charts.breakeven.update();
+                }
+                return;
+            }
+
+            // Target prices at current simulated FX
+            const bePriceUnsold = remainingCostBasisEur / (remainingShares * simFx);
+            const bePricePortfolio = (remainingCostBasisEur - pastRealizedGainsEur) / (remainingShares * simFx);
+
+            const targetPriceElem = document.getElementById('be-val-target-price');
+            if (targetPriceElem) {
+                targetPriceElem.textContent = `$${bePriceUnsold.toFixed(2)}`;
+            }
+            const portfolioPriceElem = document.getElementById('be-val-portfolio-price');
+            if (portfolioPriceElem) {
+                portfolioPriceElem.textContent = `$${bePricePortfolio.toFixed(2)}`;
+            }
+
+            // Update curves dynamically in the chart
+            if (charts.breakeven) {
+                const fxRates = [];
+                for (let r = 0.70; r <= 1.201; r += 0.02) {
+                    fxRates.push(parseFloat(r.toFixed(2)));
+                }
+
+                const unsoldCurve = fxRates.map(fx => {
+                    return { x: fx, y: remainingCostBasisEur / (remainingShares * fx) };
+                });
+
+                const portfolioCurve = fxRates.map(fx => {
+                    return { x: fx, y: (remainingCostBasisEur - pastRealizedGainsEur) / (remainingShares * fx) };
+                });
+
+                charts.breakeven.data.datasets[0].data = unsoldCurve;
+                charts.breakeven.data.datasets[1].data = portfolioCurve;
+                charts.breakeven.data.datasets[2].data = [{ x: simFx, y: simPrice }];
+                charts.breakeven.update();
+            }
+        }
+
+        // --- Currency Devaluation Scenario Planner Table Generator ---
+        function renderScenarios() {
+            // Original cost basis
+            const totalCostEur = unsoldLots.reduce((acc, lot) => acc + (lot.shares * lot.price_eur), 0);
+            
+            // Helper to compute stats
+            function getStatsFor(price, fx) {
+                const val = unsoldLots.reduce((acc, lot) => acc + (lot.shares * (price * fx)), 0);
+                return { value: val, gain: val - totalCostEur };
+            }
+            
+            const baseline = getStatsFor(livePriceUsd, liveFxRate);
+            
+            const scenarios = [
+                {
+                    keyName: 'sc_baseline',
+                    keyDesc: 'sc_baseline_desc',
+                    price: livePriceUsd,
+                    fx: liveFxRate
+                },
+                {
+                    keyName: 'sc_weak_usd_5',
+                    keyDesc: 'sc_weak_usd_5_desc',
+                    price: livePriceUsd,
+                    fx: liveFxRate * 0.95
+                },
+                {
+                    keyName: 'sc_weak_usd_10',
+                    keyDesc: 'sc_weak_usd_10_desc',
+                    price: livePriceUsd,
+                    fx: liveFxRate * 0.90
+                },
+                {
+                    keyName: 'sc_strong_usd_5',
+                    keyDesc: 'sc_strong_usd_5_desc',
+                    price: livePriceUsd,
+                    fx: liveFxRate * 1.05
+                },
+                {
+                    keyName: 'sc_strong_usd_10',
+                    keyDesc: 'sc_strong_usd_10_desc',
+                    price: livePriceUsd,
+                    fx: liveFxRate * 1.10
+                },
+                {
+                    keyName: 'sc_drop_10',
+                    keyDesc: 'sc_drop_10_desc',
+                    price: livePriceUsd * 0.90,
+                    fx: liveFxRate
+                },
+                {
+                    keyName: 'sc_up_10',
+                    keyDesc: 'sc_up_10_desc',
+                    price: livePriceUsd * 1.10,
+                    fx: liveFxRate
+                },
+                {
+                    keyName: 'sc_double_whammy',
+                    keyDesc: 'sc_double_whammy_desc',
+                    price: livePriceUsd * 0.90,
+                    fx: liveFxRate * 0.95
+                },
+                {
+                    keyName: 'sc_double_boost',
+                    keyDesc: 'sc_double_boost_desc',
+                    price: livePriceUsd * 1.10,
+                    fx: liveFxRate * 1.05
+                }
+            ];
+            
+            const table = document.getElementById('scenario-planner-body');
+            table.innerHTML = '';
+            
+            scenarios.forEach((s, idx) => {
+                const outcome = getStatsFor(s.price, s.fx);
+                const diffFromBaseline = outcome.value - baseline.value;
+                const pctDiff = baseline.value > 0 ? (diffFromBaseline / baseline.value * 100) : 0;
+                
+                let diffStr = '';
+                let diffStyle = '';
+                if (idx > 0) {
+                    if (diffFromBaseline >= 0) {
+                        const label = locales[currentLang].gain_of_prefix || "Gain of";
+                        diffStr = `+${Math.abs(pctDiff).toFixed(1)}% (${label} €${Math.abs(diffFromBaseline).toLocaleString(undefined, {maximumFractionDigits: 0})})`;
+                        diffStyle = 'color: var(--accent-green);';
+                    } else {
+                        const label = locales[currentLang].loss_of_prefix || "Loss of";
+                        diffStr = `-${Math.abs(pctDiff).toFixed(1)}% (${label} €${Math.abs(diffFromBaseline).toLocaleString(undefined, {maximumFractionDigits: 0})})`;
+                        diffStyle = 'color: var(--accent-red);';
+                    }
+                } else {
+                    diffStr = locales[currentLang].baseline_lbl;
+                    diffStyle = 'color: var(--text-secondary);';
+                }
+                
+                const rowHtml = `
+                    <tr>
+                        <td><strong>${locales[currentLang][s.keyName]}</strong><br><small style="color: var(--text-secondary);">${locales[currentLang][s.keyDesc]}</small></td>
+                        <td>$${s.price.toFixed(2)}</td>
+                        <td>€${s.fx.toFixed(4)}</td>
+                        <td class="sensitive">€${outcome.value.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td class="sensitive" style="color: ${outcome.gain >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">
+                            ${outcome.gain >= 0 ? '+' : ''}€${outcome.gain.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}
+                        </td>
+                        <td style="${diffStyle}">${diffStr}</td>
+                    </tr>
+                `;
+                table.insertAdjacentHTML('beforeend', rowHtml);
+            });
+        }
+        
+        // --- ESPP table rows generator ---
+        function renderEsppTable() {
+            const tableBody = document.getElementById('espp-countdown-body');
+            if (esppLots.length === 0) {
+                tableBody.innerHTML = `<tr><td colspan="8" style="text-align:center; color: var(--text-secondary);">${locales[currentLang].no_espp_lots}</td></tr>`;
+            } else {
+                tableBody.innerHTML = '';
+                esppLots.forEach(lot => {
+                    const badgeClass = lot.days_left === 0 ? 'status-secured' : 'status-locked';
+                    const isSecured = lot.days_left === 0;
+                    
+                    const statusText = isSecured ? 
+                        (currentLang === 'es' ? "🔓 Exención Asegurada" : "🔓 Exemption Secured") : 
+                        (currentLang === 'es' ? "🔒 Bloqueado" : "🔒 Locked");
+                    
+                    const adviceText = isSecured ? 
+                        (currentLang === 'es' ? "Seguro para vender (Sin penalización fiscal)" : "Safe to Sell (No tax penalty)") : 
+                        (currentLang === 'es' ? `MANTENER para evitar pagar impuestos sobre €${lot.discount_at_risk.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` : `HOLD to avoid paying tax on €${lot.discount_at_risk.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`);
+
+                    const daysLeftText = lot.days_left > 0 ? lot.days_left + locales[currentLang].days_suffix : '0';
+                    
+                    let alertCol = '';
+                    if (!isSecured) {
+                        const title = encodeURIComponent(currentLang === 'es' ? "🔓 Desbloqueo Fiscal ESPP (E-Trade)" : "🔓 ESPP Tax Exemption Unlock (E-Trade)");
+                        const details = encodeURIComponent(currentLang === 'es' ? `El lote de compra ESPP del ${lot.acq_date} (${lot.shares.toFixed(0)} acciones) ahora está libre de impuestos.` : `Your ESPP purchase lot from ${lot.acq_date} (${lot.shares.toFixed(0)} shares) is now tax-exempt.`);
+                        const cleanUnlockDate = lot.unlock_date.replace(/-/g, '');
+                        // End date is next day for all-day event
+                        const unlockEndDate = new Date(lot.unlock_date);
+                        unlockEndDate.setDate(unlockEndDate.getDate() + 1);
+                        const cleanEndDate = unlockEndDate.toISOString().split('T')[0].replace(/-/g, '');
+                        const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${title}&dates=${cleanUnlockDate}/${cleanEndDate}&details=${details}&sf=true&output=xml`;
+                        
+                        alertCol = `
+                            <td>
+                                <a href="${gCalUrl}" target="_blank" class="calendar-btn" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 8px; font-size: 0.75rem; background: rgba(59, 130, 246, 0.2); color: #60a5fa; border: 1px solid rgba(59, 130, 246, 0.4); border-radius: 4px; text-decoration: none; font-weight: 500; transition: all 0.2s;" onmouseover="this.style.background='rgba(59, 130, 246, 0.3)'" onmouseout="this.style.background='rgba(59, 130, 246, 0.2)'">
+                                    📅 <span data-i18n="add_to_calendar">Add Reminder</span>
+                                </a>
+                            </td>
+                        `;
+                    } else {
+                        alertCol = `<td><span style="color: var(--accent-green);">✓</span></td>`;
+                    }
+
+                    const rowHtml = `
+                        <tr>
+                            <td><strong>${formatDate(lot.acq_date)}</strong></td>
+                            <td class="sensitive">${lot.shares.toFixed(0)}</td>
+                            <td class="sensitive">€${lot.price_eur.toFixed(2)}</td>
+                            <td>${formatDate(lot.unlock_date)}</td>
+                            <td>${daysLeftText}</td>
+                            <td><span class="status-badge ${badgeClass}">${statusText}</span></td>
+                            <td class="sensitive"><span style="color: ${isSecured ? 'var(--accent-green)' : 'var(--text-primary)'}">${adviceText}</span></td>
+                            ${alertCol}
+                        </tr>
+                    `;
+                    tableBody.insertAdjacentHTML('beforeend', rowHtml);
+                });
+            }
+        }
+        
+        // Initialize alert generator function
+        function updateAlertGenerator() {
+            const select = document.getElementById('alertTypeSelect');
+            const resultBox = document.getElementById('generator-result-box');
+            if (!select || !resultBox) return;
+
+            const val = select.value;
+            let html = '';
+            const isEs = (currentLang === 'es');
+
+            if (val === 'fx') {
+                const title = isEs ? "Tipo de Cambio USD/EUR" : "USD/EUR Exchange Rate";
+                const desc = isEs ? 
+                    "Le ayuda a protegerse contra la devaluación del dólar. Si el dólar se debilita frente al euro (el tipo USD/EUR baja), sus ganancias retenidas en euros disminuyen." : 
+                    "Helps protect you from US Dollar devaluation. If the dollar weakens against the Euro (USD/EUR goes down), your EUR holdings lose value.";
+                const rec = isEs ? 
+                    "<strong>Alerta recomendada:</strong> Avisar cuando el tipo de cambio USD/EUR cruce a la baja 0.90 o al alza 0.95." : 
+                    "<strong>Recommended Alert:</strong> Trigger alert when USD/EUR crosses below 0.90 or above 0.95.";
+                const action = isEs ? 
+                    "Cree una alerta en TradingView con el ticker <code>USDEUR</code> o en su aplicación bancaria o bróker." : 
+                    "Create an alert on TradingView with ticker <code>USDEUR</code> or your bank/broker app.";
+                
+                html = `
+                    <h4 style="margin: 0 0 6px 0; color: var(--accent-blue);">${title}</h4>
+                    <p style="margin: 0 0 8px 0; color: var(--text-secondary); font-size: 0.8rem;">${desc}</p>
+                    <p style="margin: 0 0 8px 0; font-size: 0.85rem;">${rec}</p>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.8rem;">💡 <strong>${isEs ? 'Cómo configurarlo' : 'How to set it'}:</strong> ${action}</p>
+                `;
+            } else if (val === 'dt_sma') {
+                const title = isEs ? "Dynatrace (DT) vs SMA 200" : "Dynatrace (DT) vs SMA 200";
+                const desc = isEs ? 
+                    "El promedio móvil simple de 200 días indica la tendencia a largo plazo. Cruzar por debajo de él es una señal bajista de venta, mientras que cotizar por encima indica buen momento de mercado." : 
+                    "The 200-day Simple Moving Average indicates long-term trend. Crossing below is a bearish sell signal, while trading above indicates strong market momentum.";
+                const rec = isEs ? 
+                    "<strong>Alerta recomendada:</strong> Avisar cuando el precio de DT cruce a la baja la SMA de 200 días." : 
+                    "<strong>Recommended Alert:</strong> Trigger alert when DT price crosses below its 200-day SMA.";
+                const action = isEs ? 
+                    "En TradingView, abra el gráfico de <code>DT</code>, añada el indicador <code>Simple Moving Average</code> (configurado a 200) y cree una alerta configurando Precio Cruzando SMA 200." : 
+                    "On TradingView, open <code>DT</code> chart, add <code>Simple Moving Average</code> indicator (length 200) and set alert for Price crossing SMA 200.";
+                
+                html = `
+                    <h4 style="margin: 0 0 6px 0; color: var(--accent-blue);">${title}</h4>
+                    <p style="margin: 0 0 8px 0; color: var(--text-secondary); font-size: 0.8rem;">${desc}</p>
+                    <p style="margin: 0 0 8px 0; font-size: 0.85rem;">${rec}</p>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.8rem;">💡 <strong>${isEs ? 'Cómo configurarlo' : 'How to set it'}:</strong> ${action}</p>
+                `;
+            } else if (val === 'ddog_earnings') {
+                const title = isEs ? "Noticias de Datadog (DDOG)" : "Datadog (DDOG) News & Earnings";
+                const desc = isEs ? 
+                    "Datadog es el principal competidor en observabilidad. Sus resultados financieros mueven fuertemente el sector e influyen en Dynatrace (DT)." : 
+                    "Datadog is the leading peer in observability. Their financial results move the sector and strongly influence Dynatrace (DT).";
+                const rec = isEs ? 
+                    "<strong>Alerta recomendada:</strong> Configurar Alertas de Google para <code>Datadog earnings</code> o <code>DDOG stock</code>." : 
+                    "<strong>Recommended Alert:</strong> Create Google Alerts for <code>Datadog earnings</code> or <code>DDOG stock</code>.";
+                const action = isEs ? 
+                    "Visite <a href='https://www.google.com/alerts' target='_blank' style='color: var(--accent-green); text-decoration: underline;'>Google Alerts</a>, añada el término <code>Datadog earnings</code> y elija recibir avisos inmediatos." : 
+                    "Go to <a href='https://www.google.com/alerts' target='_blank' style='color: var(--accent-green); text-decoration: underline;'>Google Alerts</a>, type <code>Datadog earnings</code>, and choose immediate email notifications.";
+                
+                html = `
+                    <h4 style="margin: 0 0 6px 0; color: var(--accent-blue);">${title}</h4>
+                    <p style="margin: 0 0 8px 0; color: var(--text-secondary); font-size: 0.8rem;">${desc}</p>
+                    <p style="margin: 0 0 8px 0; font-size: 0.85rem;">${rec}</p>
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.8rem;">💡 <strong>${isEs ? 'Cómo configurarlo' : 'How to set it'}:</strong> ${action}</p>
+                `;
+            } else if (val === 'espp_unlock') {
+                const title = isEs ? "Siguiente Fecha de Desbloqueo Fiscal ESPP" : "Next ESPP Tax Unlock Date";
+                
+                // Find next locked lot
+                let nextLot = null;
+                for (let i = 0; i < esppLots.length; i++) {
+                    if (esppLots[i].days_left > 0) {
+                        if (!nextLot || esppLots[i].days_left < nextLot.days_left) {
+                            nextLot = esppLots[i];
+                        }
+                    }
+                }
+                
+                let desc = '';
+                let rec = '';
+                let action = '';
+                
+                if (nextLot) {
+                    desc = isEs ? 
+                        `Su próximo lote de ESPP (${nextLot.shares.toFixed(0)} acciones) se desbloqueará libre de impuestos el <strong>${formatDate(nextLot.unlock_date)}</strong> (en ${nextLot.days_left} días).` :
+                        `Your next ESPP lot of ${nextLot.shares.toFixed(0)} shares will unlock tax-exempt on <strong>${formatDate(nextLot.unlock_date)}</strong> (${nextLot.days_left} days left).`;
+                    rec = isEs ? 
+                        `<strong>Recordatorio recomendado:</strong> Guarde este evento en su calendario para recibir un aviso el día del desbloqueo.` : 
+                        `<strong>Recommended Alert:</strong> Add this unlock date to your calendar to receive a notification.`;
+                    
+                    const titleCal = encodeURIComponent(isEs ? "🔓 Desbloqueo Fiscal ESPP (E-Trade)" : "🔓 ESPP Tax Exemption Unlock (E-Trade)");
+                    const detailsCal = encodeURIComponent(isEs ? `El lote de compra ESPP del ${nextLot.acq_date} (${nextLot.shares.toFixed(0)} acciones) ahora está exento de impuestos.` : `Your ESPP purchase lot from ${nextLot.acq_date} (${nextLot.shares.toFixed(0)} shares) is now tax-exempt.`);
+                    const cleanUnlockDate = nextLot.unlock_date.replace(/-/g, '');
+                    const unlockEndDate = new Date(nextLot.unlock_date);
+                    unlockEndDate.setDate(unlockEndDate.getDate() + 1);
+                    const cleanEndDate = unlockEndDate.toISOString().split('T')[0].replace(/-/g, '');
+                    const gCalUrl = `https://calendar.google.com/calendar/render?action=TEMPLATE&text=${titleCal}&dates=${cleanUnlockDate}/${cleanEndDate}&details=${detailsCal}&sf=true&output=xml`;
+                    
+                    action = isEs ? 
+                        `<a href="${gCalUrl}" target="_blank" class="calendar-btn" style="display:inline-block; margin-top: 8px; padding: 6px 12px; background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; border-radius: 6px; text-decoration:none; font-size: 0.8rem; font-weight: 500;">📅 Añadir al Calendario de Google</a>` : 
+                        `<a href="${gCalUrl}" target="_blank" class="calendar-btn" style="display:inline-block; margin-top: 8px; padding: 6px 12px; background: rgba(59,130,246,0.2); border: 1px solid rgba(59,130,246,0.4); color: #60a5fa; border-radius: 6px; text-decoration:none; font-size: 0.8rem; font-weight: 500;">📅 Add to Google Calendar</a>`;
+                } else {
+                    desc = isEs ? "No tiene lotes de ESPP retenidos pendientes de exención fiscal de 3 años." : "You have no active ESPP lots pending the 3-year tax exemption lock.";
+                    rec = isEs ? "No es necesario configurar alertas de calendario de ESPP." : "No ESPP calendar alerts needed.";
+                    action = "";
+                }
+
+                html = `
+                    <h4 style="margin: 0 0 6px 0; color: var(--accent-blue);">${title}</h4>
+                    <p style="margin: 0 0 8px 0; color: var(--text-secondary); font-size: 0.8rem;">${desc}</p>
+                    <p style="margin: 0 0 8px 0; font-size: 0.85rem;">${rec}</p>
+                    <div style="margin-top: 10px;">${action}</div>
+                `;
+            }
+
+            resultBox.innerHTML = html;
+        }
+
+        // --- "Your situation today" hero snapshot ---
+        function updateSituationToday() {
+            const fmtEur = (n) => '€' + n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            const shares = unsoldLots.reduce((acc, l) => acc + l.shares, 0);
+            const costBasisEur = unsoldLots.reduce((acc, l) => acc + (l.shares * l.price_eur), 0);
+            const valueEur = shares * livePriceUsd * liveFxRate;
+            const plEur = valueEur - costBasisEur;
+
+            const setVal = (id, txt) => { const e = document.getElementById(id); if (e) e.textContent = txt; };
+            setVal('hero-shares', shares.toLocaleString(undefined, {maximumFractionDigits: 2}));
+            setVal('hero-value', fmtEur(valueEur));
+            setVal('hero-paid', fmtEur(costBasisEur));
+
+            const plElem = document.getElementById('hero-pl');
+            if (plElem) {
+                plElem.textContent = (plEur >= 0 ? '+' : '') + fmtEur(plEur);
+                plElem.style.color = plEur >= 0 ? 'var(--accent-green)' : 'var(--accent-red)';
+            }
+
+            const noteElem = document.getElementById('hero-note');
+            if (noteElem) {
+                const t = locales[currentLang];
+                const updown = plEur >= 0 ? t.hero_word_up : t.hero_word_down;
+                noteElem.innerHTML = t.hero_note
+                    .replace('{updown}', `<strong style="color: ${plEur >= 0 ? 'var(--accent-green)' : 'var(--accent-red)'}">${updown}</strong>`)
+                    .replace('{pl}', `<span class="sensitive">${fmtEur(Math.abs(plEur))}</span>`)
+                    .replace('{price}', `$${livePriceUsd.toFixed(2)}`)
+                    .replace('{fx}', liveFxRate.toFixed(4));
+            }
+        }
+
+        // --- ESPP lock warning on the sell page ---
+        function updateEsppSellWarning() {
+            const box = document.getElementById('espp-sell-warning');
+            if (!box) return;
+            const locked = esppLots.filter(l => l.days_left > 0);
+            if (locked.length === 0) { box.style.display = 'none'; box.innerHTML = ''; return; }
+            const lockedShares = locked.reduce((a, l) => a + l.shares, 0);
+            const atRisk = locked.reduce((a, l) => a + l.discount_at_risk, 0);
+            const t = locales[currentLang];
+            box.style.display = 'block';
+            box.innerHTML = '⚠️ ' + t.espp_sell_warning
+                .replace('{shares}', `<strong>${lockedShares.toLocaleString(undefined, {maximumFractionDigits: 2})}</strong>`)
+                .replace('{atrisk}', `<strong class="sensitive">€${atRisk.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</strong>`);
+        }
+
+        // --- Dividends & interest income table ---
+        function renderSavingsIncome() {
+            const el = document.getElementById('savings-income-content');
+            if (!el) return;
+            const t = locales[currentLang];
+            const fmt = (n) => `€${n.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}`;
+            if (!savingsIncome || savingsIncome.length === 0) {
+                el.innerHTML = `<div style="padding: 12px; color: var(--text-secondary); font-size: 0.9rem; font-style: italic;">${t.div_empty}</div>`;
+                return;
+            }
+            const rows = savingsIncome.map(s =>
+                `<tr><td>${s.year}</td><td class="sensitive">${fmt(s.dividends_eur)}</td><td class="sensitive">${fmt(s.interest_eur)}</td><td class="sensitive"><strong>${fmt(s.total_eur)}</strong></td></tr>`
+            ).join('');
+            el.innerHTML = `<table><thead><tr><th>${t.div_th_year}</th><th>${t.div_th_dividends}</th><th>${t.div_th_interest}</th><th>${t.div_th_total}</th></tr></thead><tbody>${rows}</tbody></table>`;
+        }
+
+        // Initialize simulator & scenario planner & ESPP Active Lots & Alert Generator
+        updateSituationToday();
+        updateSimulation();
+        updateEsppSellWarning();
+        renderSavingsIncome();
+        renderScenarios();
+        renderEsppTable();
+        updateAlertGenerator();
+        
+        // Dynamic colors & scoreboard values
+        const rsuDeltaVal = __RSU_DELTA__;
+        const rsuDeltaElem = document.getElementById('rsu-delta-value');
+        if (rsuDeltaVal >= 0) {
+            rsuDeltaElem.style.color = 'var(--accent-green)';
+            rsuDeltaElem.textContent = '+' + rsuDeltaElem.textContent;
+        } else {
+            rsuDeltaElem.style.color = 'var(--accent-red)';
+        }
+
+        // --- ESPP Exemption Doughnut Chart ---
+        const esppSecured = __ESPP_SECURED__;
+        const esppAtRisk = __ESPP_AT_RISK__;
+        const esppLost = __ESPP_LOST__;
+        charts.espp = new Chart(document.getElementById('esppChart').getContext('2d'), {
+            type: 'doughnut',
+            data: {
+                labels: [
+                    locales[currentLang].lbl_tax_secured,
+                    locales[currentLang].lbl_tax_at_risk,
+                    locales[currentLang].lbl_taxable_lost
+                ],
+                datasets: [{
+                    data: [esppSecured, esppAtRisk, esppLost],
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'],
+                    borderColor: '#1e293b',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#f8fafc' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` ${context.label}: €${context.raw.toFixed(2)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- RSU Hold vs Vest Strategy Bar Chart ---
+        const rsuSellOnVest = __RSU_VEST_VAL__;
+        const rsuHoldVal = __RSU_HOLD_VAL__;
+        charts.rsu = new Chart(document.getElementById('rsuChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: ['Sell immediately on Vest', 'Actual Strategy (Hold / Sell Later)'],
+                datasets: [{
+                    label: 'Portfolio Value (EUR)',
+                    data: [rsuSellOnVest, rsuHoldVal],
+                    backgroundColor: ['#3b82f6', rsuHoldVal >= rsuSellOnVest ? '#10b981' : '#ef4444'],
+                    borderRadius: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    y: {
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' }
+                    },
+                    x: {
+                        ticks: { color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: { display: false },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return ` Value: €${context.raw.toFixed(2)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- Trend Chart with SMA lines & Average Cost Basis (aligned to stock list duration) ---
+        charts.trend = new Chart(document.getElementById('trendChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Stock Price',
+                        data: historicalQuotes.map(q => ({ x: q.date, y: q.close })),
+                        borderColor: '#3b82f6',
+                        borderWidth: 2,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    },
+                    {
+                        label: '50-Day Avg (SMA)',
+                        data: historicalQuotes.filter(q => q.sma50 !== null).map(q => ({ x: q.date, y: q.sma50 })),
+                        borderColor: '#10b981',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    },
+                    {
+                        label: '200-Day Avg (SMA)',
+                        data: historicalQuotes.filter(q => q.sma200 !== null).map(q => ({ x: q.date, y: q.sma200 })),
+                        borderColor: '#ef4444',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Your Running Average Cost Basis ($ USD)',
+                        data: historicalQuotes.filter(q => q.avg_cost_usd !== null).map(q => ({ x: q.date, y: q.avg_cost_usd })),
+                        borderColor: '#f59e0b',
+                        borderWidth: 2.2,
+                        pointRadius: 0,
+                        fill: false,
+                        showLine: true,
+                        stepped: 'before'
+                    },
+                    {
+                        label: 'Current Average Cost Basis ($ USD Reference)',
+                        data: historicalQuotes.map(q => ({ x: q.date, y: myAvgCostUsd })),
+                        borderColor: '#f59e0b',
+                        borderWidth: 1.2,
+                        borderDash: [6, 6],
+                        pointRadius: 0,
+                        fill: false,
+                        showLine: true
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        min: '__FIRST_TRANSACTION_DATE__',
+                        time: {
+                            unit: 'month',
+                            displayFormats: { month: 'MMM yyyy' }
+                        },
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8', callback: fmtMonthYear }
+                    },
+                    y: {
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' },
+                        title: { display: true, text: 'Stock Price ($ USD)', color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#f8fafc' }
+                    }
+                }
+            }
+        });
+
+        // --- Gain/Loss Decomposition Stacked Bar Chart ---
+        charts.decomp = new Chart(document.getElementById('decompChart').getContext('2d'), {
+            type: 'bar',
+            data: {
+                labels: decompData.map(d => formatDate(d.date)),
+                datasets: [
+                    {
+                        label: 'Stock Price Contribution (EUR)',
+                        data: decompData.map(d => d.stock_gain),
+                        backgroundColor: '#3b82f6',
+                        borderRadius: 4
+                    },
+                    {
+                        label: 'Currency FX Contribution (EUR)',
+                        data: decompData.map(d => d.fx_gain),
+                        backgroundColor: '#a78bfa',
+                        borderRadius: 4
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        stacked: true,
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' }
+                    },
+                    y: {
+                        stacked: true,
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { color: '#f8fafc' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            afterBody: function(context) {
+                                const index = context[0].dataIndex;
+                                const item = decompData[index];
+                                return `\nTotal realized gain: €${item.total_gain.toFixed(2)}\nNotes: ${item.notes}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+
+        // --- Price & Transactions Chart with News Click Action ---
+        const vests = rawEvents.filter(e => e.type === 'VEST');
+        const buys = rawEvents.filter(e => e.type === 'BUY');
+        const sells = rawEvents.filter(e => e.type === 'SELL');
+        const exercises = rawEvents.filter(e => e.type === 'EXERCISE');
+        
+        charts.price = new Chart(document.getElementById('priceChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Vests (RSU)',
+                        data: vests.map(e => ({ x: e.date, y: e.price_usd, info: e })),
+                        backgroundColor: '#8b5cf6',
+                        borderColor: '#8b5cf6',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: false
+                    },
+                    {
+                        label: 'Buys (ESPP)',
+                        data: buys.map(e => ({ x: e.date, y: e.price_usd, info: e })),
+                        backgroundColor: '#10b981',
+                        borderColor: '#10b981',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: false
+                    },
+                    {
+                        label: 'Exercises',
+                        data: exercises.map(e => ({ x: e.date, y: e.price_usd, info: e })),
+                        backgroundColor: '#f59e0b',
+                        borderColor: '#f59e0b',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: false
+                    },
+                    {
+                        label: 'Sells',
+                        data: sells.map(e => ({ x: e.date, y: e.price_usd, info: e })),
+                        backgroundColor: '#ef4444',
+                        borderColor: '#ef4444',
+                        pointRadius: 6,
+                        pointHoverRadius: 8,
+                        showLine: false
+                    },
+                    {
+                        label: 'Stock Price Path',
+                        data: rawEvents.map(e => ({ x: e.date, y: e.price_usd })),
+                        borderColor: '#3b82f6',
+                        borderWidth: 1.5,
+                        pointRadius: 0,
+                        fill: false,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                onClick: (e, elements) => {
+                    if (elements && elements.length > 0) {
+                        const datasetIndex = elements[0].datasetIndex;
+                        const dataIndex = elements[0].index;
+                        const point = charts.price.data.datasets[datasetIndex].data[dataIndex];
+                        if (point && point.x) {
+                            const eventDate = new Date(point.x);
+                            const url = `https://finance.yahoo.com/calendar/earnings?from=${eventDate.getFullYear()}-${String(eventDate.getMonth()+1).padStart(2,'0')}-${String(eventDate.getDate()).padStart(2,'0')}`;
+                            window.open(url, '_blank');
+                        }
+                    }
+                },
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'month',
+                            displayFormats: { month: 'MMM yyyy' }
+                        },
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8', callback: fmtMonthYear },
+                        title: { display: true, text: 'Date', color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'Stock Price ($ USD)', color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const point = context.raw;
+                                if (point.info) {
+                                    return [
+                                        `Type: ${point.info.type}`,
+                                        `Price: $${point.info.price_usd.toFixed(2)} / share`,
+                                        `Shares: ${point.info.shares}`,
+                                        `Value (EUR): €${point.info.price_eur.toFixed(2)} (FX: ${point.info.fx_rate.toFixed(4)})`,
+                                        `Notes: ${point.info.notes}`
+                                    ];
+                                }
+                                return `Price: $${context.raw.y.toFixed(2)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // --- FX Rate Chart ---
+        charts.fx = new Chart(document.getElementById('fxChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'USD / EUR FX Rate',
+                        data: rawFxHistory.map(e => ({ x: e.date, y: e.rate })),
+                        borderColor: '#a855f7',
+                        borderWidth: 2,
+                        backgroundColor: 'rgba(168, 85, 247, 0.1)',
+                        fill: true,
+                        pointRadius: 1,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Transaction Rates',
+                        data: rawEvents.map(e => ({ x: e.date, y: e.fx_rate, info: e })),
+                        backgroundColor: '#e2e8f0',
+                        borderColor: '#475569',
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        showLine: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'month',
+                            displayFormats: { month: 'MMM yyyy' }
+                        },
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8', callback: fmtMonthYear },
+                        title: { display: true, text: 'Date', color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'Rate (1 USD = X EUR)', color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const point = context.raw;
+                                if (point.info) {
+                                    return `Transaction FX: ${point.info.fx_rate.toFixed(4)} on ${formatDate(point.info.date)} (${point.info.type})`;
+                                }
+                                return `Rate: ${context.raw.y.toFixed(4)}`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // --- Comparative Peer Group Performance Chart ---
+        const peerData = __PEER_DATA__;
+        charts.peers = new Chart(document.getElementById('peerChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: 'Dynatrace (DT)',
+                        data: (peerData.DT || []).map(e => ({ x: e.date, y: e.pct })),
+                        borderColor: '#3b82f6',
+                        borderWidth: 2.5,
+                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                        fill: true,
+                        pointRadius: 1,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Datadog (DDOG)',
+                        data: (peerData.DDOG || []).map(e => ({ x: e.date, y: e.pct })),
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        pointRadius: 1,
+                        tension: 0.1
+                    },
+                    {
+                        label: 'Elastic (ESTC)',
+                        data: (peerData.ESTC || []).map(e => ({ x: e.date, y: e.pct })),
+                        borderColor: '#ef4444',
+                        borderWidth: 2,
+                        backgroundColor: 'transparent',
+                        fill: false,
+                        pointRadius: 1,
+                        tension: 0.1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'time',
+                        time: {
+                            unit: 'month',
+                            displayFormats: { month: 'MMM yyyy' }
+                        },
+                        grid: { color: '#334155' },
+                        ticks: { color: '#94a3b8', callback: fmtMonthYear },
+                        title: { display: true, text: 'Date', color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'Normalized Return (%)', color: '#94a3b8' },
+                        ticks: {
+                            callback: function(value) {
+                                return value + '%';
+                            }
+                        }
+                    }
+                },
+                plugins: {
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: ${context.raw.y.toFixed(1)}%`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // --- Breakeven Price & USD Devaluation Curve Chart ---
+        const beRemainingShares = unsoldLots.reduce((acc, lot) => acc + lot.shares, 0);
+        const beRemainingCostBasisEur = unsoldLots.reduce((acc, lot) => acc + (lot.shares * lot.price_eur), 0);
+        const bePastRealizedGainsEur = decompData.reduce((acc, d) => acc + d.total_gain, 0);
+
+        const beFxRates = [];
+        for (let r = 0.70; r <= 1.201; r += 0.02) {
+            beFxRates.push(parseFloat(r.toFixed(2)));
+        }
+
+        const beUnsoldCurve = beFxRates.map(fx => {
+            return { x: fx, y: beRemainingShares > 0 ? (beRemainingCostBasisEur / (beRemainingShares * fx)) : 0 };
+        });
+
+        const bePortfolioCurve = beFxRates.map(fx => {
+            return { x: fx, y: beRemainingShares > 0 ? ((beRemainingCostBasisEur - bePastRealizedGainsEur) / (beRemainingShares * fx)) : 0 };
+        });
+
+        const beInitialFx = parseFloat(sliderFx.value) || liveFxRate;
+        const beInitialPrice = parseFloat(sliderPrice.value) || livePriceUsd;
+
+        charts.breakeven = new Chart(document.getElementById('breakevenChart').getContext('2d'), {
+            type: 'line',
+            data: {
+                datasets: [
+                    {
+                        label: locales[currentLang].be_chart_label_unsold,
+                        data: beUnsoldCurve,
+                        borderColor: '#3b82f6',
+                        borderWidth: 2.5,
+                        fill: false,
+                        pointRadius: 0,
+                        hoverRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: locales[currentLang].be_chart_label_port,
+                        data: bePortfolioCurve,
+                        borderColor: '#10b981',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        pointRadius: 0,
+                        hoverRadius: 0,
+                        tension: 0.1
+                    },
+                    {
+                        label: locales[currentLang].be_chart_label_current,
+                        data: [{ x: beInitialFx, y: beInitialPrice }],
+                        borderColor: '#f59e0b',
+                        backgroundColor: '#fbbf24',
+                        pointRadius: 7,
+                        pointHoverRadius: 9,
+                        showLine: false
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                scales: {
+                    x: {
+                        type: 'linear',
+                        min: 0.70,
+                        max: 1.20,
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'USD/EUR Exchange Rate', color: '#94a3b8' }
+                    },
+                    y: {
+                        grid: { color: '#334155' },
+                        title: { display: true, text: 'Stock Price (USD)', color: '#94a3b8' }
+                    }
+                },
+                plugins: {
+                    legend: {
+                        labels: { color: '#e2e8f0' }
+                    },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                return `${context.dataset.label}: $${context.raw.y.toFixed(2)} (FX: ${context.raw.x.toFixed(4)})`;
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Initialize language
+        setLanguage('en');
+    </script>
+</body>
+</html>

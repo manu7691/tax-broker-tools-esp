@@ -71,9 +71,10 @@ echo 2. Download All Data (ESPP, Orders, RSU, Options)
 echo 3. Calculate Tax
 echo 4. Add Dividend/Interest Income (optional)
 echo 5. Run Demo
-echo 6. Exit
+echo 6. Generate Charts ^& Tax Dashboard
+echo 7. Exit
 echo ==========================================
-set /p choice="Select an option (1-6): "
+set /p choice="Select an option (1-7): "
 
 if "%choice%"=="1" (
     echo Running Login...
@@ -106,9 +107,23 @@ if "%choice%"=="5" (
     goto menu
 )
 if "%choice%"=="6" (
+    echo ------------------------------------------
+    echo Generate Charts ^& Tax Dashboard
+    echo ------------------------------------------
+    set CHART_ARGS=
+    set /p chart_ticker="Enter stock ticker (or press Enter for auto-detect): "
+    if defined chart_ticker set CHART_ARGS=--ticker %chart_ticker%
+    set /p chart_price="Enter current stock price in USD (or press Enter for live): "
+    if defined chart_price set CHART_ARGS=%CHART_ARGS% --current-price %chart_price%
+    "%PYTHON_BIN%" generate_charts.py %CHART_ARGS%
+    pause
+    goto menu
+)
+if "%choice%"=="7" (
     exit /b 0
 )
 
 echo Invalid option.
 pause
 goto menu
+
