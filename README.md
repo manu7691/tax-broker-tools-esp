@@ -29,6 +29,9 @@ To share this repository with your teammates or show it to your tax advisor, the
 *   **Interactive Charts & Tax Dashboard Guide:**
     *   🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md)
     *   🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md)
+*   **How the PDF Report & Dashboard Connect:**
+    *   🇺🇸 [REPORT_VS_DASHBOARD_EN.md](docs/REPORT_VS_DASHBOARD_EN.md)
+    *   🇪🇸 [REPORT_VS_DASHBOARD_ES.md](docs/REPORT_VS_DASHBOARD_ES.md)
 
 ---
 
@@ -94,7 +97,7 @@ uv run pre-commit install
 ```
 
 ### 2. Run Demo
-To see the tax engine in action with sample data:
+To see the tax engine in action with E*TRADE + Revolut sample data:
 ```bash
 uv run demo.py
 ```
@@ -174,13 +177,14 @@ When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (
 
 | # | Option | What it does |
 |---|--------|--------------|
-| 1 | Login to E-Trade | Opens a browser to log in (and pass MFA). **Run this first** — it saves a session. |
-| 2 | Download All Data | Downloads ESPP history, Orders, RSU confirmations and option exercises into `input/`. |
-| 3 | Calculate Tax | Runs the engine and generates the English + Spanish PDF reports. |
-| 4 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) for the savings base. |
-| 5 | Run Demo | Runs on sample data so you can see the output without your own data. |
-| 6 | Generate Charts & Tax Dashboard | Builds the interactive `charts_dashboard.html` (auto-detects ticker; fetches a live price). |
-| 7 | Exit | Quit. |
+| 1 | Login to E-Trade Plan | Opens a browser to log in (and pass MFA). **Run this first** — it saves a session. |
+| 2 | Download E-Trade Data | Downloads ESPP history, Orders, RSU confirmations and option exercises into `input/`. |
+| 3 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) to declare savings base. |
+| 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Runs the engine and generates the English + Spanish PDF reports (integrates Revolut CSV if present). |
+| 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Builds the interactive `charts_dashboard.html` (auto-detects ticker; fetches a live price; includes Revolut if present). |
+| 6 | Run Demo: Calculate Tax & PDF Reports | Runs on sample data so you can see the output reports without your own data. |
+| 7 | Run Demo: Generate Charts & Tax Dashboard | Builds the interactive `charts_dashboard_demo.html` using simulated offline test data. |
+| 8 | Exit | Quit. |
 
 ## 📂 Input Files
 
@@ -243,6 +247,9 @@ Para compartir este repositorio con tus compañeros de equipo o mostrárselo a t
 *   **Guía del Panel Interactivo de Gráficos e Impuestos:**
     *   🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md)
     *   🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md)
+*   **Cómo se conectan el Informe PDF y el Panel:**
+    *   🇺🇸 [REPORT_VS_DASHBOARD_EN.md](docs/REPORT_VS_DASHBOARD_EN.md)
+    *   🇪🇸 [REPORT_VS_DASHBOARD_ES.md](docs/REPORT_VS_DASHBOARD_ES.md)
 
 ---
 
@@ -308,7 +315,7 @@ uv run pre-commit install
 ```
 
 ### 2. Ejecutar la Demo
-Para comprobar el funcionamiento del motor fiscal con datos de prueba:
+Para comprobar el funcionamiento del motor fiscal con datos de prueba (E*TRADE + Revolut):
 ```bash
 uv run demo.py
 ```
@@ -388,13 +395,14 @@ Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windo
 
 | # | Opción | Qué hace |
 |---|--------|----------|
-| 1 | Login to E-Trade | Abre el navegador para iniciar sesión (y el MFA). **Ejecútalo primero** — guarda la sesión. |
-| 2 | Download All Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU y los ejercicios de opciones en `input/`. |
-| 3 | Calculate Tax | Ejecuta el motor y genera los informes PDF en inglés y español. |
-| 4 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
-| 5 | Run Demo | Ejecuta con datos de ejemplo para ver la salida sin tus propios datos. |
-| 6 | Generate Charts & Tax Dashboard | Crea el `charts_dashboard.html` interactivo (detecta el ticker; obtiene el precio en vivo). |
-| 7 | Exit | Salir. |
+| 1 | Login to E-Trade Plan | Abre el navegador para iniciar sesión (y el MFA). **Ejecútalo primero** — guarda la sesión. |
+| 2 | Download E-Trade Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU y los ejercicios de opciones en `input/`. |
+| 3 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
+| 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Ejecuta el motor y genera los informes PDF en inglés y español (integra el CSV de Revolut si está presente). |
+| 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Crea el `charts_dashboard.html` interactivo (detecta el ticker; obtiene el precio en vivo; incluye Revolut si está presente). |
+| 6 | Run Demo: Calculate Tax & PDF Reports | Ejecuta con datos de ejemplo para generar los informes PDF de prueba. |
+| 7 | Run Demo: Generate Charts & Tax Dashboard | Crea el `charts_dashboard_demo.html` interactivo utilizando datos simulados sin conexión. |
+| 8 | Exit | Salir. |
 
 ## 📂 Archivos de Entrada
 

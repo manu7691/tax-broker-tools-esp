@@ -18,6 +18,7 @@ input/*
 *.pdf
 tax_report_*.md
 charts_dashboard.html
+charts_dashboard_demo.html
 
 # ECB exchange-rate cache
 .ecb_rate_cache.json

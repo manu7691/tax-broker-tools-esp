@@ -17,13 +17,20 @@ are tucked away behind their own tab.
 ## How to generate it
 
 **Easiest (menu):** run `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat`
-(Windows) and choose **option 6 — "Generate Charts & Tax Dashboard"**. It opens
-`charts_dashboard.html`; double-click that file to view it in your browser.
+(Windows):
+- Choose **option 6 — "Generate Charts & Tax Dashboard"** to generate the dashboard for your real data (`charts_dashboard.html`).
+- Choose **option 7 — "Generate Charts & Tax Dashboard - demo data"** to generate the demo dashboard (`charts_dashboard_demo.html`) using built-in sample data (RSU, ESPP, Revolut trades) and simulated market trend quotes without making network requests.
+
+Double-click the generated file (`charts_dashboard.html` or `charts_dashboard_demo.html`) to view it in your browser.
 
 **Developer (CLI):**
 
 ```bash
+# For real data:
 uv run generate_charts.py
+
+# For demo data:
+uv run generate_charts.py --demo
 ```
 
 Options:

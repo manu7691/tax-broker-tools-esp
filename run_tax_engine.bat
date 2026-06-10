@@ -64,17 +64,21 @@ if %errorlevel% neq 0 (
 :menu
 cls
 echo ==========================================
-echo    Spanish Tax Engine for E-Trade
+echo   Spanish Tax Engine for E-Trade ^& Revolut
 echo ==========================================
-echo 1. Login to E-Trade (Required first)
-echo 2. Download All Data (ESPP, Orders, RSU, Options)
-echo 3. Calculate Tax (incl. optional Revolut CSV)
-echo 4. Add Dividend/Interest Income (optional)
-echo 5. Run Demo
-echo 6. Generate Charts ^& Tax Dashboard
-echo 7. Exit
+echo 1. Login to E-Trade Plan (Required first)
+echo 2. Download E-Trade Data (ESPP, Orders, RSU, Options)
+echo 3. Add Dividend/Interest Income (optional)
+echo 4. Calculate Tax ^& PDF Reports (optional: incl. Revolut)
+echo 5. Generate Charts ^& Tax Dashboard (optional: incl. Revolut)
+echo.
+echo --- Simulation ^& Demo Data ---
+echo 6. Run Demo: Calculate Tax ^& PDF Reports
+echo 7. Run Demo: Generate Charts ^& Tax Dashboard
+echo.
+echo 8. Exit
 echo ==========================================
-set /p choice="Select an option (1-7): "
+set /p choice="Select an option (1-8): "
 
 if "%choice%"=="1" (
     echo Running Login...
@@ -89,6 +93,12 @@ if "%choice%"=="2" (
     goto menu
 )
 if "%choice%"=="3" (
+    echo Add Dividend/Interest Income ^(USD + date, converted at ECB rate^)...
+    .venv\Scripts\tax-savings-income
+    pause
+    goto menu
+)
+if "%choice%"=="4" (
     echo Calculating Tax...
     echo (Optional: drop a Revolut investment CSV in input\revolut\*.csv.
     echo  Set the tracked ticker (and ISIN if available^) in input\ticker.json so
@@ -97,19 +107,7 @@ if "%choice%"=="3" (
     pause
     goto menu
 )
-if "%choice%"=="4" (
-    echo Add Dividend/Interest Income ^(USD + date, converted at ECB rate^)...
-    .venv\Scripts\tax-savings-income
-    pause
-    goto menu
-)
 if "%choice%"=="5" (
-    echo Running Demo...
-    .venv\Scripts\tax-demo
-    pause
-    goto menu
-)
-if "%choice%"=="6" (
     echo ------------------------------------------
     echo Generate Charts ^& Tax Dashboard
     echo (Defaults: auto-detected ticker/company. Peers: edit input\peers.json)
@@ -129,7 +127,21 @@ if "%choice%"=="6" (
     pause
     goto menu
 )
+if "%choice%"=="6" (
+    echo Calculating Tax & PDF Report - demo data...
+    .venv\Scripts\tax-demo
+    pause
+    goto menu
+)
 if "%choice%"=="7" (
+    echo ------------------------------------------
+    echo Generate Charts ^& Tax Dashboard - demo data
+    echo ------------------------------------------
+    "%PYTHON_BIN%" generate_charts.py --demo
+    pause
+    goto menu
+)
+if "%choice%"=="8" (
     exit /b 0
 )
 

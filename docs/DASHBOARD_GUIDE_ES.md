@@ -17,14 +17,20 @@ avanzadas están guardadas en su propia pestaña.
 ## Cómo generarlo
 
 **Lo más fácil (menú):** ejecuta `run_tax_engine.command` (macOS/Linux) o
-`run_tax_engine.bat` (Windows) y elige la **opción 6 — "Generate Charts & Tax
-Dashboard"**. Generará `charts_dashboard.html`; haz doble clic en ese archivo para verlo
-en tu navegador.
+`run_tax_engine.bat` (Windows):
+- Elige la **opción 6 — "Generate Charts & Tax Dashboard"** para tus datos reales (`charts_dashboard.html`).
+- Elige la **opción 7 — "Generate Charts & Tax Dashboard - demo data"** para generar un panel de demostración (`charts_dashboard_demo.html`) con datos de prueba integrados (RSU, ESPP, Revolut) y simulaciones de cotizaciones del mercado sin realizar llamadas de red.
+
+Haz doble clic en el archivo generado (`charts_dashboard.html` o `charts_dashboard_demo.html`) para verlo en tu navegador.
 
 **Desarrollador (CLI):**
 
 ```bash
+# Para datos reales:
 uv run generate_charts.py
+
+# Para datos de demostración:
+uv run generate_charts.py --demo
 ```
 
 Opciones:

@@ -35,14 +35,14 @@ def test_sample_data_with_ecb_rates():
     engine.process_all(events)
 
     # Verify final position state
-    assert engine.state.total_shares == 63
+    assert engine.state.total_shares == 73
     assert engine.state.avg_cost_eur == pytest.approx(Decimal("35.6198"), abs=Decimal("0.0001"))
     assert engine.state.total_portfolio_cost_eur == pytest.approx(
-        Decimal("2244.0474"), abs=Decimal("0.0001")
+        Decimal("2600.2454"), abs=Decimal("0.0001")
     )
 
     # Verify we have processed events for all stock events
-    assert len(engine.processed_events) == 13
+    assert len(engine.processed_events) == 16
 
     # Verify specific transaction details
     # First transaction: 2020-11-27 BUY
@@ -69,12 +69,12 @@ def test_sample_data_with_ecb_rates():
     assert pe3.event.shares == 25
     assert pe3.realized_gain_loss == pytest.approx(Decimal("-38.2925"), abs=Decimal("0.0001"))
 
-    # 2022-06-01 SELL - large loss
-    pe12 = engine.processed_events[12]
-    assert pe12.event.event_date == date(2022, 6, 1)
-    assert pe12.event.event_type.value == "SELL"
-    assert pe12.event.shares == 205
-    assert pe12.realized_gain_loss == pytest.approx(Decimal("-2571.9214"), abs=Decimal("0.0001"))
+    # 2022-06-01 SELL - large loss (now at index 15)
+    pe15 = engine.processed_events[15]
+    assert pe15.event.event_date == date(2022, 6, 1)
+    assert pe15.event.event_type.value == "SELL"
+    assert pe15.event.shares == 205
+    assert pe15.realized_gain_loss == pytest.approx(Decimal("-2859.4179"), abs=Decimal("0.0001"))
 
     # Verify yearly tax summary
     summaries = engine.get_all_yearly_summaries()
@@ -89,8 +89,7 @@ def test_sample_data_with_ecb_rates():
     assert summary_2020.taxable_gain == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2020.tax_due == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
 
-    # 2021: Net gain (with corrected wash sale: 2021 losses are fully deductible
-    # since the original lots were consumed by the sells)
+    # 2021: Net gain
     assert 2021 in tax_summary
     summary_2021 = tax_summary[2021]
     assert summary_2021.total_gains == pytest.approx(Decimal("572.59"), abs=Decimal("0.01"))
@@ -100,14 +99,13 @@ def test_sample_data_with_ecb_rates():
     assert summary_2021.taxable_gain == pytest.approx(Decimal("533.54"), abs=Decimal("0.01"))
     assert summary_2021.tax_due == pytest.approx(Decimal("101.37"), abs=Decimal("0.01"))
 
-    # 2022: Net loss (wash sale blocks portion of loss due to 2022-05-27 BUY
-    # within 2 months of 2022-06-01 SELL, and 63 shares remain from that lot)
+    # 2022: Net loss
     assert 2022 in tax_summary
     summary_2022 = tax_summary[2022]
     assert summary_2022.total_gains == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
-    assert summary_2022.total_losses == pytest.approx(Decimal("-2571.92"), abs=Decimal("0.01"))
-    assert summary_2022.blocked_losses == pytest.approx(Decimal("-790.40"), abs=Decimal("0.01"))
-    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1781.53"), abs=Decimal("0.01"))
+    assert summary_2022.total_losses == pytest.approx(Decimal("-2941.27"), abs=Decimal("0.01"))
+    assert summary_2022.blocked_losses == pytest.approx(Decimal("-1018.23"), abs=Decimal("0.01"))
+    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1923.04"), abs=Decimal("0.01"))
     assert summary_2022.taxable_gain == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2022.tax_due == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
 

@@ -30,10 +30,14 @@ def create_sample_events_with_manual_fx() -> list[StockEvent]:
                    fx_rate=Decimal("0.8235"), notes="RSU Sell"),
         StockEvent(date(2021, 5, 28), EventType.BUY, Decimal("50"), Decimal("51.74"),
                    fx_rate=Decimal("0.8236"), notes="ESPP Buy"),
+        StockEvent(date(2021, 6, 15), EventType.BUY, Decimal("20"), Decimal("55.00"),
+                   fx_rate=Decimal("0.8250"), broker="Revolut", notes="Direct Purchase"),
         StockEvent(date(2021, 8, 16), EventType.VEST, Decimal("10"), Decimal("63.65"),
                    fx_rate=Decimal("0.8495"), notes="RSU Vest"),
         StockEvent(date(2021, 8, 16), EventType.SELL, Decimal("5"), Decimal("61.25"),
                    fx_rate=Decimal("0.8495"), notes="RSU Sell (sell-to-cover)"),
+        StockEvent(date(2021, 9, 20), EventType.BUY, Decimal("15"), Decimal("62.50"),
+                   fx_rate=Decimal("0.8520"), broker="Revolut", notes="Direct Purchase"),
         StockEvent(date(2021, 11, 15), EventType.VEST, Decimal("10"), Decimal("70.68"),
                    fx_rate=Decimal("0.8738"), notes="RSU Vest"),
         StockEvent(date(2021, 11, 16), EventType.SELL, Decimal("5"), Decimal("69.28"),
@@ -41,6 +45,8 @@ def create_sample_events_with_manual_fx() -> list[StockEvent]:
         StockEvent(date(2021, 11, 26), EventType.BUY, Decimal("100"), Decimal("62.97"),
                    fx_rate=Decimal("0.8857"), notes="ESPP Buy"),
         # 2022
+        StockEvent(date(2022, 2, 10), EventType.SELL, Decimal("25"), Decimal("45.00"),
+                   fx_rate=Decimal("0.8810"), broker="Revolut", notes="Revolut Sell"),
         StockEvent(date(2022, 5, 27), EventType.BUY, Decimal("105"), Decimal("38.19"),
                    fx_rate=Decimal("0.9327"), notes="ESPP Buy"),
         StockEvent(date(2022, 6, 1), EventType.SELL, Decimal("205"), Decimal("39.15"),
@@ -79,6 +85,9 @@ def create_sample_events_with_ecb_rates() -> list[StockEvent]:
             date(2021, 5, 28), EventType.BUY, Decimal("50"), Decimal("51.74"), notes="ESPP Buy"
         ),
         StockEvent(
+            date(2021, 6, 15), EventType.BUY, Decimal("20"), Decimal("55.00"), broker="Revolut", notes="Direct Purchase"
+        ),
+        StockEvent(
             date(2021, 8, 16), EventType.VEST, Decimal("10"), Decimal("63.65"), notes="RSU Vest"
         ),
         StockEvent(
@@ -87,6 +96,9 @@ def create_sample_events_with_ecb_rates() -> list[StockEvent]:
             Decimal("5"),
             Decimal("61.25"),
             notes="RSU Sell (sell-to-cover)",
+        ),
+        StockEvent(
+            date(2021, 9, 20), EventType.BUY, Decimal("15"), Decimal("62.50"), broker="Revolut", notes="Direct Purchase"
         ),
         StockEvent(
             date(2021, 11, 15), EventType.VEST, Decimal("10"), Decimal("70.68"), notes="RSU Vest"
@@ -98,6 +110,9 @@ def create_sample_events_with_ecb_rates() -> list[StockEvent]:
             date(2021, 11, 26), EventType.BUY, Decimal("100"), Decimal("62.97"), notes="ESPP Buy"
         ),
         # 2022
+        StockEvent(
+            date(2022, 2, 10), EventType.SELL, Decimal("25"), Decimal("45.00"), broker="Revolut", notes="Revolut Sell"
+        ),
         StockEvent(
             date(2022, 5, 27), EventType.BUY, Decimal("105"), Decimal("38.19"), notes="ESPP Buy"
         ),

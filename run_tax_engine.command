@@ -54,17 +54,21 @@ fi
 while true; do
     clear
     echo "=========================================="
-    echo "   Spanish Tax Engine for E-Trade"
+    echo "  Spanish Tax Engine for E-Trade & Revolut"
     echo "=========================================="
-    echo "1. Login to E-Trade (Required first)"
-    echo "2. Download All Data (ESPP, Orders, RSU, Options)"
-    echo "3. Calculate Tax (incl. optional Revolut CSV)"
-    echo "4. Add Dividend/Interest Income (optional)"
-    echo "5. Run Demo"
-    echo "6. Generate Charts & Tax Dashboard"
-    echo "7. Exit"
+    echo "1. Login to E-Trade Plan (Required first)"
+    echo "2. Download E-Trade Data (ESPP, Orders, RSU, Options)"
+    echo "3. Add Dividend/Interest Income (optional)"
+    echo "4. Calculate Tax & PDF Reports (optional: incl. Revolut)"
+    echo "5. Generate Charts & Tax Dashboard (optional: incl. Revolut)"
+    echo ""
+    echo "--- Simulation & Demo Data ---"
+    echo "6. Run Demo: Calculate Tax & PDF Reports"
+    echo "7. Run Demo: Generate Charts & Tax Dashboard"
+    echo ""
+    echo "8. Exit"
     echo "=========================================="
-    read -p "Select an option (1-7): " choice
+    read -p "Select an option (1-8): " choice
 
     case $choice in
         1)
@@ -86,6 +90,16 @@ while true; do
             ;;
         3)
             echo "------------------------------------------"
+            echo "Add Dividend/Interest Income"
+            echo "Enter each payment in USD with its date;"
+            echo "it is converted to EUR at the ECB rate."
+            echo "------------------------------------------"
+            .venv/bin/tax-savings-income
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
+        4)
+            echo "------------------------------------------"
             echo "Calculating Tax..."
             echo "(Optional: drop a Revolut investment CSV in input/revolut/*.csv."
             echo " Set the tracked ticker (and ISIN if available) in input/ticker.json"
@@ -95,25 +109,7 @@ while true; do
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
-        4)
-            echo "------------------------------------------"
-            echo "Add Dividend/Interest Income"
-            echo "Enter each payment in USD with its date;"
-            echo "it is converted to EUR at the ECB rate."
-            echo "------------------------------------------"
-            .venv/bin/tax-savings-income
-            echo ""
-            read -p "Press Enter to return to menu..."
-            ;;
         5)
-            echo "------------------------------------------"
-            echo "Running Demo..."
-            echo "------------------------------------------"
-            .venv/bin/tax-demo
-            echo ""
-            read -p "Press Enter to return to menu..."
-            ;;
-        6)
             echo "------------------------------------------"
             echo "Generate Charts & Tax Dashboard"
             echo "(Defaults: auto-detected ticker/company. Peers: edit input/peers.json)"
@@ -141,7 +137,23 @@ while true; do
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
+        6)
+            echo "------------------------------------------"
+            echo "Calculating Tax & PDF Report - demo data..."
+            echo "------------------------------------------"
+            .venv/bin/tax-demo
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
         7)
+            echo "------------------------------------------"
+            echo "Generate Charts & Tax Dashboard - demo data"
+            echo "------------------------------------------"
+            "$PYTHON_BIN" generate_charts.py --demo
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
+        8)
             echo "Exiting..."
             exit 0
             ;;
