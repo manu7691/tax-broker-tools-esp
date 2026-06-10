@@ -83,7 +83,9 @@ def fetch_historical_market_data(ticker: str, start_date: date) -> tuple[list[di
             
             if quotes:
                 latest_quote = quotes[-1]
-                current_price = latest_quote["close"]
+                # Try to get the actual real-time price first, otherwise fallback to the last close
+                live_price = fetch_latest_price(ticker)
+                current_price = float(live_price) if live_price is not None else latest_quote["close"]
                 
                 # Determine signal
                 if latest_quote["sma50"] and latest_quote["sma200"]:
