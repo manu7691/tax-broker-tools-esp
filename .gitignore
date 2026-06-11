@@ -25,3 +25,8 @@ charts_dashboard_demo.html
 
 # Ticker -> ISIN resolution cache
 .isin_cache.json
+
+# Coverage artifacts
+.coverage
+coverage.xml
+htmlcov/

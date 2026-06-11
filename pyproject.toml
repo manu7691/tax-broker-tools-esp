@@ -26,6 +26,7 @@ dev = [
     "pandas-stubs>=2.2.0",
     "pre-commit>=4.0.0",
     "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
     "ruff>=0.8.0",
     "types-requests>=2.32.0",
 ]
@@ -80,7 +81,9 @@ ignore = [
 known-first-party = ["tax_engine"]
 
 [tool.mypy]
-python_version = "3.12"
+# Analyze against the minimum supported runtime (requires-python = ">=3.10") so
+# accidental use of newer-only stdlib/typing is caught.
+python_version = "3.10"
 strict = true
 warn_return_any = true
 warn_unused_ignores = true
@@ -111,3 +114,23 @@ disable_error_code = ["arg-type", "union-attr", "type-arg"]
 testpaths = ["tests"]
 pythonpath = ["src"]
 addopts = "-v --tb=short"
+
+[tool.coverage.run]
+source = ["tax_engine"]
+branch = true
+omit = [
+    # Browser-automation download flows (Playwright/E*TRADE) aren't unit-tested.
+    "*/etrade_login.py",
+    "*/etrade_download_*.py",
+    "*/download_all.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+# Non-blocking for now: report coverage without failing CI. Raise this over time.
+fail_under = 0
+exclude_lines = [
+    "pragma: no cover",
+    "if TYPE_CHECKING:",
+    "raise NotImplementedError",
+]

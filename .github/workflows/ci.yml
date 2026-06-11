@@ -14,7 +14,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.12", "3.13"]
+        python-version: ["3.10", "3.11", "3.12", "3.13"]
 
     steps:
       - uses: actions/checkout@v4
@@ -38,4 +38,5 @@ jobs:
         run: uv run mypy src/
 
       - name: Run tests
-        run: uv run pytest tests/ -v --tb=short
+        # -v / --tb=short come from [tool.pytest.ini_options] addopts.
+        run: uv run pytest tests/ --cov --cov-report=term-missing --cov-report=xml
