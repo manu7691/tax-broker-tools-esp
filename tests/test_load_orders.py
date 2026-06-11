@@ -14,7 +14,6 @@ from datetime import date
 from decimal import Decimal
 from io import BytesIO
 from pathlib import Path
-from unittest.mock import patch
 
 import pandas as pd
 import pytest
@@ -38,15 +37,16 @@ def orders_file(tmp_path: Path) -> Path:
 
 
 def _load(orders_file: Path, rows: list[dict]) -> list:  # type: ignore[type-arg]
-    """Write rows to orders_file, patch away filesystem/excel access, run loader."""
+    """Write rows to a real temp orders.xlsx and run the loader against it.
+
+    ``orders_file`` is ``<tmp>/input/orders/orders.xlsx`` (see the fixture), so its
+    grandparent is the ``input_dir`` the loader expects. Pointing the loader at the
+    temp dir keeps the test hermetic — no dependency on a real ``input/`` file and
+    no mocking of ``Path``/``read_excel``.
+    """
     orders_file.write_bytes(_make_excel(rows))
-    df = pd.read_excel(orders_file)
-    with (
-        patch("tax_engine.cli_main.pd.read_excel", return_value=df),
-        patch("tax_engine.cli_main.Path") as mock_path,
-    ):
-        mock_path.return_value.exists.return_value = True
-        return load_orders_from_excel()
+    input_dir = orders_file.parent.parent
+    return load_orders_from_excel(input_dir=input_dir)
 
 
 # ---------------------------------------------------------------------------
