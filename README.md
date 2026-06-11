@@ -146,7 +146,8 @@ The report also includes:
     ```json
     [ { "date": "2024-03-15", "type": "dividend", "amount_usd": 80, "foreign_tax_usd": 12 } ]
     ```
-    Enter them with the interactive helper (no JSON editing): `.venv/bin/python -m tax_engine.cli_savings_income` — or one-shot: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. A starter template: `cp docs/savings_income.example.json input/savings_income.json`.
+    **Auto-import from E\*TRADE (recommended):** menu **option 3 → "Auto-download"** (or `tax-download-dividends` then `tax-import-dividends`) scrapes your dividends-only cash transactions into `input/dividends/Cash_Transactions.xlsx` and merges them into `savings_income.json`. Interest lines are classified as `interest`, foreign-tax-withheld lines are captured as `foreign_tax_usd`, and re-running is idempotent (existing payments are de-duplicated by date + description + amount). The full **Download E\*TRADE Data** (option 2) also runs this step automatically.
+    Or enter them by hand with the interactive helper (no JSON editing): `.venv/bin/python -m tax_engine.cli_savings_income` — or one-shot: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. A starter template: `cp docs/savings_income.example.json input/savings_income.json`.
   - **Alternative — EUR per year (manual conversion):** if you only have an annual total (e.g. off a **Form 1042-S** / 1099 in *Accounts → Documents → Tax Center*), you can instead supply pre-converted EUR amounts: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Note this can't apply per-payment exchange rates.
 - **Modelo 100 Filing Guide:** a crosswalk mapping each figure to its Modelo 100 *apartado* (casilla numbers are indicative — verify for your year).
 
@@ -181,8 +182,8 @@ When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (
 | # | Option | What it does |
 |---|--------|--------------|
 | 1 | Login to E-Trade Plan | Opens a browser to log in (and pass MFA). **Run this first** — it saves a session. |
-| 2 | Download E-Trade Data | Downloads ESPP history, Orders, RSU confirmations and option exercises into `input/`. |
-| 3 | Add Dividend/Interest Income | *Optional.* Record dividend/interest payments (USD + date) to declare savings base. |
+| 2 | Download E-Trade Data | Downloads ESPP history, Orders, RSU confirmations, option exercises and dividends into `input/` (dividends are auto-imported into `savings_income.json`). |
+| 3 | Add Dividend/Interest Income | *Optional.* Auto-download dividends from E\*TRADE, or record dividend/interest payments by hand (USD + date) for the savings base. |
 | 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Runs the engine and generates the English + Spanish PDF reports (integrates Revolut CSV if present). |
 | 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Builds the interactive `charts_dashboard.html` (auto-detects ticker; fetches a live price; includes Revolut if present). |
 | 6 | Run Demo: Calculate Tax & PDF Reports | Runs on sample data so you can see the output reports without your own data. |
@@ -378,7 +379,8 @@ El informe incluye además:
     ```json
     [ { "date": "2024-03-15", "type": "dividend", "amount_usd": 80, "foreign_tax_usd": 12 } ]
     ```
-    Introdúcelos con el asistente interactivo (sin editar JSON): `.venv/bin/python -m tax_engine.cli_savings_income` — o directo: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. Plantilla inicial: `cp docs/savings_income.example.json input/savings_income.json`.
+    **Importación automática desde E\*TRADE (recomendado):** la **opción 3 → "Auto-download"** del menú (o `tax-download-dividends` y luego `tax-import-dividends`) descarga tus transacciones de efectivo (solo dividendos) a `input/dividends/Cash_Transactions.xlsx` y las fusiona en `savings_income.json`. Las líneas de intereses se clasifican como `interest`, las retenciones en origen se capturan como `foreign_tax_usd` y reejecutar es idempotente (se eliminan duplicados por fecha + descripción + importe). La **Descarga de datos de E\*TRADE** completa (opción 2) también ejecuta este paso automáticamente.
+    O introdúcelos a mano con el asistente interactivo (sin editar JSON): `.venv/bin/python -m tax_engine.cli_savings_income` — o directo: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. Plantilla inicial: `cp docs/savings_income.example.json input/savings_income.json`.
   - **Alternativa — EUR por año (conversión manual):** si solo tienes un total anual (p. ej. de un **Formulario 1042-S** / 1099 en *Accounts → Documents → Tax Center*), puedes aportar importes ya convertidos a EUR: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Ten en cuenta que así no se aplican los tipos de cambio por pago.
 - **Guía de Cumplimentación del Modelo 100:** asigna cada dato a su *apartado* (las casillas son orientativas — verifícalas para tu ejercicio).
 
@@ -413,8 +415,8 @@ Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windo
 | # | Opción | Qué hace |
 |---|--------|----------|
 | 1 | Login to E-Trade Plan | Abre el navegador para iniciar sesión (y el MFA). **Ejecútalo primero** — guarda la sesión. |
-| 2 | Download E-Trade Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU y los ejercicios de opciones en `input/`. |
-| 3 | Add Dividend/Interest Income | *Opcional.* Registra pagos de dividendos/intereses (USD + fecha) para la base del ahorro. |
+| 2 | Download E-Trade Data | Descarga el histórico ESPP, las órdenes, las confirmaciones RSU, los ejercicios de opciones y los dividendos en `input/` (los dividendos se importan automáticamente a `savings_income.json`). |
+| 3 | Add Dividend/Interest Income | *Opcional.* Descarga los dividendos de E\*TRADE automáticamente, o registra los pagos de dividendos/intereses a mano (USD + fecha) para la base del ahorro. |
 | 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Ejecuta el motor y genera los informes PDF en inglés y español (integra el CSV de Revolut si está presente). |
 | 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Crea el `charts_dashboard.html` interactivo (detecta el ticker; obtiene el precio en vivo; incluye Revolut si está presente). |
 | 6 | Run Demo: Calculate Tax & PDF Reports | Ejecuta con datos de ejemplo para generar los informes PDF de prueba. |

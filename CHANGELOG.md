@@ -9,6 +9,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Automated E\*TRADE dividend import.** A Playwright scraper
+  (`tax-download-dividends`) downloads the dividends-only cash transactions to
+  `input/dividends/Cash_Transactions.xlsx`, and a parser (`tax-import-dividends`)
+  merges them into `input/savings_income.json` as dated USD payments (ECB-converted
+  per date downstream). The parser classifies interest lines as `interest`, captures
+  foreign tax withheld at source as `foreign_tax_usd` (including negative/parenthesised
+  amounts), keeps reversals so they net per year, and de-duplicates idempotently by
+  date + type + description + amount. Both steps run as part of the full **Download
+  E\*TRADE Data** (menu option 2) and are also available standalone via menu option 3
+  ("Auto-download").
+
 - Multi-symbol, multi-platform FIFO (Phases 1–2 of
   `docs/planning/MULTI_SYMBOL_FIFO_PLAN.md`):
   - **Phase 1 — model & engine.** A `portfolio.run_portfolio` runner that gives

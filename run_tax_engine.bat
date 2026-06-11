@@ -67,7 +67,7 @@ echo ==========================================
 echo   Spanish Tax Engine for E-Trade ^& Revolut
 echo ==========================================
 echo 1. Login to E-Trade Plan (Required first)
-echo 2. Download E-Trade Data (ESPP, Orders, RSU, Options)
+echo 2. Download E-Trade Data (ESPP, Orders, RSU, Options, Dividends)
 echo 3. Add Dividend/Interest Income (optional)
 echo 4. Calculate Tax ^& PDF Reports (optional: incl. Revolut)
 echo 5. Generate Charts ^& Tax Dashboard (optional: incl. Revolut)
@@ -92,12 +92,9 @@ if "%choice%"=="2" (
     pause
     goto menu
 )
-if "%choice%"=="3" (
-    echo Add Dividend/Interest Income ^(USD + date, converted at ECB rate^)...
-    .venv\Scripts\tax-savings-income
-    pause
-    goto menu
-)
+REM Add Dividend/Interest Income uses a label so the freshly-read prompt variable
+REM expands correctly (see the :calc_tax note below).
+if "%choice%"=="3" goto add_income
 REM Calculate Tax uses a label (not an inline block) so the freshly-read prompt
 REM variable expands correctly — %var% set with set /p inside a parenthesised
 REM block is parse-time expanded (empty), which would break the toggle.
@@ -138,6 +135,24 @@ if /i "%all_sec%"=="y" (
     )
 )
 "%PYTHON_BIN%" generate_charts.py %CHART_ARGS%
+pause
+goto menu
+
+:add_income
+echo ------------------------------------------
+echo Add Dividend/Interest Income
+echo Payments are stored in USD with their date and
+echo converted to EUR at the ECB rate when reports run.
+echo ------------------------------------------
+set /p auto_div="Auto-download dividends from E*TRADE (needs login)? [y/N]: "
+if /i "%auto_div%"=="y" (
+    echo Scraping E*TRADE dividends and importing them...
+    .venv\Scripts\tax-download-dividends
+    .venv\Scripts\tax-import-dividends
+) else (
+    echo Manual entry: type each payment in USD with its date.
+    .venv\Scripts\tax-savings-income
+)
 pause
 goto menu
 

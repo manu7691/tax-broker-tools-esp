@@ -136,7 +136,8 @@ The dashboard is organized as the questions a normal person actually asks, in or
 - **RSU hold-vs-vest** — whether holding your RSUs beat selling them on vest day.
 - **Dividends & interest income** — dividends/interest are taxed in the **same Spanish
   "savings base"** as your stock gains, so they raise your bracket before you sell.
-  Add them via menu **option 4**; they then feed the bracket optimizer.
+  Add them via menu **option 3** (auto-download from E\*TRADE or enter by hand); they
+  then feed the bracket optimizer.
 
 ### 🔬 Advanced (for the curious) — optional market context
 

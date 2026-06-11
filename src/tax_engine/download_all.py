@@ -1,5 +1,7 @@
 import sys
 
+from tax_engine.dividends_parser import import_dividends
+from tax_engine.etrade_download_dividends import download_dividends
 from tax_engine.etrade_download_espp import download_benefit_history
 from tax_engine.etrade_download_options import download_options_confirmations
 from tax_engine.etrade_download_orders import download_orders
@@ -40,6 +42,18 @@ def main() -> None:
         download_options_confirmations()
     except Exception as e:
         print(f"Options download failed: {e}")
+
+    print("\n=== Step 6: Download Dividends ===")
+    try:
+        download_dividends()
+    except Exception as e:
+        print(f"Dividends download failed: {e}")
+
+    print("\n=== Step 7: Import Dividends to Savings Income ===")
+    try:
+        import_dividends()
+    except Exception as e:
+        print(f"Dividends import failed: {e}")
 
     print("\nAll tasks completed.")
 

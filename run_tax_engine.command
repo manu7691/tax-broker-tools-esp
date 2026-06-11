@@ -57,7 +57,7 @@ while true; do
     echo "  Spanish Tax Engine for E-Trade & Revolut"
     echo "=========================================="
     echo "1. Login to E-Trade Plan (Required first)"
-    echo "2. Download E-Trade Data (ESPP, Orders, RSU, Options)"
+    echo "2. Download E-Trade Data (ESPP, Orders, RSU, Options, Dividends)"
     echo "3. Add Dividend/Interest Income (optional)"
     echo "4. Calculate Tax & PDF Reports (optional: incl. Revolut)"
     echo "5. Generate Charts & Tax Dashboard (optional: incl. Revolut)"
@@ -91,10 +91,21 @@ while true; do
         3)
             echo "------------------------------------------"
             echo "Add Dividend/Interest Income"
-            echo "Enter each payment in USD with its date;"
-            echo "it is converted to EUR at the ECB rate."
+            echo "Payments are stored in USD with their date and"
+            echo "converted to EUR at the ECB rate when reports run."
             echo "------------------------------------------"
-            .venv/bin/tax-savings-income
+            read -p "Auto-download dividends from E*TRADE (needs login)? [y/N]: " auto_div
+            case "$auto_div" in
+                [Yy]*)
+                    echo "Scraping E*TRADE dividends and importing them..."
+                    .venv/bin/tax-download-dividends
+                    .venv/bin/tax-import-dividends
+                    ;;
+                *)
+                    echo "Manual entry: type each payment in USD with its date."
+                    .venv/bin/tax-savings-income
+                    ;;
+            esac
             echo ""
             read -p "Press Enter to return to menu..."
             ;;

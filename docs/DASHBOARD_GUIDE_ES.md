@@ -139,8 +139,8 @@ El panel se organiza según las preguntas que realmente se hace una persona norm
   vest.
 - **Ingresos por dividendos e intereses** — los dividendos/intereses tributan en la **misma
   "base del ahorro"** española que tus ganancias de acciones, así que te suben de tramo
-  antes de vender. Añádelos con la **opción 4** del menú; luego alimentan el optimizador de
-  tramos.
+  antes de vender. Añádelos con la **opción 3** del menú (descárgalos de E\*TRADE
+  automáticamente o introdúcelos a mano); luego alimentan el optimizador de tramos.
 
 ### 🔬 Avanzado (para los curiosos) — contexto de mercado opcional
 

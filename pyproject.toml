@@ -41,6 +41,8 @@ tax-download = "tax_engine.download_all:main"
 tax-download-espp = "tax_engine.etrade_download_espp:download_benefit_history"
 tax-download-orders = "tax_engine.etrade_download_orders:download_orders"
 tax-download-rsu = "tax_engine.etrade_download_rsu:download_rsu_confirmations"
+tax-download-dividends = "tax_engine.etrade_download_dividends:download_dividends"
+tax-import-dividends = "tax_engine.dividends_parser:import_dividends"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
