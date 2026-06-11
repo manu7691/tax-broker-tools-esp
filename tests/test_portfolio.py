@@ -111,7 +111,8 @@ class TestAggregation:
         assert portfolio.aggregate.yearly_summaries[2021].net_gain_loss == Decimal("500")
         # The sell consumed a lot acquired at the *other* broker.
         sell = next(
-            pe for pe in portfolio.results[0].engine.processed_events
+            pe
+            for pe in portfolio.results[0].engine.processed_events
             if pe.event.event_type == EventType.SELL
         )
         assert sell.fifo_matches[0].shares == Decimal("10")
@@ -170,7 +171,9 @@ class TestCliWiring:
             _ev("2021-06-01", EventType.SELL, "10", "150"),
         ]
         engine, securities, events = build_portfolio_or_engine(
-            etrade, [], all_securities=False,
+            etrade,
+            [],
+            all_securities=False,
         )
         assert securities is None
         assert len(events) == 2
@@ -185,8 +188,11 @@ class TestCliWiring:
             _ev("2021-02-01", EventType.BUY, "5", "200", isin=NVDA_ISIN, broker="Revolut"),
         ]
         engine, securities, _ = build_portfolio_or_engine(
-            etrade, revolut, all_securities=True,
-            primary_symbol="TSLA", primary_isin=TSLA_ISIN,
+            etrade,
+            revolut,
+            all_securities=True,
+            primary_symbol="TSLA",
+            primary_isin=TSLA_ISIN,
         )
         assert securities is not None
         # E*TRADE buy + Revolut sell merged under TSLA's ISIN; NVDA separate.
@@ -210,8 +216,8 @@ class TestSecuritiesChartPayload:
         assert chart["securities"] == ["NVDA", "TSLA"]
         assert chart["isin"] == [NVDA_ISIN, TSLA_ISIN]
         assert chart["invested"] == [1000.0, 1000.0]  # 5*200, 10*100
-        assert chart["realized"] == [0.0, 500.0]       # NVDA unsold, TSLA +500
-        assert chart["position"] == [5.0, 0.0]         # NVDA held, TSLA closed
+        assert chart["realized"] == [0.0, 500.0]  # NVDA unsold, TSLA +500
+        assert chart["position"] == [5.0, 0.0]  # NVDA held, TSLA closed
 
 
 class TestReporting:
@@ -226,9 +232,7 @@ class TestReporting:
 
     def test_portfolio_html_has_summary_and_per_security_sections(self) -> None:
         portfolio = self._portfolio()
-        html = portfolio.aggregate.generate_html_content(
-            lang="en", securities=portfolio.results
-        )
+        html = portfolio.aggregate.generate_html_content(lang="en", securities=portfolio.results)
         # Per-security rollup table is present, with each security and its ISIN.
         assert "Portfolio Summary by Security" in html
         assert TSLA_ISIN in html and NVDA_ISIN in html
@@ -240,9 +244,7 @@ class TestReporting:
 
     def test_portfolio_html_spanish(self) -> None:
         portfolio = self._portfolio()
-        html = portfolio.aggregate.generate_html_content(
-            lang="es", securities=portfolio.results
-        )
+        html = portfolio.aggregate.generate_html_content(lang="es", securities=portfolio.results)
         assert "Resumen de Cartera por Valor" in html
         assert "Transacciones y Detalle FIFO" in html
 
@@ -265,16 +267,18 @@ class TestSingleStockRegression:
             _ev("2021-06-01", EventType.SELL, "15", "150"),
         ]
         plain = TaxEngine()
-        plain.process_all([
-            StockEvent(
-                event_date=e.event_date,
-                event_type=e.event_type,
-                shares=e.shares,
-                price_usd=e.price_usd,
-                fx_rate=Decimal("1"),
-            )
-            for e in events
-        ])
+        plain.process_all(
+            [
+                StockEvent(
+                    event_date=e.event_date,
+                    event_type=e.event_type,
+                    shares=e.shares,
+                    price_usd=e.price_usd,
+                    fx_rate=Decimal("1"),
+                )
+                for e in events
+            ]
+        )
 
         portfolio = run_portfolio(events)
         assert [r.security.key for r in portfolio.results] == ["@UNKNOWN"]

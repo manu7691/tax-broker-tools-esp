@@ -30,6 +30,7 @@ def isolate_ecb_disk_cache(tmp_path, monkeypatch):
     yield
     ECBRateFetcher.clear_cache()
 
+
 # =============================================================================
 # Sample Stock Events (with explicit FX rates - no ECB calls)
 # =============================================================================

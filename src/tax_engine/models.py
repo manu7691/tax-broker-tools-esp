@@ -46,7 +46,6 @@ class FifoMatch:
     notes: str = ""
 
 
-
 @dataclass
 class StockEvent:
     """
@@ -129,7 +128,9 @@ class StockEvent:
         if not isinstance(self.fees_usd, Decimal):
             object.__setattr__(self, "fees_usd", Decimal(str(self.fees_usd)))
         if not isinstance(self.shares_sold_to_cover, Decimal):
-            object.__setattr__(self, "shares_sold_to_cover", Decimal(str(self.shares_sold_to_cover)))
+            object.__setattr__(
+                self, "shares_sold_to_cover", Decimal(str(self.shares_sold_to_cover))
+            )
 
         # Validate: shares and price must be positive
         if self.shares <= 0:

@@ -91,9 +91,7 @@ class TestSavingsLedger:
     def test_opening_rcm_loss_offsets_later_dividends(self):
         engine = _engine_with({})
         income = {2024: _income(2024, dividends="500")}
-        ledger = engine.compute_savings_ledger(
-            income, opening_rcm_losses={2021: Decimal("200")}
-        )
+        ledger = engine.compute_savings_ledger(income, opening_rcm_losses={2021: Decimal("200")})
         # 2021 RCM loss usable through 2025 -> offsets 200 of 2024 dividends.
         assert ledger.rows[0].rcm_prior_applied == Decimal("200")
         assert ledger.rows[0].rcm_taxable == Decimal("300")

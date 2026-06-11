@@ -26,9 +26,36 @@ if TYPE_CHECKING:
 # as the 1:1 base. Anything outside this set cannot be converted via the ECB.
 ECB_CURRENCIES = frozenset(
     {
-        "USD", "JPY", "BGN", "CZK", "DKK", "GBP", "HUF", "PLN", "RON", "SEK",
-        "CHF", "ISK", "NOK", "TRY", "AUD", "BRL", "CAD", "CNY", "HKD", "IDR",
-        "ILS", "INR", "KRW", "MXN", "MYR", "NZD", "PHP", "SGD", "THB", "ZAR",
+        "USD",
+        "JPY",
+        "BGN",
+        "CZK",
+        "DKK",
+        "GBP",
+        "HUF",
+        "PLN",
+        "RON",
+        "SEK",
+        "CHF",
+        "ISK",
+        "NOK",
+        "TRY",
+        "AUD",
+        "BRL",
+        "CAD",
+        "CNY",
+        "HKD",
+        "IDR",
+        "ILS",
+        "INR",
+        "KRW",
+        "MXN",
+        "MYR",
+        "NZD",
+        "PHP",
+        "SGD",
+        "THB",
+        "ZAR",
     }
 )
 
@@ -198,9 +225,7 @@ class ECBRateFetcher:
         raise ValueError(f"No ECB rate available for {cur} or before {target_date}")
 
     @classmethod
-    def get_rates_bulk(
-        cls, dates: list[date], currency: str = "USD"
-    ) -> dict[date, Decimal]:
+    def get_rates_bulk(cls, dates: list[date], currency: str = "USD") -> dict[date, Decimal]:
         """
         Fetch rates for multiple dates efficiently in a single API call.
 

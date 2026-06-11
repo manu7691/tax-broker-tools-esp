@@ -26,7 +26,13 @@ def build_securities_chart(results: "list[SecurityResult]") -> dict[str, list[An
     in EUR, and records the open position. The template renders the chart only
     when more than one security is present.
     """
-    chart: dict[str, list[Any]] = {"securities": [], "isin": [], "invested": [], "realized": [], "position": []}
+    chart: dict[str, list[Any]] = {
+        "securities": [],
+        "isin": [],
+        "invested": [],
+        "realized": [],
+        "position": [],
+    }
     for r in results:
         invested = sum(
             float(pe.event.total_value_eur)
@@ -63,7 +69,9 @@ def sampled_dates_fx(events: "list[StockEvent]") -> list[date]:
     return sampled_dates
 
 
-def build_sales_decomposition(engine: "TaxEngine", acquisitions_by_date: "dict[date, StockEvent]") -> list[dict[str, Any]]:
+def build_sales_decomposition(
+    engine: "TaxEngine", acquisitions_by_date: "dict[date, StockEvent]"
+) -> list[dict[str, Any]]:
     """Build the gain/loss decomposition for each sale (stock vs FX contribution)."""
     sales_decomposition = []
     for pe in engine.processed_events:
@@ -85,18 +93,20 @@ def build_sales_decomposition(engine: "TaxEngine", acquisitions_by_date: "dict[d
             fx_contribution_per_share = sell_price_usd * (sell_fx_rate - acq_fx_rate)
 
             shares = match.shares
-            sales_decomposition.append({
-                "date": sell_event.event_date.isoformat(),
-                "shares": float(shares),
-                "stock_gain": float(stock_contribution_per_share * shares),
-                "fx_gain": float(fx_contribution_per_share * shares),
-                "total_gain": float(match.realized_gain_loss),
-                "notes": sell_event.notes,
-                # Whether the sold shares came from an ESPP lot, so the dashboard
-                # can keep "exclude ESPP" filtering consistent between current
-                # holdings and past realized gains/losses.
-                "is_espp": "ESPP" in acq_event.notes,
-            })
+            sales_decomposition.append(
+                {
+                    "date": sell_event.event_date.isoformat(),
+                    "shares": float(shares),
+                    "stock_gain": float(stock_contribution_per_share * shares),
+                    "fx_gain": float(fx_contribution_per_share * shares),
+                    "total_gain": float(match.realized_gain_loss),
+                    "notes": sell_event.notes,
+                    # Whether the sold shares came from an ESPP lot, so the dashboard
+                    # can keep "exclude ESPP" filtering consistent between current
+                    # holdings and past realized gains/losses.
+                    "is_espp": "ESPP" in acq_event.notes,
+                }
+            )
     return sales_decomposition
 
 
@@ -104,15 +114,17 @@ def build_chart_data(all_events: "list[StockEvent]") -> list[dict[str, Any]]:
     """Build event timeline data for the transaction scatter chart."""
     chart_data = []
     for event in all_events:
-        chart_data.append({
-            "date": event.event_date.isoformat(),
-            "type": event.event_type.value,
-            "shares": float(event.shares),
-            "price_usd": float(event.price_usd),
-            "price_eur": float(event.price_eur),
-            "fx_rate": float(event.resolved_fx_rate),
-            "notes": event.notes
-        })
+        chart_data.append(
+            {
+                "date": event.event_date.isoformat(),
+                "type": event.event_type.value,
+                "shares": float(event.shares),
+                "price_usd": float(event.price_usd),
+                "price_eur": float(event.price_eur),
+                "fx_rate": float(event.resolved_fx_rate),
+                "notes": event.notes,
+            }
+        )
     return chart_data
 
 
@@ -128,7 +140,9 @@ def build_fx_history(all_events: "list[StockEvent]") -> list[dict[str, Any]]:
     return fx_history
 
 
-def calculate_rsu_hold_delta(all_events: "list[StockEvent]", engine: "TaxEngine", latest_price_eur: float) -> tuple[float, float, float]:
+def calculate_rsu_hold_delta(
+    all_events: "list[StockEvent]", engine: "TaxEngine", latest_price_eur: float
+) -> tuple[float, float, float]:
     """
     Calculate RSU hold vs immediate sell delta.
 
@@ -141,13 +155,15 @@ def calculate_rsu_hold_delta(all_events: "list[StockEvent]", engine: "TaxEngine"
 
     for event in all_events:
         if event.event_type == EventType.VEST:
-            rsu_lots.append({
-                "date": event.event_date,
-                "vest_price_eur": float(event.price_eur),
-                "total_shares": float(event.shares),
-                "remaining_shares": float(event.shares),
-                "realized_sales_value": 0.0,
-            })
+            rsu_lots.append(
+                {
+                    "date": event.event_date,
+                    "vest_price_eur": float(event.price_eur),
+                    "total_shares": float(event.shares),
+                    "remaining_shares": float(event.shares),
+                    "realized_sales_value": 0.0,
+                }
+            )
 
     for pe in engine.processed_events:
         if pe.event.event_type == EventType.SELL:
@@ -156,7 +172,9 @@ def calculate_rsu_hold_delta(all_events: "list[StockEvent]", engine: "TaxEngine"
                     if lot["date"] == match.acquisition_date:
                         shares_sold = float(match.shares)
                         lot["remaining_shares"] -= shares_sold
-                        sale_price_eur = float(match.realized_gain_loss / match.shares) + lot["vest_price_eur"]
+                        sale_price_eur = (
+                            float(match.realized_gain_loss / match.shares) + lot["vest_price_eur"]
+                        )
                         lot["realized_sales_value"] += shares_sold * sale_price_eur
                         break
 
@@ -169,7 +187,9 @@ def calculate_rsu_hold_delta(all_events: "list[StockEvent]", engine: "TaxEngine"
     return rsu_decision_delta, rsu_sell_on_vest_value, rsu_hold_value
 
 
-def calculate_espp_savings(input_dir: Path, engine: "TaxEngine") -> tuple[Decimal, Decimal, Decimal, dict[date, tuple[Decimal, Decimal]]]:
+def calculate_espp_savings(
+    input_dir: Path, engine: "TaxEngine"
+) -> tuple[Decimal, Decimal, Decimal, dict[date, tuple[Decimal, Decimal]]]:
     """
     Calculate ESPP tax exemption savings, losses, and build the purchase map.
 
@@ -193,7 +213,9 @@ def calculate_espp_savings(input_dir: Path, engine: "TaxEngine") -> tuple[Decima
     return saved_espp_discount, lost_espp_discount, total_espp_discount, espp_map
 
 
-def build_unsold_lots_and_espp_tracker(engine: "TaxEngine", espp_map: "dict[date, tuple[Decimal, Decimal]]", reference_date: date) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
+def build_unsold_lots_and_espp_tracker(
+    engine: "TaxEngine", espp_map: "dict[date, tuple[Decimal, Decimal]]", reference_date: date
+) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Build unsold lots data for the simulator and ESPP active lots for the countdown tracker.
 
@@ -207,19 +229,23 @@ def build_unsold_lots_and_espp_tracker(engine: "TaxEngine", espp_map: "dict[date
         if lot.remaining_shares <= 0:
             continue
 
-        unsold_lots_data.append({
-            "acq_date": lot.acquisition_date.isoformat(),
-            "shares": float(lot.remaining_shares),
-            "price_eur": float(lot.price_eur),
-            "notes": lot.notes,
-            "broker": lot.broker,
-        })
+        unsold_lots_data.append(
+            {
+                "acq_date": lot.acquisition_date.isoformat(),
+                "shares": float(lot.remaining_shares),
+                "price_eur": float(lot.price_eur),
+                "notes": lot.notes,
+                "broker": lot.broker,
+            }
+        )
 
         if "ESPP" in lot.notes:
             try:
                 unlock_date = lot.acquisition_date.replace(year=lot.acquisition_date.year + 3)
             except ValueError:  # Leap year
-                unlock_date = lot.acquisition_date.replace(year=lot.acquisition_date.year + 3, day=28)
+                unlock_date = lot.acquisition_date.replace(
+                    year=lot.acquisition_date.year + 3, day=28
+                )
 
             days_left = (unlock_date - reference_date).days
 
@@ -233,24 +259,32 @@ def build_unsold_lots_and_espp_tracker(engine: "TaxEngine", espp_map: "dict[date
                 discount_at_risk_eur = float(disc_per_share_usd * lot.remaining_shares * fx_rate)
 
             status = "🔓 Exemption Secured" if days_left <= 0 else "🔒 Locked"
-            advice_str = "Safe to Sell (No tax penalty)" if days_left <= 0 else f"HOLD to avoid paying tax on €{discount_at_risk_eur:,.2f}"
+            advice_str = (
+                "Safe to Sell (No tax penalty)"
+                if days_left <= 0
+                else f"HOLD to avoid paying tax on €{discount_at_risk_eur:,.2f}"
+            )
 
-            espp_active_lots.append({
-                "acq_date": lot.acquisition_date.isoformat(),
-                "shares": float(lot.remaining_shares),
-                "price_eur": float(lot.price_eur),
-                "unlock_date": unlock_date.isoformat(),
-                "days_left": max(0, days_left),
-                "status": status,
-                "advice": advice_str,
-                "discount_at_risk": discount_at_risk_eur
-            })
+            espp_active_lots.append(
+                {
+                    "acq_date": lot.acquisition_date.isoformat(),
+                    "shares": float(lot.remaining_shares),
+                    "price_eur": float(lot.price_eur),
+                    "unlock_date": unlock_date.isoformat(),
+                    "days_left": max(0, days_left),
+                    "status": status,
+                    "advice": advice_str,
+                    "discount_at_risk": discount_at_risk_eur,
+                }
+            )
 
     espp_active_lots.sort(key=lambda x: x["acq_date"])
     return unsold_lots_data, espp_active_lots
 
 
-def enrich_hist_quotes_with_avg_cost(hist_quotes: "list[dict[str, Any]]", processed_events: "list[ProcessedEvent]") -> None:
+def enrich_hist_quotes_with_avg_cost(
+    hist_quotes: "list[dict[str, Any]]", processed_events: "list[ProcessedEvent]"
+) -> None:
     """Add running average cost (USD) to each historical quote for the trend chart overlay."""
     processed_sorted = sorted(processed_events, key=lambda x: x.event.event_date)
     for q in hist_quotes:
@@ -272,7 +306,9 @@ def enrich_hist_quotes_with_avg_cost(hist_quotes: "list[dict[str, Any]]", proces
             q["avg_cost_usd"] = None
 
 
-def build_dt_normalized_returns(hist_quotes: "list[dict[str, Any]]", first_transaction_date: date) -> list[dict[str, Any]]:
+def build_dt_normalized_returns(
+    hist_quotes: "list[dict[str, Any]]", first_transaction_date: date
+) -> list[dict[str, Any]]:
     """Calculate normalized DT returns starting from the first transaction date."""
     dt_normalized = []
     if hist_quotes:

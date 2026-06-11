@@ -436,9 +436,7 @@ def load_revolut_trade_events(
             else:
                 events += _movements_trade_events(text, symbol, name)
         else:
-            events += _sells_trade_events(
-                text, isin, symbol, name, all_securities=all_securities
-            )
+            events += _sells_trade_events(text, isin, symbol, name, all_securities=all_securities)
 
     if all_securities:
         unresolved = sorted({e.symbol for e in events if e.symbol and not e.isin})
@@ -454,8 +452,7 @@ def load_revolut_trade_events(
         n_sell = sum(1 for e in events if e.event_type == EventType.SELL)
         scope = "all securities" if all_securities else (symbol or isin)
         print(
-            f"Loaded {len(events)} Revolut trade event(s) for {scope} "
-            f"({n_buy} buy, {n_sell} sell)."
+            f"Loaded {len(events)} Revolut trade event(s) for {scope} ({n_buy} buy, {n_sell} sell)."
         )
     return events
 
@@ -508,7 +505,9 @@ def load_revolut_savings_income(
                 gross = _parse_decimal(row.get("Gross amount"))
                 withholding = _parse_decimal(row.get("Withholding tax") or "0")
             except (KeyError, ValueError, InvalidOperation) as e:
-                print(f"Warning: skipping malformed Revolut income row {idx} in {csv_path.name}: {e}")
+                print(
+                    f"Warning: skipping malformed Revolut income row {idx} in {csv_path.name}: {e}"
+                )
                 continue
 
             rate = Decimal("1") if cur == "EUR" else ECBRateFetcher.get_rate(pay_date, cur)
@@ -606,5 +605,7 @@ def load_revolut_events(
         load_revolut_trade_events(
             input_dir, isin=isin, symbol=symbol, all_securities=all_securities, isin_map=isin_map
         ),
-        load_revolut_savings_income(input_dir, isin=isin, symbol=symbol, all_securities=all_securities),
+        load_revolut_savings_income(
+            input_dir, isin=isin, symbol=symbol, all_securities=all_securities
+        ),
     )

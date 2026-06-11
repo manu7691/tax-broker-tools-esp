@@ -23,6 +23,7 @@ def test_securities_chart_template_and_generator_are_wired():
     generator = (REPO_ROOT / "generate_charts.py").read_text(encoding="utf-8")
     assert '"__SECURITIES_DATA__"' in generator  # the replace target is still emitted
 
+
 def test_load_ticker_config_txt(tmp_path):
     # Test loading from ticker.txt
     txt_file = tmp_path / "ticker.txt"
@@ -32,14 +33,18 @@ def test_load_ticker_config_txt(tmp_path):
     assert ticker == "AAPL"
     assert company_name is None
 
+
 def test_load_ticker_config_json(tmp_path):
     # Test loading from ticker.json
     json_file = tmp_path / "ticker.json"
-    json_file.write_text(json.dumps({"ticker": "DDOG", "company_name": "Datadog"}), encoding="utf-8")
+    json_file.write_text(
+        json.dumps({"ticker": "DDOG", "company_name": "Datadog"}), encoding="utf-8"
+    )
 
     ticker, company_name = load_ticker_config(tmp_path)
     assert ticker == "DDOG"
     assert company_name == "Datadog"
+
 
 def test_load_ticker_config_json_simple(tmp_path):
     # Test loading simple string from ticker.json
@@ -50,15 +55,14 @@ def test_load_ticker_config_json_simple(tmp_path):
     assert ticker == "ESTC"
     assert company_name is None
 
+
 @patch("requests.get")
 def test_fetch_company_name_api(mock_get):
     # Mock search API response
     mock_response = MagicMock()
     mock_response.status_code = 200
     mock_response.json.return_value = {
-        "quotes": [
-            {"longname": "Datadog, Inc.", "shortname": "Datadog", "symbol": "DDOG"}
-        ]
+        "quotes": [{"longname": "Datadog, Inc.", "shortname": "Datadog", "symbol": "DDOG"}]
     }
     mock_get.return_value = mock_response
 
@@ -66,6 +70,6 @@ def test_fetch_company_name_api(mock_get):
     assert name == "Datadog, Inc."
     mock_get.assert_called_once_with(
         "https://query1.finance.yahoo.com/v1/finance/search?q=DDOG&quotesCount=1",
-        headers={'User-Agent': 'Mozilla/5.0'},
-        timeout=5
+        headers={"User-Agent": "Mozilla/5.0"},
+        timeout=5,
     )

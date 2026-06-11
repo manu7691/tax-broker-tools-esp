@@ -327,8 +327,12 @@ class TestPrefetchECBRates:
         """One bulk fetch per currency; EUR needs none."""
         events = [
             StockEvent(date(2021, 5, 17), EventType.VEST, Decimal("100"), Decimal("50")),
-            StockEvent(date(2021, 5, 18), EventType.BUY, Decimal("10"), Decimal("30"), currency="GBP"),
-            StockEvent(date(2021, 5, 19), EventType.BUY, Decimal("5"), Decimal("20"), currency="EUR"),
+            StockEvent(
+                date(2021, 5, 18), EventType.BUY, Decimal("10"), Decimal("30"), currency="GBP"
+            ),
+            StockEvent(
+                date(2021, 5, 19), EventType.BUY, Decimal("5"), Decimal("20"), currency="EUR"
+            ),
         ]
         with patch.object(ECBRateFetcher, "get_rates_bulk", return_value={}) as mock_bulk:
             prefetch_ecb_rates(events)
@@ -337,7 +341,9 @@ class TestPrefetchECBRates:
 
     def test_event_resolves_rate_with_its_currency(self):
         """resolved_fx_rate fetches using the event's own currency."""
-        event = StockEvent(date(2021, 5, 17), EventType.BUY, Decimal("1"), Decimal("100"), currency="GBP")
+        event = StockEvent(
+            date(2021, 5, 17), EventType.BUY, Decimal("1"), Decimal("100"), currency="GBP"
+        )
         with patch.object(ECBRateFetcher, "get_rate", return_value=Decimal("1.1")) as mock_get:
             assert event.resolved_fx_rate == Decimal("1.1")
         mock_get.assert_called_once_with(date(2021, 5, 17), "GBP")

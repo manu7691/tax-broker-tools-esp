@@ -115,6 +115,7 @@ def detect_ticker(input_dir: Path) -> str | None:
         return None
     try:
         import pandas as pd
+
         xl = pd.ExcelFile(excel_path)
         for sheet in xl.sheet_names:
             df = xl.parse(sheet)
@@ -131,9 +132,9 @@ def prompt_include_espp() -> bool:
     """Ask whether to include ESPP analysis. Defaults to yes when non-interactive."""
     if not sys.stdin.isatty():
         return True
-    response = input(
-        "ESPP data detected. Include ESPP analysis in the dashboard? [Y/n]: "
-    ).strip().lower()
+    response = (
+        input("ESPP data detected. Include ESPP analysis in the dashboard? [Y/n]: ").strip().lower()
+    )
     return response in ("", "y", "yes")
 
 
@@ -161,7 +162,7 @@ def main():
         nargs="+",
         metavar="TICKER",
         help="Peer tickers for the comparison chart (e.g. --peers DDOG ESTC AAPL). "
-             "Overrides input/peers.json and built-in defaults.",
+        "Overrides input/peers.json and built-in defaults.",
     )
     parser.add_argument(
         "--ticker",
@@ -283,9 +284,11 @@ def main():
     if args.demo:
         if args.all_securities:
             from tax_engine.sample_data import create_sample_multi_security_events
+
             portfolio_events = create_sample_multi_security_events()
         else:
             from tax_engine.sample_data import create_sample_events_with_manual_fx
+
             portfolio_events = create_sample_events_with_manual_fx()
             for e in portfolio_events:
                 e.symbol = e.symbol or (ticker or "")
@@ -307,13 +310,18 @@ def main():
                 e.isin = e.isin or config_isin
 
         revolut_all_events = load_revolut_trade_events(
-            input_dir, isin=config_isin, symbol=ticker,
-            all_securities=True, isin_map=sec_config.isin_map,
+            input_dir,
+            isin=config_isin,
+            symbol=ticker,
+            all_securities=True,
+            isin_map=sec_config.isin_map,
         )
 
         portfolio_events = etrade_events + revolut_all_events
         if not portfolio_events:
-            print("No events found. Please make sure your Excel sheets and PDFs are in the input folder.")
+            print(
+                "No events found. Please make sure your Excel sheets and PDFs are in the input folder."
+            )
             return
 
         if revolut_all_events:
@@ -366,6 +374,7 @@ def main():
         if args.demo:
             import math
             from datetime import timedelta
+
             start_date_mock = date(2020, 1, 1)
             end_date_mock = date.today()
             sec_hist_quotes = []
@@ -373,19 +382,39 @@ def main():
             while curr <= end_date_mock:
                 days_since_start = (curr - start_date_mock).days
                 if sec_ticker == "TSLA":
-                    price = 50.0 + 150.0 * (days_since_start / 800.0) + 40.0 * math.sin(days_since_start / 30.0)
+                    price = (
+                        50.0
+                        + 150.0 * (days_since_start / 800.0)
+                        + 40.0 * math.sin(days_since_start / 30.0)
+                    )
                 elif sec_ticker == "NVDA":
-                    price = 20.0 + 380.0 * ((days_since_start / 1000.0) ** 2) + 15.0 * math.sin(days_since_start / 40.0)
+                    price = (
+                        20.0
+                        + 380.0 * ((days_since_start / 1000.0) ** 2)
+                        + 15.0 * math.sin(days_since_start / 40.0)
+                    )
                 elif sec_ticker == "ADBE":
                     price = 300.0 + 100.0 * math.sin(days_since_start / 100.0)
                 elif sec_ticker == "SHEL":
-                    price = 10.0 + 15.0 * (days_since_start / 1000.0) + 2.0 * math.sin(days_since_start / 20.0)
-                else: # DT
+                    price = (
+                        10.0
+                        + 15.0 * (days_since_start / 1000.0)
+                        + 2.0 * math.sin(days_since_start / 20.0)
+                    )
+                else:  # DT
                     if days_since_start < 700:
-                        price = 35.0 + 85.0 * (days_since_start / 700.0) + 10.0 * math.sin(days_since_start / 50.0)
+                        price = (
+                            35.0
+                            + 85.0 * (days_since_start / 700.0)
+                            + 10.0 * math.sin(days_since_start / 50.0)
+                        )
                     else:
                         stable_phase = days_since_start - 700
-                        price = 120.0 - 80.0 * min(1.0, stable_phase / 365.0) + 5.0 * math.sin(days_since_start / 100.0)
+                        price = (
+                            120.0
+                            - 80.0 * min(1.0, stable_phase / 365.0)
+                            + 5.0 * math.sin(days_since_start / 100.0)
+                        )
                 price = round(max(5.0, price), 2)
                 sec_hist_quotes.append({"date": curr.isoformat(), "close": float(price)})
                 curr += timedelta(days=1)
@@ -393,11 +422,13 @@ def main():
             # Calculate SMAs
             for idx, q in enumerate(sec_hist_quotes):
                 if idx >= 49:
-                    q["sma50"] = sum(x["close"] for x in sec_hist_quotes[idx-49:idx+1]) / 50.0
+                    q["sma50"] = sum(x["close"] for x in sec_hist_quotes[idx - 49 : idx + 1]) / 50.0
                 else:
                     q["sma50"] = None
                 if idx >= 199:
-                    q["sma200"] = sum(x["close"] for x in sec_hist_quotes[idx-199:idx+1]) / 200.0
+                    q["sma200"] = (
+                        sum(x["close"] for x in sec_hist_quotes[idx - 199 : idx + 1]) / 200.0
+                    )
                 else:
                     q["sma200"] = None
 
@@ -405,15 +436,21 @@ def main():
             sec_sma50 = sec_hist_quotes[-1]["sma50"] or 0
             sec_sma200 = sec_hist_quotes[-1]["sma200"] or 0
             sec_signal = {
-                "en": "Bullish (Strong Growth Trend)" if sec_live_p > sec_sma50 else "Bearish (Down Trend)",
-                "es": "Alcista (Fuerte tendencia de crecimiento)" if sec_live_p > sec_sma50 else "Bajista (Tendencia bajista)"
+                "en": "Bullish (Strong Growth Trend)"
+                if sec_live_p > sec_sma50
+                else "Bearish (Down Trend)",
+                "es": "Alcista (Fuerte tendencia de crecimiento)"
+                if sec_live_p > sec_sma50
+                else "Bajista (Tendencia bajista)",
             }
             sec_advice = {
                 "en": f"Demo mode showing simulated growth and tax calculations for {sec_ticker}.",
-                "es": f"Modo demo mostrando crecimiento simulado y cálculos de impuestos para {sec_ticker}."
+                "es": f"Modo demo mostrando crecimiento simulado y cálculos de impuestos para {sec_ticker}.",
             }
         else:
-            sec_hist_quotes, sec_live_p, sec_sma50, sec_sma200, sec_signal, sec_advice = fetch_historical_market_data(sec_ticker, sec_first_date)
+            sec_hist_quotes, sec_live_p, sec_sma50, sec_sma200, sec_signal, sec_advice = (
+                fetch_historical_market_data(sec_ticker, sec_first_date)
+            )
 
         # Resolve Current Price
         if sec_ticker == ticker and args.current_price is not None:
@@ -423,20 +460,17 @@ def main():
                 if p > sec_sma50 and p > sec_sma200:
                     sec_signal = {
                         "en": "Bullish (Strong Growth Trend)",
-                        "es": "Alcista (Fuerte tendencia de crecimiento)"
+                        "es": "Alcista (Fuerte tendencia de crecimiento)",
                     }
                     sec_advice = {
                         "en": f"The manual price (${p:.2f}) is above both the 50-day (${sec_sma50:.2f}) and 200-day (${sec_sma200:.2f}) averages. Strong upward trend.",
-                        "es": f"El precio manual (${p:.2f}) está por encima de las medias de 50 días (${sec_sma50:.2f}) y de 200 días (${sec_sma200:.2f}). Fuerte tendencia alcista."
+                        "es": f"El precio manual (${p:.2f}) está por encima de las medias de 50 días (${sec_sma50:.2f}) y de 200 días (${sec_sma200:.2f}). Fuerte tendencia alcista.",
                     }
                 elif p < sec_sma50 and p < sec_sma200:
-                    sec_signal = {
-                        "en": "Bearish (Down Trend)",
-                        "es": "Bajista (Tendencia bajista)"
-                    }
+                    sec_signal = {"en": "Bearish (Down Trend)", "es": "Bajista (Tendencia bajista)"}
                     sec_advice = {
                         "en": f"The manual price (${p:.2f}) is below both the 50-day (${sec_sma50:.2f}) and 200-day (${sec_sma200:.2f}) averages. Trend is downward.",
-                        "es": f"El precio manual (${p:.2f}) está por debajo de las medias de 50 días (${sec_sma50:.2f}) y de 200 días (${sec_sma200:.2f}). La tendencia es bajista."
+                        "es": f"El precio manual (${p:.2f}) está por debajo de las medias de 50 días (${sec_sma50:.2f}) y de 200 días (${sec_sma200:.2f}). La tendencia es bajista.",
                     }
         else:
             if sec_live_p > 0:
@@ -467,22 +501,38 @@ def main():
                 }
                 from tax_engine.cli_main import detect_espp_early_sales
                 from tax_engine.ecb_rates import ECBRateFetcher
+
                 espp_discounts = {}
                 for acq_date, (fmv, price) in sec_espp_map.items():
-                    qty = Decimal("50") if acq_date in (date(2020, 11, 27), date(2021, 5, 28)) else (
-                        Decimal("100") if acq_date == date(2021, 11, 26) else Decimal("105")
+                    qty = (
+                        Decimal("50")
+                        if acq_date in (date(2020, 11, 27), date(2021, 5, 28))
+                        else (Decimal("100") if acq_date == date(2021, 11, 26) else Decimal("105"))
                     )
                     discount_usd = (fmv - price) * qty
                     fx_rate = ECBRateFetcher.get_rate(acq_date)
                     discount_eur = (discount_usd * fx_rate).quantize(Decimal("0.01"))
-                    espp_discounts[acq_date.year] = espp_discounts.get(acq_date.year, Decimal("0")) + discount_eur
+                    espp_discounts[acq_date.year] = (
+                        espp_discounts.get(acq_date.year, Decimal("0")) + discount_eur
+                    )
 
-                espp_early_sales, _ = detect_espp_early_sales(sec_engine.processed_events, sec_espp_map)
+                espp_early_sales, _ = detect_espp_early_sales(
+                    sec_engine.processed_events, sec_espp_map
+                )
                 sec_total_espp_discount = sum(espp_discounts.values())
-                sec_lost_espp_discount = sum(espp_early_sales.values()) if espp_early_sales else Decimal("0")
-                sec_saved_espp_discount = max(Decimal("0"), sec_total_espp_discount - sec_lost_espp_discount)
+                sec_lost_espp_discount = (
+                    sum(espp_early_sales.values()) if espp_early_sales else Decimal("0")
+                )
+                sec_saved_espp_discount = max(
+                    Decimal("0"), sec_total_espp_discount - sec_lost_espp_discount
+                )
             elif include_espp:
-                sec_saved_espp_discount, sec_lost_espp_discount, sec_total_espp_discount, sec_espp_map = calculate_espp_savings(input_dir, sec_engine)
+                (
+                    sec_saved_espp_discount,
+                    sec_lost_espp_discount,
+                    sec_total_espp_discount,
+                    sec_espp_map,
+                ) = calculate_espp_savings(input_dir, sec_engine)
 
         # RSU hold vs vest
         sec_rsu_delta, sec_rsu_sell_on_vest_value, sec_rsu_hold_value = calculate_rsu_hold_delta(
@@ -501,13 +551,21 @@ def main():
         sec_fx_history = build_fx_history(sec_events)
 
         today_dt = date.today()
-        sec_current_reference_date = today_dt if today_dt.year >= 2026 else sec_events[-1].event_date
-        sec_unsold_lots_data, sec_espp_active_lots = build_unsold_lots_and_espp_tracker(sec_engine, sec_espp_map, sec_current_reference_date)
+        sec_current_reference_date = (
+            today_dt if today_dt.year >= 2026 else sec_events[-1].event_date
+        )
+        sec_unsold_lots_data, sec_espp_active_lots = build_unsold_lots_and_espp_tracker(
+            sec_engine, sec_espp_map, sec_current_reference_date
+        )
 
-        sec_at_risk_espp_discount = Decimal(str(
-            sum(lot["discount_at_risk"] for lot in sec_espp_active_lots if lot["days_left"] > 0)
-        ))
-        sec_secured_espp_discount = max(Decimal("0"), sec_saved_espp_discount - sec_at_risk_espp_discount)
+        sec_at_risk_espp_discount = Decimal(
+            str(
+                sum(lot["discount_at_risk"] for lot in sec_espp_active_lots if lot["days_left"] > 0)
+            )
+        )
+        sec_secured_espp_discount = max(
+            Decimal("0"), sec_saved_espp_discount - sec_at_risk_espp_discount
+        )
         if sec_secured_espp_discount < Decimal("1"):
             sec_secured_espp_discount = Decimal("0")
 
@@ -548,8 +606,16 @@ def main():
                 phase = (seed_val % 3) * 15.0
                 period = 30.0 + (seed_val % 4) * 10.0
                 for q in dt_normalized:
-                    pct = q["pct"] * factor + math.sin((date.fromisoformat(q["date"]) - sec_first_date).days / period + phase) * 12.0
-                    p_normalized.append({"date": q["date"], "pct": pct, "price": q["price"] * factor})
+                    pct = (
+                        q["pct"] * factor
+                        + math.sin(
+                            (date.fromisoformat(q["date"]) - sec_first_date).days / period + phase
+                        )
+                        * 12.0
+                    )
+                    p_normalized.append(
+                        {"date": q["date"], "pct": pct, "price": q["price"] * factor}
+                    )
                 sec_peer_data[p_ticker] = p_normalized
         else:
             try:
@@ -585,7 +651,7 @@ def main():
             "espp_lots": sec_espp_active_lots,
             "unsold_lots": sec_unsold_lots_data,
             "peer_data": sec_peer_data,
-            "peer_tickers": sec_peer_tickers
+            "peer_tickers": sec_peer_tickers,
         }
 
     # Extract primary security values as the baseline for standard template replacements
@@ -598,6 +664,7 @@ def main():
     # portfolio-level). Real data comes from the Revolut "Other income" rows.
     if args.demo:
         from tax_engine.sample_data import create_sample_dividends_by_symbol
+
         dividends_by_symbol = create_sample_dividends_by_symbol()
     else:
         dividends_by_symbol = load_revolut_dividends_by_symbol(input_dir)
@@ -625,19 +692,21 @@ def main():
             if pe.event.event_type == EventType.SELL
         )
 
-        holdings_table.append({
-            "ticker": sec_ticker,
-            "isin": sec_isin,
-            "shares": sec_shares,
-            "avg_cost_eur": sec_avg_cost_eur,
-            "total_cost_eur": sec_total_cost_eur,
-            "price_usd": sec_price_usd,
-            "fx_rate": sec_fx_rate,
-            "value_eur": sec_value_eur,
-            "gain_loss_eur": sec_value_eur - sec_total_cost_eur,
-            "realized_pl_eur": sec_realized_pl_eur,
-            "dividends_eur": float(dividends_by_symbol.get(sec_ticker, Decimal("0"))),
-        })
+        holdings_table.append(
+            {
+                "ticker": sec_ticker,
+                "isin": sec_isin,
+                "shares": sec_shares,
+                "avg_cost_eur": sec_avg_cost_eur,
+                "total_cost_eur": sec_total_cost_eur,
+                "price_usd": sec_price_usd,
+                "fx_rate": sec_fx_rate,
+                "value_eur": sec_value_eur,
+                "gain_loss_eur": sec_value_eur - sec_total_cost_eur,
+                "realized_pl_eur": sec_realized_pl_eur,
+                "dividends_eur": float(dividends_by_symbol.get(sec_ticker, Decimal("0"))),
+            }
+        )
 
     # Calculate allocation percentage
     for h in holdings_table:
@@ -699,7 +768,9 @@ def main():
     # Tax-loss harvesting: open positions currently at an unrealized loss that
     # could be sold to offset this year's realized gains (2-month wash-sale caveat).
     this_year = date.today().year
-    yr_summary = next((s for s in portfolio.aggregate.get_all_yearly_summaries() if s.year == this_year), None)
+    yr_summary = next(
+        (s for s in portfolio.aggregate.get_all_yearly_summaries() if s.year == this_year), None
+    )
     harvest_candidates = [
         {
             "ticker": h["ticker"],
@@ -722,6 +793,7 @@ def main():
     if args.demo:
         if args.all_securities:
             from tax_engine.sample_data import create_sample_savings_income
+
             savings_income = create_sample_savings_income()
         else:
             savings_income = {}
@@ -740,7 +812,9 @@ def main():
     current_year_rcm = float(current_year_si.rcm_net) if current_year_si else 0.0
 
     # Load HTML template
-    template_path = Path(__file__).parent / "src" / "tax_engine" / "templates" / "dashboard_template.html"
+    template_path = (
+        Path(__file__).parent / "src" / "tax_engine" / "templates" / "dashboard_template.html"
+    )
     html_template = template_path.read_text(encoding="utf-8")
 
     # Replace values in the template
@@ -757,8 +831,12 @@ def main():
     html_content = html_content.replace("__RSU_VEST_VAL__", str(primary_data["rsu_vest_val"]))
     html_content = html_content.replace("__RSU_HOLD_VAL__", str(primary_data["rsu_hold_val"]))
 
-    html_content = html_content.replace("__TREND_SIGNAL__", json.dumps(primary_data["trend_signal"]))
-    html_content = html_content.replace("__TREND_ADVICE__", json.dumps(primary_data["trend_advice"]))
+    html_content = html_content.replace(
+        "__TREND_SIGNAL__", json.dumps(primary_data["trend_signal"])
+    )
+    html_content = html_content.replace(
+        "__TREND_ADVICE__", json.dumps(primary_data["trend_advice"])
+    )
 
     html_content = html_content.replace("__CHART_DATA__", json.dumps(primary_data["chart_data"]))
     html_content = html_content.replace("__FX_HISTORY__", json.dumps(primary_data["fx_history"]))
@@ -768,15 +846,21 @@ def main():
     html_content = html_content.replace("__YEARLY_TAX_DATA__", json.dumps(yearly_tax_data))
     html_content = html_content.replace("__CURRENCY_EXPOSURE__", json.dumps(currency_exposure))
     html_content = html_content.replace("__HARVEST_DATA__", json.dumps(harvest_data))
-    html_content = html_content.replace("__HISTORICAL_QUOTES__", json.dumps(primary_data["historical_quotes"]))
+    html_content = html_content.replace(
+        "__HISTORICAL_QUOTES__", json.dumps(primary_data["historical_quotes"])
+    )
     html_content = html_content.replace("__ESPP_LOTS__", json.dumps(primary_data["espp_lots"]))
     html_content = html_content.replace("__UNSOLD_LOTS__", json.dumps(primary_data["unsold_lots"]))
     html_content = html_content.replace("__LIVE_PRICE_USD__", str(primary_data["live_price_usd"]))
     html_content = html_content.replace("__LIVE_FX_RATE__", str(primary_data["live_fx_rate"]))
     html_content = html_content.replace("__MY_AVG_COST_USD__", str(primary_data["my_avg_cost_usd"]))
-    html_content = html_content.replace("__FIRST_TRANSACTION_DATE__", primary_data["first_transaction_date"])
+    html_content = html_content.replace(
+        "__FIRST_TRANSACTION_DATE__", primary_data["first_transaction_date"]
+    )
     html_content = html_content.replace("__PEER_DATA__", json.dumps(primary_data["peer_data"]))
-    html_content = html_content.replace("__PEER_TICKERS__", json.dumps(primary_data["peer_tickers"]))
+    html_content = html_content.replace(
+        "__PEER_TICKERS__", json.dumps(primary_data["peer_tickers"])
+    )
     html_content = html_content.replace("__TICKER__", ticker)
     html_content = html_content.replace("__COMPANY_NAME__", company_name)
     html_content = html_content.replace("__SAVINGS_INCOME__", json.dumps(savings_income_rows))
@@ -792,9 +876,10 @@ def main():
     output_path.write_text(html_content, encoding="utf-8")
 
     print(f"\n📊 Interactive Financial & Tax Analysis Dashboard generated at: {output_path}")
-    print("Open this file in your browser to view your hold delta, ESPP efficiency, and gains decomposition!")
+    print(
+        "Open this file in your browser to view your hold delta, ESPP efficiency, and gains decomposition!"
+    )
 
 
 if __name__ == "__main__":
     main()
-

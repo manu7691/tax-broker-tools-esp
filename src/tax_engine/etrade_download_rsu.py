@@ -125,9 +125,9 @@ def download_rsu_confirmations() -> None:
 
                 # Click download to get the URL (and cId)
                 with page.expect_popup() as popup_info:
-                    row.locator(
-                        '[data-test-id="Stockplanconfig.transactiontable.download"]'
-                    ).click(force=True, timeout=10000)
+                    row.locator('[data-test-id="Stockplanconfig.transactiontable.download"]').click(
+                        force=True, timeout=10000
+                    )
 
                 popup = popup_info.value
                 popup.wait_for_load_state()

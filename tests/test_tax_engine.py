@@ -237,7 +237,6 @@ class TestTaxEngineEdgeCases:
         assert TaxEngine.format_shares(Decimal("123.4567891")) == "123.456789"
 
 
-
 class TestWashSaleRefinement:
     """Tests for the refined wash sale rule (only remaining shares trigger blocking)."""
 
@@ -384,17 +383,25 @@ class TestFeeConversion:
         # Buy 10 @ $100, sell 10 @ $150 with $20 fees, fx 0.90 EUR per USD.
         # Gross gain = (150-100)*10*0.90 = €450. Fees = 20*0.90 = €18 (NOT 20/0.90).
         engine = TaxEngine()
-        engine.process_all([
-            StockEvent(
-                event_date=date(2021, 1, 1), event_type=EventType.BUY,
-                shares=Decimal("10"), price_usd=Decimal("100"), fx_rate=Decimal("0.90"),
-            ),
-            StockEvent(
-                event_date=date(2021, 6, 1), event_type=EventType.SELL,
-                shares=Decimal("10"), price_usd=Decimal("150"), fx_rate=Decimal("0.90"),
-                fees_usd=Decimal("20"),
-            ),
-        ])
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2021, 1, 1),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("100"),
+                    fx_rate=Decimal("0.90"),
+                ),
+                StockEvent(
+                    event_date=date(2021, 6, 1),
+                    event_type=EventType.SELL,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("150"),
+                    fx_rate=Decimal("0.90"),
+                    fees_usd=Decimal("20"),
+                ),
+            ]
+        )
         sell = next(pe for pe in engine.processed_events if pe.event.event_type == EventType.SELL)
         assert sell.realized_gain_loss == Decimal("432.0000")  # 450 - 18
         assert engine.get_yearly_summary(2021).total_fees_eur == Decimal("18.0000")

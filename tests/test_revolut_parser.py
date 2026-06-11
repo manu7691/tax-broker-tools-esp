@@ -37,6 +37,7 @@ def isolated_isin_cache(tmp_path: Path, monkeypatch: Any) -> Any:
     yield
     IsinCache.clear()
 
+
 # Tracked security for these tests = Tesla.
 TSLA_ISIN = "US88160R1014"
 
@@ -105,7 +106,9 @@ class TestSellSynthesis:
         )
         assert buy.shares == Decimal("0.00413701")
         # 5.00 / 0.00413701 = 1208.598... rounded to 4dp
-        assert buy.price_usd == (Decimal("5.00") / Decimal("0.00413701")).quantize(Decimal("0.0001"))
+        assert buy.price_usd == (Decimal("5.00") / Decimal("0.00413701")).quantize(
+            Decimal("0.0001")
+        )
         assert sell.price_usd == (Decimal("5.69") / Decimal("0.00413701")).quantize(
             Decimal("0.0001")
         )
@@ -145,9 +148,7 @@ class TestAllSecurities:
         assert all(e.symbol == "TSLA" and e.isin == TSLA_ISIN for e in events)
 
     def test_all_securities_income_unfiltered(self, input_dir: Path) -> None:
-        with patch(
-            "tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")
-        ):
+        with patch("tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")):
             income = load_revolut_savings_income(input_dir, all_securities=True)
         # Both the TSLA (2022) and NVDA (2022) dividend rows are summed.
         assert set(income) == {2022}
@@ -277,9 +278,7 @@ class TestMovementsAllSecurities:
         dt = [e for e in events if e.symbol == "DT"]
         assert [e.shares for e in dt] == [Decimal("0.02272727"), Decimal("0.17277259")]
 
-    def test_isin_map_resolves_ticker(
-        self, movements_dir: Path, isolated_isin_cache: Any
-    ) -> None:
+    def test_isin_map_resolves_ticker(self, movements_dir: Path, isolated_isin_cache: Any) -> None:
         dt_isin = "US26614N1028"
         events = load_revolut_trade_events(
             movements_dir, all_securities=True, isin_map={"DT": dt_isin}
@@ -384,9 +383,7 @@ class TestSavingsIncome:
     def test_dividends_by_symbol(self, input_dir: Path) -> None:
         # The "Other income & fees" section has a TSLA (10.00) and an NVDA (4.00)
         # dividend row; per-symbol totals are gross EUR (ECB rate mocked to 1).
-        with patch(
-            "tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")
-        ):
+        with patch("tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")):
             by_symbol = load_revolut_dividends_by_symbol(input_dir)
         assert by_symbol == {"TSLA": Decimal("10.00"), "NVDA": Decimal("4.00")}
 
@@ -405,14 +402,16 @@ class TestSavingsIncome:
         (tmp_path / "revolut" / "income.csv").write_text(csv_text, encoding="utf-8")
         income = load_revolut_savings_income(tmp_path, all_securities=True)
         assert income[2022].dividends_eur == Decimal("10.00")  # TSLA has a symbol
-        assert income[2022].interest_eur == Decimal("5.00")    # symbol-less → interest
+        assert income[2022].interest_eur == Decimal("5.00")  # symbol-less → interest
 
 
 class TestMergeSavingsIncome:
     def test_sums_without_mutating_inputs(self) -> None:
         base = {2022: SavingsIncomeYear(year=2022, dividends_eur=Decimal("100"))}
         extra = {
-            2022: SavingsIncomeYear(year=2022, dividends_eur=Decimal("9"), foreign_tax_eur=Decimal("1")),
+            2022: SavingsIncomeYear(
+                year=2022, dividends_eur=Decimal("9"), foreign_tax_eur=Decimal("1")
+            ),
             2023: SavingsIncomeYear(year=2023, dividends_eur=Decimal("5")),
         }
         merged = merge_savings_income(base, extra)

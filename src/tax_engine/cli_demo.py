@@ -51,6 +51,7 @@ def main() -> None:
         # + 25% cross-offset and ESPP 3-year sections render too.
         savings_income = create_sample_savings_income()
         from tax_engine.cli_main import detect_espp_early_sales
+
         espp_early_sales, _ = detect_espp_early_sales(
             engine.processed_events, create_sample_espp_map()
         )
@@ -90,15 +91,23 @@ def main() -> None:
     pdf_path_en = f"tax_report_demo_{suffix}EN_{timestamp}.pdf"
     pdf_path_es = f"tax_report_demo_{suffix}ES_{timestamp}.pdf"
     print(f"Generating English PDF report at: {pdf_path_en}...")
-    engine.generate_pdf_report(pdf_path_en, lang="en", savings_income=savings_income,
-                               espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales,
-                               securities=report_securities)
+    engine.generate_pdf_report(
+        pdf_path_en,
+        lang="en",
+        savings_income=savings_income,
+        espp_discounts=espp_discounts,
+        espp_early_sale_discounts=espp_early_sales,
+        securities=report_securities,
+    )
     print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
-    engine.generate_pdf_report(pdf_path_es, lang="es", savings_income=savings_income,
-                               espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales,
-                               securities=report_securities)
+    engine.generate_pdf_report(
+        pdf_path_es,
+        lang="es",
+        savings_income=savings_income,
+        espp_discounts=espp_discounts,
+        espp_early_sale_discounts=espp_early_sales,
+        securities=report_securities,
+    )
     print("PDF generation complete.")
 
 

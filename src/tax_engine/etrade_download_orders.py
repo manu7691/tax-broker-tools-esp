@@ -20,7 +20,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
         "execution_date": order_date,
         "Commission": "0",
         "SEC Fees": "0",
-        "Disbursement Fee": "0"
+        "Disbursement Fee": "0",
     }
 
     # Click the expand chevron in the first cell of the row
@@ -34,7 +34,9 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
 
     try:
         # Wait for the Order History div to become visible (it may take a moment to load)
-        order_history_div = page.locator('div[data-test-id="orders.ordertbl.odrhistoryexpand"]').first
+        order_history_div = page.locator(
+            'div[data-test-id="orders.ordertbl.odrhistoryexpand"]'
+        ).first
         with contextlib.suppress(Exception):
             order_history_div.wait_for(state="visible", timeout=5000)
 
@@ -43,7 +45,9 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
             fees = {"Commission": "0", "SEC Fees": "0", "Brokerage Assist Fee": "0"}
 
             # Look for the specific Disbursement Details table based on user's exact DOM
-            disb_table = page.locator('[data-test-id="orders.ordertbl.disbursementtbl"] table').first
+            disb_table = page.locator(
+                '[data-test-id="orders.ordertbl.disbursementtbl"] table'
+            ).first
 
             # Find the Disbursement Details toggle button
             disb_toggle = page.locator("text=Disbursement Details").first
@@ -74,7 +78,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                 cells = disb_table.locator("tbody td").all_inner_texts()
 
                 headers = [h.strip() for h in headers]
-                cells = [c.replace('$', '').replace(',', '').strip() for c in cells]
+                cells = [c.replace("$", "").replace(",", "").strip() for c in cells]
 
                 def get_cell(label: str) -> str:
                     for i, h in enumerate(headers):
@@ -99,7 +103,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                     try:
                         el = page.locator(f"text={label}").first
                         if el.is_visible():
-                            val = el.evaluate('''node => {
+                            val = el.evaluate("""node => {
                                 let th = node.closest("th");
                                 if (th) {
                                     let thead = th.closest("thead");
@@ -124,7 +128,7 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
                                 let match = node.innerText.match(/\\$([\\d,.]+)/);
                                 if (match) return match[1];
                                 return "0";
-                            }''')
+                            }""")
                             return str(val) if val is not None else "0"
                     except Exception:
                         pass
@@ -192,7 +196,6 @@ def _get_execution_details(row, order_date: str, page) -> dict[str, str]:  # typ
             time.sleep(1)
         except Exception:
             pass
-
 
 
 def download_orders() -> None:
@@ -286,12 +289,16 @@ def download_orders() -> None:
             status = cells[-1].inner_text().strip()
 
             if "Cancelled" in status:
-                print(f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Order Cancelled, skipping.")
+                print(
+                    f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Order Cancelled, skipping."
+                )
                 continue
 
             if "Sell" not in action and "Sale" not in action:
                 # E-trade logs you out if you click too fast. Skip clicking on non-sell orders entirely.
-                print(f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Not a sell, skipping details.")
+                print(
+                    f"  Row {i + 1}: {benefit_type} {order_date} (Action: {action}) - Not a sell, skipping details."
+                )
                 continue
 
             print(
@@ -304,7 +311,9 @@ def download_orders() -> None:
                 print(f"    Order Date: {order_date}  →  Execution Date: {execution_date}")
 
             if exec_details["Commission"] != "0" or exec_details["SEC Fees"] != "0":
-                print(f"    Found Fees: Commission={exec_details['Commission']}, SEC={exec_details['SEC Fees']}, Brokerage Assist={exec_details['Brokerage Assist Fee']}")
+                print(
+                    f"    Found Fees: Commission={exec_details['Commission']}, SEC={exec_details['SEC Fees']}, Brokerage Assist={exec_details['Brokerage Assist Fee']}"
+                )
             else:
                 print("    No fees found for this order (may be a vest or no-fee transaction).")
 

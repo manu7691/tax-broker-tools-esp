@@ -562,17 +562,21 @@ def detect_espp_early_sales(
                 )
 
                 purchase_year = acq_date.year
-                taxable_by_year[purchase_year] = taxable_by_year.get(purchase_year, Decimal("0")) + discount_eur
+                taxable_by_year[purchase_year] = (
+                    taxable_by_year.get(purchase_year, Decimal("0")) + discount_eur
+                )
 
                 holding_days = (sell_date - acq_date).days
-                details.append({
-                    "acquisition_date": acq_date,
-                    "sell_date": sell_date,
-                    "shares": match.shares,
-                    "holding_days": holding_days,
-                    "discount_per_share_usd": discount_per_share_usd,
-                    "discount_eur": discount_eur,
-                })
+                details.append(
+                    {
+                        "acquisition_date": acq_date,
+                        "sell_date": sell_date,
+                        "shares": match.shares,
+                        "holding_days": holding_days,
+                        "discount_per_share_usd": discount_per_share_usd,
+                        "discount_eur": discount_eur,
+                    }
+                )
 
     return taxable_by_year, details
 
@@ -709,14 +713,14 @@ def main() -> None:
         type=Path,
         default=None,
         help="JSON file of pending losses from before the data window "
-        "({\"2019\": 1500, ...}). Defaults to <input-dir>/prior_losses.json if present.",
+        '({"2019": 1500, ...}). Defaults to <input-dir>/prior_losses.json if present.',
     )
     parser.add_argument(
         "--savings-income",
         type=Path,
         default=None,
         help="JSON file of dividend/interest income per year in EUR "
-        "({\"2024\": {\"dividends_eur\": 320, ...}}). Defaults to "
+        '({"2024": {"dividends_eur": 320, ...}}). Defaults to '
         "<input-dir>/savings_income.json if present.",
     )
     parser.add_argument(
@@ -776,8 +780,11 @@ def main() -> None:
     revolut_isin = (args.revolut_isin or config_isin) or None
     revolut_symbol = (args.revolut_symbol or config_symbol) or None
     revolut_events, revolut_income = load_revolut_events(
-        input_dir, isin=revolut_isin, symbol=revolut_symbol,
-        all_securities=all_securities, isin_map=securities_config.isin_map,
+        input_dir,
+        isin=revolut_isin,
+        symbol=revolut_symbol,
+        all_securities=all_securities,
+        isin_map=securities_config.isin_map,
     )
     if revolut_income:
         savings_income = merge_savings_income(savings_income, revolut_income)
@@ -787,7 +794,8 @@ def main() -> None:
     # savings base). The returned engine drives the prints + report below.
     etrade_events = espp_events + sell_events + rsu_events + options_events
     engine, report_securities, events = build_portfolio_or_engine(
-        etrade_events, revolut_events,
+        etrade_events,
+        revolut_events,
         all_securities=all_securities,
         securities_config=securities_config,
         primary_symbol=config_symbol,
@@ -815,14 +823,18 @@ def main() -> None:
         print("-" * 95)
         print("The following ESPP discounts are TAXABLE as salary income")
         print("because shares were sold BEFORE the 3-year holding period:")
-        print("Required Action: You must file a 'Declaración Complementaria' (Complementary Return)")
+        print(
+            "Required Action: You must file a 'Declaración Complementaria' (Complementary Return)"
+        )
         print("for the purchase year to include this income as taxable salary, as the original")
         print("exemption is now void.")
         print()
         for year, amount in sorted(espp_early_sales.items()):
             print(f"  Purchase Year {year} (Complementary Return required):")
             print(f"    Total Taxable ESPP Discount (Rendimiento del Trabajo): €{amount:>12,.2f}")
-            print(f"    (Because shares purchased in {year} were sold in the following transactions before 3 years)")
+            print(
+                f"    (Because shares purchased in {year} were sold in the following transactions before 3 years)"
+            )
             print()
 
             # Print details for this year
@@ -882,15 +894,25 @@ def main() -> None:
     pdf_path_en = str(output_dir / f"tax_report_EN_{timestamp}.pdf")
     pdf_path_es = str(output_dir / f"tax_report_ES_{timestamp}.pdf")
     print(f"Generating English PDF report at: {pdf_path_en}...")
-    engine.generate_pdf_report(pdf_path_en, lang="en", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales,
-                               opening_losses=opening_losses, savings_income=savings_income,
-                               securities=report_securities)
+    engine.generate_pdf_report(
+        pdf_path_en,
+        lang="en",
+        espp_discounts=espp_discounts,
+        espp_early_sale_discounts=espp_early_sales,
+        opening_losses=opening_losses,
+        savings_income=savings_income,
+        securities=report_securities,
+    )
     print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
-    engine.generate_pdf_report(pdf_path_es, lang="es", espp_discounts=espp_discounts,
-                               espp_early_sale_discounts=espp_early_sales,
-                               opening_losses=opening_losses, savings_income=savings_income,
-                               securities=report_securities)
+    engine.generate_pdf_report(
+        pdf_path_es,
+        lang="es",
+        espp_discounts=espp_discounts,
+        espp_early_sale_discounts=espp_early_sales,
+        opening_losses=opening_losses,
+        savings_income=savings_income,
+        securities=report_securities,
+    )
     print("PDF generation complete.")
 
 

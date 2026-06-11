@@ -72,7 +72,12 @@ def test_loader_converts_usd_payments_per_date(tmp_path):
     path.write_text(
         json.dumps(
             [
-                {"date": "2024-03-15", "type": "dividend", "amount_usd": 100, "foreign_tax_usd": 15},
+                {
+                    "date": "2024-03-15",
+                    "type": "dividend",
+                    "amount_usd": 100,
+                    "foreign_tax_usd": 15,
+                },
                 {"date": "2024-06-15", "type": "interest", "amount_usd": 50},
             ]
         )
