@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Dashboard scope badges (portfolio mode).** Every card header now shows a
+  colored pill stating its scope — 🌐 *Whole portfolio* (aggregate, ignores the
+  selector) vs 🏷️ *`<TICKER>` only* (the security picked in the dropdown, re-labels
+  live on switch) — so a non-finance reader can tell aggregate cards from
+  single-stock cards at a glance. A hint next to the selector clarifies it
+  "switches only the single-stock cards". Badges are gated behind `body.portfolio-mode`
+  and appear only with more than one security; the single-security view is unchanged.
+  A forward-looking `docs/planning/DASHBOARD_SCOPE_TABS_PLAN.md` captures the larger
+  optional reorg into separate "Whole portfolio" / "Single stock" tabs.
+
 - **Automated E\*TRADE dividend import.** A Playwright scraper
   (`tax-download-dividends`) downloads the dividends-only cash transactions to
   `input/dividends/Cash_Transactions.xlsx`, and a parser (`tax-import-dividends`)

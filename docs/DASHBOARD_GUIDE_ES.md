@@ -90,7 +90,12 @@ una línea en el gráfico y como un enlace de Yahoo Finance en el Hub de Intelig
 
 * **Menú de Navegación Flotante:** Los controles del panel (idioma, selector de acción, botón de privacidad y pestañas) se quedan fijos en la parte superior de la ventana del navegador con un fondo translúcido y desenfoque de cristal (`backdrop-filter`). Así puedes cambiar de pestaña o valor al instante sin tener que volver arriba.
 * **Tarjeta de Resumen de Cartera:** Si analizas varios valores (modo cartera), aparecerá arriba de todo en la pestaña "Mis Acciones" un **Gráfico de Asignación de Cartera** (anillo) y una **Tabla de Posiciones** detallada (acciones, ISIN, coste medio, valor de mercado, ganancia latente y peso en cartera).
-* **Selector Dinámico de Valores:** Cuando hay más de una acción en cartera, aparece un menú desplegable en la barra superior. Al seleccionar otro ticker, todos los gráficos, estimadores de ventas y listas de competidores se actualizan en vivo al instante.
+* **Selector Dinámico de Valores:** Cuando hay más de una acción en cartera, aparece un menú desplegable en la barra superior. Al seleccionar otro ticker, todos los gráficos, estimadores de ventas y listas de competidores se actualizan en vivo al instante. Una pequeña nota a su lado recuerda que el selector *"cambia solo las tarjetas de una acción"*.
+* **Etiquetas de alcance (solo en modo cartera):** Como algunas tarjetas agregan **toda la cartera** y otras muestran solo el **valor seleccionado**, cada encabezado de tarjeta lleva una etiqueta de color para que siempre sepas qué estás viendo:
+  * 🌐 **Toda la cartera** (azul) — agrega todo lo que posees e ignora el desplegable (p. ej. la tabla resumen, los desgloses por valor/por bróker, la exposición por divisa, la cosecha de pérdidas fiscales, el impuesto anual, el riesgo de concentración y los dividendos/intereses).
+  * 🏷️ **Solo `<TICKER>`** (ámbar) — muestra solo el valor elegido en el desplegable y se reetiqueta al cambiar (p. ej. *Tu situación hoy*, el simulador de venta, el punto de equilibrio, las auditorías de ESPP/RSU y los gráficos de precio/tendencia/divisa/competidores).
+
+  Estas etiquetas aparecen **solo cuando tienes más de un valor**. Con un único valor, la vista de toda la cartera y la de una sola acción son lo mismo, así que las etiquetas, el desplegable de valores y la tarjeta resumen quedan ocultos — el panel se mantiene como una vista limpia de una sola acción, sin nada que distinguir.
 
 ---
 

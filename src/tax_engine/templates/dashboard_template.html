@@ -241,7 +241,44 @@
             border-radius: 9999px;
             font-weight: 500;
         }
-        
+
+        /* Scope badges: tell the reader whether a card shows the WHOLE portfolio
+           or only the security picked in the selector. Hidden unless we are in
+           portfolio mode (more than one security), where the distinction matters. */
+        .scope-badge {
+            display: none;
+            align-self: flex-start;
+            align-items: center;
+            gap: 6px;
+            font-size: 0.72rem;
+            font-weight: 700;
+            letter-spacing: 0.03em;
+            text-transform: uppercase;
+            padding: 4px 11px;
+            border-radius: 9999px;
+            margin-bottom: 10px;
+            border: 1px solid transparent;
+            white-space: nowrap;
+        }
+        body.portfolio-mode .scope-badge {
+            display: inline-flex;
+        }
+        .scope-portfolio {
+            color: #93c5fd;
+            background: rgba(59, 130, 246, 0.14);
+            border-color: rgba(59, 130, 246, 0.45);
+        }
+        .scope-stock {
+            color: #fcd34d;
+            background: rgba(245, 158, 11, 0.14);
+            border-color: rgba(245, 158, 11, 0.5);
+        }
+        .scope-hint {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+            font-style: italic;
+        }
+
         .chart-container {
             position: relative;
             height: 350px;
@@ -441,6 +478,7 @@
                 <select id="securitySelect" onchange="onSecurityChange(this.value)" class="privacy-toggle-btn" style="padding: 10px 16px; font-weight: 700; background: var(--bg-secondary); cursor: pointer; outline: none; border-radius: 8px;">
                     <!-- Populated dynamically -->
                 </select>
+                <span class="scope-hint" data-i18n="scope_hint">🏷️ Switches only the single-stock cards</span>
             </div>
 
             <button id="privacyBtn" class="privacy-toggle-btn" onclick="togglePrivacy()">
@@ -461,6 +499,7 @@
     <div id="tab-mystock" class="dashboard tab-content active">
         <!-- PORTFOLIO: Roll-up Overview -->
         <div id="portfolio-summary-card" class="card full-width" style="display:none; margin-bottom: 24px;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="portfolio_summary_title">💼 Portfolio Roll-up Overview</h2>
             <div class="analysis-text" data-i18n="portfolio_summary_desc">
                 An aggregated view of your entire investment portfolio across all brokers. Select an individual stock from the dropdown above to update the detailed simulations, trends, and countdown charts.
@@ -496,6 +535,7 @@
 
         <!-- HERO: Your situation today -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="hero_title">📊 Your situation today</h2>
             <div class="analysis-text" data-i18n="hero_desc">
                 A plain snapshot of the company shares you still own right now: how many you have, what they are worth today, what you originally paid, and whether you are up or down overall. No jargon — just the numbers that matter.
@@ -523,6 +563,7 @@
 
         <!-- Overview Stats Card -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="scorecard_title">Overall Scorecard (Did holding pay off?)</h2>
             <div class="stats">
                 <div class="stat-item">
@@ -557,6 +598,7 @@
     <div id="tab-sell" class="dashboard tab-content">
         <!-- Real-Time Sell Simulator & Scenario Planner -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="sim_title">Real-Time Sell Simulator & Currency Devaluation Planner</h2>
             <div class="analysis-text" data-i18n="sim_desc">
                 Use the sliders to simulate selling your currently held shares (RSU + ESPP).
@@ -653,6 +695,7 @@
 
         <!-- Breakeven Price & USD Devaluation Curve -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 20px;">
                 <span style="display: flex; align-items: center; gap: 8px;">
                     <span style="font-size: 1.3rem;">🎯</span>
@@ -727,6 +770,7 @@
     <div id="tab-taxes" class="dashboard tab-content">
         <!-- ESPP Lock Countdown Tracker Table -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="espp_tracker_title">ESPP Tax Exemption Lock Tracker (Active Lots)</h2>
             <div class="analysis-text" data-i18n="espp_tracker_desc">
                 This table shows all your currently held ESPP shares. It tracks exactly how many days are left until the 3-year holding period expires and the shares become completely tax-free to sell.
@@ -752,6 +796,7 @@
 
         <!-- Dividends & interest income (taxed together with stock gains) -->
         <div class="card full-width">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="div_title">💶 Dividends &amp; interest income</h2>
             <div class="analysis-text" data-i18n="div_desc">
                 In Spain, the dividends and interest you receive are taxed in the <strong>same "savings" pot</strong> as your stock gains. So money you already earned here this year pushes you up the tax brackets <em>before</em> you even sell a single share. Add these via menu option 3 ("Add Dividend/Interest Income").
@@ -761,6 +806,7 @@
 
         <!-- ESPP holding efficiency chart -->
         <div class="card">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="espp_audit_title">ESPP Tax Exemption Audit</h2>
             <div class="analysis-text" data-i18n="espp_audit_desc">
                 This pie chart shows how much of your ESPP discount you successfully kept tax-free (<strong>Green</strong>) vs. how much you sold too early, triggering a tax penalty (<strong>Red</strong>).
@@ -772,6 +818,7 @@
 
         <!-- RSU Hold vs Vest chart -->
         <div class="card">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="rsu_audit_title">Should I have sold my RSUs immediately?</h2>
             <div class="analysis-text" data-i18n="rsu_audit_desc">
                 Compares the baseline strategy (selling all RSU shares immediately on the day you got them, shown in <strong>Blue</strong>) vs. your actual strategy (holding them to sell later, or still holding them today, shown in <strong>Green/Red</strong>).
@@ -786,6 +833,7 @@
     <div id="tab-advanced" class="dashboard tab-content">
         <!-- Per-security portfolio breakdown (only rendered when >1 security) -->
         <div id="securities-card" class="card full-width" style="display:none;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="securities_chart_title">How is your portfolio split across securities?</h2>
             <div class="analysis-text" data-i18n="securities_chart_desc">
                 When you hold more than one security (e.g. employer stock plus stocks traded on Revolut), each one gets its own FIFO queue. This breaks the portfolio down by security.
@@ -797,6 +845,7 @@
 
         <!-- Per-broker breakdown (only rendered when >1 broker is present) -->
         <div id="broker-card" class="card full-width" style="display:none;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="broker_chart_title">Which broker did this position come from?</h2>
             <div class="analysis-text" data-i18n="broker_chart_desc">
                 When you hold the same stock across more than one broker (e.g. E*TRADE + Revolut), this breaks the position down by broker.
@@ -808,6 +857,7 @@
 
         <!-- Realized gains & estimated tax per year (portfolio aggregate) -->
         <div id="yearly-tax-card" class="card full-width" style="display:none;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="yearly_tax_title">Realized Gains & Estimated Tax by Year</h2>
             <div class="analysis-text" data-i18n="yearly_tax_desc">
                 Your net realized capital gain/loss and the isolated estimated savings tax for each year. The tax is an isolated estimate on these stock gains alone — your real liability depends on your total savings income and prior-year carryforward.
@@ -819,6 +869,7 @@
 
         <!-- Currency exposure (only when more than one currency is present) -->
         <div id="currency-card" class="card full-width" style="display:none;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="currency_title">Currency Exposure</h2>
             <div class="analysis-text" data-i18n="currency_desc">
                 Your current portfolio market value (EUR) grouped by each security's trading currency — your FX exposure.
@@ -830,6 +881,7 @@
 
         <!-- Tax-loss harvesting (only when there are unrealized-loss positions) -->
         <div id="harvest-card" class="card full-width" style="display:none;">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="harvest_title">Tax-Loss Harvesting</h2>
             <div class="analysis-text" data-i18n="harvest_desc">
                 Open positions currently at an <strong>unrealized loss</strong>. Selling them this year would realize the loss to offset your realized gains. ⚠️ If you re-buy the same security (any broker) within <strong>2 months</strong>, the loss is blocked by the Spanish wash-sale rule.
@@ -850,6 +902,7 @@
 
         <!-- Dynamic Trend Chart -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="trend_chart_title">Stock Price Trend & Market Averages (USD)</h2>
             <div class="analysis-text" data-i18n="trend_chart_desc">
                 Tracks the daily closing price of your stock (<strong>Blue line</strong>) alongside the 50-day average (<strong>Green line</strong>), the 200-day average (<strong>Red line</strong>), your stepping running purchase cost basis (<strong>Solid Orange line</strong>), and your current average cost basis (<strong>Orange dashed line</strong>) to easily see how the stock price has fluctuated relative to your investments over the duration of your stock list.
@@ -861,6 +914,7 @@
 
         <!-- Gain/Loss Decomposition -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="decomp_chart_title">Where did my sales profits come from?</h2>
             <div class="analysis-text" data-i18n="decomp_chart_desc">
                 When you sell US shares, your final profit in Euros depends on two factors:
@@ -874,6 +928,7 @@
 
         <!-- Stock Price Timeline & News Integration -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="price_chart_title">Stock Price & Transaction History (USD)</h2>
             <div class="analysis-text" data-i18n="price_chart_desc">
                 Hover over the dots to see details of past transactions (Vests, Buys, Sells). 
@@ -887,6 +942,7 @@
 
         <!-- FX rate Timeline -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="fx_chart_title">USD to EUR Exchange Rate Trend</h2>
             <div class="analysis-text" data-i18n="fx_chart_desc">
                 Tracks the exchange rate over time. Shows how many Euros you got for 1 US Dollar on any transaction date.
@@ -898,6 +954,7 @@
 
         <!-- Market Intelligence & Competitor Hub Card -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="intel_hub_title">Market Intelligence & Competitor Hub</h2>
             <div class="analysis-text" data-i18n="intel_hub_desc">
                 Evaluate if it is a good time to sell based on competitor performance, macro conditions, and live market intelligence.
@@ -941,6 +998,7 @@
 
         <!-- Market Sentinel & Sell Alert Configurator -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="alerts_card_title">Market Sentinel & Sell Alert Configurator</h2>
             <div class="analysis-text" data-i18n="alerts_card_desc">
                 Set up automated push notifications, calendar alerts, and email notifications to know exactly when to sell without checking the dashboard daily.
@@ -986,6 +1044,7 @@
 
         <!-- Comparative Peer Group Performance Chart -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="peer_chart_title">Observability Peer Comparison (Normalized Performance)</h2>
             <div class="analysis-text" data-i18n="peer_chart_desc">
                 Compares the percentage return of your stock vs. configured peers since your first transaction date. All lines start at 0% on day one.
@@ -997,6 +1056,7 @@
 
         <!-- Strategy Advisor & Technical Signals -->
         <div class="card full-width">
+            <span class="scope-badge scope-stock" data-i18n="scope_stock"></span>
             <h2 data-i18n="strategy_title">Smart Holding & Selling Strategy</h2>
             <div class="advisor-box">
                 <div class="advisor-title">
@@ -1014,6 +1074,7 @@
 
         <!-- Portfolio Concentration Risk Meter Card -->
         <div class="card full-width">
+            <span class="scope-badge scope-portfolio" data-i18n="scope_portfolio"></span>
             <h2 data-i18n="risk_card_title">Portfolio Diversification Concentration Risk</h2>
             <div class="analysis-text" data-i18n="risk_card_desc">
                 Holding a high percentage of your liquid wealth in a single company stock increases your downside risk. Track your exposure level:
@@ -1316,7 +1377,10 @@
                 th_realized_pl: "Realized P&L (EUR)",
                 th_dividends: "Dividends (EUR)",
                 th_allocation: "Allocation %",
-                select_security_label: "Select Security:"
+                select_security_label: "Select Security:",
+                scope_portfolio: "🌐 Whole portfolio",
+                scope_stock: "🏷️ {ticker} only",
+                scope_hint: "🏷️ Switches only the single-stock cards"
             },
             es: {
                 header_title: "Mi Panel de Rendimiento de Acciones e Impuestos",
@@ -1532,7 +1596,10 @@
                 th_realized_pl: "P&G realizada (EUR)",
                 th_dividends: "Dividendos (EUR)",
                 th_allocation: "Asignación %",
-                select_security_label: "Seleccionar Acción:"
+                select_security_label: "Seleccionar Acción:",
+                scope_portfolio: "🌐 Toda la cartera",
+                scope_stock: "🏷️ Solo {ticker}",
+                scope_hint: "🏷️ Cambia solo las tarjetas de una acción"
             }
         };
 
@@ -2412,6 +2479,9 @@
             const portfolioSummaryCard = document.getElementById('portfolio-summary-card');
 
             if (holdingsTable && holdingsTable.length > 1) {
+                // Portfolio mode: reveal the scope badges so each card declares whether
+                // it shows the whole portfolio or just the security in the selector.
+                document.body.classList.add('portfolio-mode');
                 portfolioSummaryCard.style.display = 'block';
                 switcherContainer.style.display = 'inline-flex';
                 

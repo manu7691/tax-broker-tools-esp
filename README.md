@@ -220,7 +220,7 @@ By default the tool tracks **one** security (your employer stock). If you also t
 
 - **Turn it on:** the launcher's *Calculate Tax* option now asks *"Process ALL securities across brokers?"*; or run `tax-engine --all-securities`; or simply create `input/securities.json` (its presence auto-enables it).
 - **`input/securities.json`** (all fields optional): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limits which securities are processed (empty = all), and `isin_map` supplies ISINs for the ticker-only Revolut *account statement* so the same stock merges across brokers reliably.
-- **Output:** the PDF adds a **Portfolio Summary by Security** table plus a separate ledger + FIFO section per security; the savings base, 4-year carryforward and 25% cross-offset run on the portfolio total, while the 2-month wash-sale rule stays per security. The dashboard adds a per-security breakdown chart.
+- **Output:** the PDF adds a **Portfolio Summary by Security** table plus a separate ledger + FIFO section per security; the savings base, 4-year carryforward and 25% cross-offset run on the portfolio total, while the 2-month wash-sale rule stays per security. The dashboard adds a per-security breakdown chart, a security selector, and **scope badges** on every card (🌐 whole portfolio vs 🏷️ selected stock) so a non-finance reader always knows which numbers they're looking at.
 
 Full walkthrough: [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md) · [🇪🇸 ES](docs/MULTI_SECURITY_GUIDE_ES.md).
 
@@ -453,7 +453,7 @@ Por defecto la herramienta analiza **un** valor (las acciones de tu empresa). Si
 
 - **Cómo activarlo:** la opción *Calcular Impuestos* del menú ahora pregunta *«¿Procesar TODOS los valores entre brókers?»*; o ejecuta `tax-engine --all-securities`; o simplemente crea `input/securities.json` (su presencia lo activa automáticamente).
 - **`input/securities.json`** (todos los campos opcionales): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limita qué valores se procesan (vacío = todos) e `isin_map` aporta los ISINs del *extracto de cuenta* de Revolut (que solo tiene ticker) para que el mismo valor se fusione entre brókers de forma fiable.
-- **Resultado:** el PDF añade una tabla **Resumen de Cartera por Valor** y una sección de libro + FIFO por valor; la base del ahorro, la compensación a 4 años y el límite del 25% operan sobre el total de la cartera, mientras que la regla de los 2 meses se mantiene por valor. El panel añade un gráfico de desglose por valor.
+- **Resultado:** el PDF añade una tabla **Resumen de Cartera por Valor** y una sección de libro + FIFO por valor; la base del ahorro, la compensación a 4 años y el límite del 25% operan sobre el total de la cartera, mientras que la regla de los 2 meses se mantiene por valor. El panel añade un gráfico de desglose por valor, un selector de valores y **etiquetas de alcance** en cada tarjeta (🌐 toda la cartera vs 🏷️ valor seleccionado) para que un lector no financiero siempre sepa qué cifras está viendo.
 
 Guía completa: [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md) · [🇺🇸 EN](docs/MULTI_SECURITY_GUIDE_EN.md).
 

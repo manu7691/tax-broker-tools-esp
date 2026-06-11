@@ -90,7 +90,12 @@ chart and as a Yahoo Finance link in the Intel Hub.
 
 * **Sticky Navigation Header:** The dashboard controls (Language toggle, Security Switcher dropdown, Privacy button, and Tab Bar) are pinned to the top of the browser window using a glassmorphic background blur (`backdrop-filter`). This ensures you can switch tabs or swap securities instantly without scrolling back to the top.
 * **Portfolio Summary Card:** If you process multiple securities (by enabling portfolio mode), a top-level **Portfolio Allocation Doughnut Chart** and a detailed **Holdings Table** (listing shares, ISINs, average costs, market values, unrealized gains, and portfolio weight) will appear at the top of the "My Stock" page.
-* **Dynamic Dropdown Security Switcher:** When multiple securities are present, a dropdown selection appears in the header. Selecting a different symbol instantly updates all dashboard widgets, charts, simulated sales, and peer groups in real time.
+* **Dynamic Dropdown Security Switcher:** When multiple securities are present, a dropdown selection appears in the header. Selecting a different symbol instantly updates all dashboard widgets, charts, simulated sales, and peer groups in real time. A small hint next to it reminds you the selector *"switches only the single-stock cards"*.
+* **Scope badges (portfolio mode only):** Because some cards aggregate your **whole portfolio** while others show only the **selected security**, every card header carries a colored pill so you always know which you're looking at:
+  * 🌐 **Whole portfolio** (blue) — aggregates everything you own and ignores the dropdown (e.g. the roll-up table, the by-security/by-broker breakdowns, currency exposure, tax-loss harvesting, yearly tax, concentration risk, and dividends/interest).
+  * 🏷️ **`<TICKER>` only** (amber) — shows just the security chosen in the dropdown and re-labels itself when you switch (e.g. *Your situation today*, the sell simulator, break-even, ESPP/RSU audits, and the price/trend/FX/peer charts).
+
+  These badges appear **only when you hold more than one security**. With a single security the whole-portfolio and single-stock views are the same thing, so the badges, the security dropdown, and the roll-up card are all hidden — the dashboard stays a clean single-stock view with nothing to disambiguate.
 
 ---
 
