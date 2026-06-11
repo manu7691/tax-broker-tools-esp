@@ -12,6 +12,7 @@ requires-python = ">=3.10"
 keywords = ["tax", "spain", "espp", "rsu", "capital-gains", "fifo", "renta", "modelo-100"]
 dependencies = [
     "certifi>=2024.0.0",
+    "jinja2>=3.1.0",
     "openpyxl>=3.1.5",
     "pandas>=2.3.3",
     "pdfplumber>=0.11.8",
@@ -45,6 +46,11 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+# Ship non-Python package data in built wheels: the typing marker and the HTML
+# templates rendered at runtime (the PDF-report Jinja template and the dashboard).
+tax_engine = ["py.typed", "templates/*.html", "templates/*.j2"]
 
 [tool.ruff]
 target-version = "py310"

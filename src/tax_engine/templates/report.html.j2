@@ -1,0 +1,362 @@
+{#-
+  Spanish Tax Report template (HTML -> PDF).
+
+  Rendered by tax_engine.report.ReportRenderer.generate_html_content. Autoescape
+  is intentionally OFF: the report embeds trusted HTML (its own <strong>/<br>/<em>
+  markup and notes from the user's own brokerage files), matching the original
+  string-concatenation renderer. Bilingual text is kept inline ({% if is_es %})
+  so language pairs stay co-located; money/date/share formatting uses the custom
+  filters registered on the environment (num2, num4, fx4, shares, ld).
+-#}
+{%- macro ledger_table(events, is_es) -%}
+<table class='ledger'>
+{%- if not is_es %}
+<tr><th>Date</th><th class='tipo'>Type</th><th>Broker</th><th>Shares</th><th>Price (orig.)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>
+{%- else %}
+<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Bróker</th><th>Acciones</th><th>Precio (orig.)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>
+{%- endif %}
+{%- for pe in events %}{% set e = pe.event %}
+<tr>
+<td>{{ e.event_date | ld(is_es) }}</td>
+<td class='tipo'>{{ e.event_type | tetype(is_es) }}<br><small style='color:gray;'>{{ e.notes | tnotes(is_es) }}</small></td>
+<td>{{ e.broker }}</td>
+<td>{{ '+' if e.event_type.value != 'SELL' else '-' }}{{ e.shares | shares }}</td>
+<td>{% if e.currency == 'USD' %}${{ e.price_usd | num2 }}{% else %}{{ e.price_usd | num2 }} {{ e.currency }}{% endif %}</td>
+<td>{{ e.resolved_fx_rate | fx4 }}</td>
+<td>€{{ e.price_eur | num4 }}</td>
+<td>€{{ e.total_value_eur | num2 }}</td>
+<td>{{ pe.total_shares_after | shares }}</td>
+<td>€{{ pe.avg_cost_eur_after | num4 }}</td>
+<td>
+{%- if pe.realized_gain_loss != 0 -%}
+<strong>€{{ pe.realized_gain_loss | num2 }}</strong>
+{%- if pe.event.event_type.value == 'SELL' and pe.realized_gain_loss < 0 and 'Wash Sale Blocked' in pe.event.notes -%}
+<br><small style='color:red;'>{{ 'Bloqueado Regla 2 Meses' if is_es else 'Wash Sale Blocked' }}</small>
+{%- endif -%}
+{%- elif e.event_type.value == 'SELL' -%}€0.00{%- endif -%}
+</td>
+</tr>
+{%- for match in pe.fifo_matches %}
+<tr style='background-color:#fafafa; font-style:italic;'>
+<td></td>
+<td colspan='3' style='text-align:right;'>{{ 'Cruce FIFO:' if is_es else 'FIFO Match:' }}</td>
+<td colspan='6'>{% if is_es %}Se cruzaron {{ match.shares | shares }} acciones de la adquisición del {{ match.acquisition_date.strftime('%d/%m/%Y') }} a €{{ match.acquisition_price_eur | num4 }}{% else %}Matched {{ match.shares | shares }} shares from acquisition on {{ match.acquisition_date }} at €{{ match.acquisition_price_eur | num4 }}{% endif %}</td>
+<td>€{{ match.realized_gain_loss | num2 }}</td>
+</tr>
+{%- endfor %}
+{%- endfor %}
+</table>
+{%- endmacro -%}
+
+{%- macro calc_details(events, is_es) -%}
+{%- set sells = events | selectattr('event.event_type.value', 'equalto', 'SELL') | list -%}
+{%- if not sells %}
+<p><em>{{ 'No se encontraron transacciones de venta.' if is_es else 'No sales transactions found.' }}</em></p>
+{%- endif %}
+{%- for pe in sells %}{% set e = pe.event %}
+<h3>{{ loop.index }}. {% if is_es %}Venta el {{ e.event_date.strftime('%d/%m/%Y') }}{% else %}Sale on {{ e.event_date.isoformat() }}{% endif %}</h3>
+<ul>
+<li><strong>{% if is_es %}Vendido: {{ e.shares | shares }} acciones @ €{{ e.price_eur | num4 }}{% else %}Sold: {{ e.shares | shares }} shares @ €{{ e.price_eur | num4 }}{% endif %}</strong></li>
+<li><strong>{{ 'Cruces de Lotes FIFO' if is_es else 'FIFO Lot Matches' }}</strong>:</li>
+<ul>
+{%- for match in pe.fifo_matches %}
+<li>{% if is_es %}Cruza {{ match.shares | shares }} acciones adquiridas el {{ match.acquisition_date.strftime('%d/%m/%Y') }} @ €{{ match.acquisition_price_eur | num4 }}. Ganancia/Pérdida{% else %}Matched {{ match.shares | shares }} shares acquired on {{ match.acquisition_date }} @ €{{ match.acquisition_price_eur | num4 }}. Gain/Loss{% endif %}: <code>({{ e.price_eur | num4 }} - {{ match.acquisition_price_eur | num4 }}) * {{ match.shares | shares }} = €{{ match.realized_gain_loss | num2 }}</code></li>
+{%- endfor %}
+</ul>
+<li><strong>{{ 'Total Ganancia/Pérdida Realizada' if is_es else 'Total Realized Gain/Loss' }}</strong>: <strong>€{{ pe.realized_gain_loss | num2 }}</strong></li>
+{%- if 'Wash Sale Blocked' in pe.event.notes %}
+<li><strong style='color:red;'>{% if is_es %}Aviso de Regla de 2 Meses: Esta pérdida está bloqueada según la ley española debido a la compra de acciones homogéneas en un plazo de 2 meses.{% else %}Wash Sale Warning: This loss is blocked under Spanish rules due to a purchase of homogenous shares within 2 months.{% endif %}</strong></li>
+{%- endif %}
+</ul>
+{%- endfor %}
+{%- endmacro -%}
+<html><head><style>body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }* { box-sizing: border-box; }table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 12px; }th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }td.tipo, th.tipo { overflow-wrap: anywhere; word-break: break-word; }.ledger { font-size: 9px; }.ledger td.tipo, .ledger th.tipo { width: 200px; }.ledger td, .ledger th { padding: 4px; }th { background-color: #f2f2f2; }h1, h2, h3 { color: #333; }.gain { color: green; }.loss { color: red; }code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }h2 { page-break-before: always; }h2:first-of-type { page-break-before: avoid; }h2, h3 { page-break-after: avoid; }table { page-break-inside: auto; }tr, li { page-break-inside: avoid; }</style></head><body>
+<h1>{{ 'Informe Fiscal de España (FIFO)' if is_es else 'Spanish Tax Report' }}</h1>
+<p>{{ 'Generado el' if is_es else 'Generated on' }}: {{ today_str }}</p>
+<h2>{{ 'Metodología' if is_es else 'Methodology' }}</h2>
+{%- if not is_es %}
+<p>This report calculates capital gains using the <strong>FIFO (First In First Out)</strong> method as required by Spanish tax law (Agencia Tributaria).</p>
+<h3>Key Rules:</h3>
+<ul>
+<li><strong>FIFO Matching</strong>: Shares of the same security are sold in the order they were acquired. Sells are matched against the oldest available purchase lots.</li>
+<li><strong>Spanish Tax Savings Scale</strong>: Progressive tax scale is applied: 19% up to €6,000; 21% up to €50,000; 23% up to €200,000; 27% up to €300,000; 28% over €300,000.</li>
+<li><strong>2-Month Wash Sale Rule</strong>: Losses from sales are blocked (deferred) if homogenous shares are acquired within 2 months before or after the sale date.</li>
+{%- if multi_broker %}
+<li><strong style='color: #cc6600;'>SCOPE - Multiple Accounts</strong>: This report combines data from <strong>{{ brokers_joined }}</strong>, so FIFO and the 2-month wash-sale rule are applied across them together. If you also hold the same security at <strong>yet another</strong> broker/account not imported here, repurchases there within the 2-month window are NOT detected and some blocked losses may be under-reported.</li>
+{%- else %}
+<li><strong style='color: #cc6600;'>SCOPE - Single Account</strong>: The wash-sale rule applies per security across <strong>all</strong> your brokers/accounts, but this report only sees data from this account. If you bought the same security elsewhere (e.g. another broker) within the 2-month window, those repurchases are NOT detected here and some blocked losses may be under-reported.</li>
+{%- endif %}
+<li><strong style='color: green;'>NOTE - Fees Included</strong>: This report <strong>INCLUDES and DEDUCTS</strong> transaction commissions and SEC fees from your capital gains, applying the official ECB USD/EUR exchange rate of the transaction date. <strong>NOTE: Wire transfer fees are EXCLUDED per user preference.</strong></li>
+{%- if multi_broker %}
+<li><strong>Multi-Broker Scope</strong>: Transactions from more than one broker were combined ({{ brokers_joined }}). Each ledger row is tagged with its originating <strong>Broker</strong>, and FIFO matching plus the 2-month wash-sale rule are applied across all of them — as Spain requires for homogeneous securities (same ISIN). A per-broker realized gain/loss breakdown is shown below.</li>
+{%- endif %}
+</ul>
+{%- else %}
+<p>Este informe calcula las ganancias y pérdidas patrimoniales utilizando el método <strong>FIFO (First In First Out)</strong>, tal como exige la normativa fiscal española (Agencia Tributaria).</p>
+<h3>Reglas Clave:</h3>
+<ul>
+<li><strong>Casación FIFO</strong>: Las acciones de un mismo valor se consideran vendidas en el orden de su adquisición. Las ventas se casan con los lotes de compra más antiguos disponibles.</li>
+<li><strong>Escala de Gravamen del Ahorro</strong>: Se aplica la escala progresiva española: 19% hasta €6.000; 21% hasta €50.000; 23% hasta €200.000; 27% hasta €300.000; y 28% para importes superiores a €300.000.</li>
+<li><strong>Regla de los 2 Meses (Wash Sale)</strong>: Las pérdidas patrimoniales quedan bloqueadas (diferidas) si se adquieren acciones homogéneas dentro de los 2 meses anteriores o posteriores a la fecha de la venta.</li>
+{%- if multi_broker %}
+<li><strong style='color: #cc6600;'>ALCANCE - Varias Cuentas</strong>: Este informe combina datos de <strong>{{ brokers_joined }}</strong>, por lo que el FIFO y la regla de los 2 meses se aplican entre ellos en conjunto. Si además tienes el mismo valor en <strong>otra</strong> cuenta/bróker no importada aquí, las recompras allí dentro de la ventana de 2 meses NO se detectan y algunas pérdidas bloqueadas podrían estar infravaloradas.</li>
+{%- else %}
+<li><strong style='color: #cc6600;'>ALCANCE - Una Sola Cuenta</strong>: La regla de los 2 meses se aplica por valor en <strong>todos</strong> tus brókers/cuentas, pero este informe solo ve los datos de esta cuenta. Si compraste el mismo valor en otro lugar (p. ej. otro bróker) dentro de la ventana de 2 meses, esas recompras NO se detectan aquí y algunas pérdidas bloqueadas podrían estar infravaloradas.</li>
+{%- endif %}
+<li><strong style='color: green;'>NOTA - Comisiones Incluidas</strong>: Este informe <strong>INCLUYE y DEDUCE</strong> las comisiones de transacción y tasas SEC como gastos inherentes a la transmisión, utilizando el tipo de cambio oficial del BCE de la fecha exacta de la transacción. <strong>NOTA: Las tarifas de transferencia bancaria (Wire fees) se EXCLUYEN por preferencia del usuario.</strong></li>
+{%- if multi_broker %}
+<li><strong>Ámbito Multi-Bróker</strong>: Se combinaron operaciones de más de un bróker ({{ brokers_joined }}). Cada fila del libro indica su <strong>Bróker</strong> de origen, y la casación FIFO junto con la regla de los 2 meses se aplican entre todos ellos — como exige España para los valores homogéneos (mismo ISIN). Más abajo se muestra un desglose de ganancias/pérdidas realizadas por bróker.</li>
+{%- endif %}
+</ul>
+{%- endif %}
+{%- if securities is not none %}
+{# ---- Portfolio Summary by Security ---- #}
+<h2>{{ 'Resumen de Cartera por Valor' if is_es else 'Portfolio Summary by Security' }}</h2>
+{%- if not is_es %}
+<p>Each security has its own FIFO queue (grouped by ISIN; the same ISIN across brokers is merged). The savings base, 4-year carryforward and 25% cross-category offset below operate on the <strong>portfolio total</strong>; the 2-month wash-sale rule stays <strong>per security</strong>.</p>
+{%- else %}
+<p>Cada valor tiene su propia cola FIFO (agrupada por ISIN; el mismo ISIN en distintos brókers se fusiona). La base del ahorro, la compensación a 4 años y el límite del 25% entre categorías de abajo operan sobre el <strong>total de la cartera</strong>; la regla de los 2 meses se mantiene <strong>por valor</strong>.</p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Security</th><th>ISIN</th><th>Broker(s)</th><th>Realized Gains</th><th>Realized Losses</th><th>Net G/L</th><th>Open Position (shares)</th></tr>
+{%- else %}
+<tr><th>Valor</th><th>ISIN</th><th>Bróker(es)</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas</th><th>G/P Neta</th><th>Posición Abierta (acciones)</th></tr>
+{%- endif %}
+{%- for r in portfolio_rows %}
+<tr><td>{{ r.label }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.brokers }}</td><td>€{{ r.gains | num2 }}</td><td>€{{ r.losses | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td><td>{{ r.shares | num4 }}</td></tr>
+{%- endfor %}
+<tr><td><strong>{{ 'Total (Cartera)' if is_es else 'Total (Portfolio)' }}</strong></td><td></td><td></td><td><strong>€{{ portfolio_totals.gains | num2 }}</strong></td><td><strong>€{{ portfolio_totals.losses | num2 }}</strong></td><td class='{{ 'gain' if portfolio_totals.net >= 0 else 'loss' }}'><strong>€{{ portfolio_totals.net | num2 }}</strong></td><td></td></tr>
+</table>
+{%- endif %}
+{# ---- Yearly Tax Summary ---- #}
+<h2>{{ 'Resumen Fiscal Anual (Modelo 100 - Base Imponible del Ahorro)' if is_es else 'Yearly Tax Summary (Modelo 100 - Savings Base)' }}</h2>
+<table>
+{%- if not is_es %}
+<tr><th>Year</th><th>Total Gains</th><th>Total Losses</th><th>Blocked Losses (2-month rule)</th><th>Deductible Losses</th><th>Fees Deducted</th><th>Net Taxable Savings Base</th><th>Estimated Tax (Isolated)*</th></tr>
+{%- else %}
+<tr><th>Año</th><th>Ganancias Totales</th><th>Pérdidas Totales</th><th>Pérdidas Bloqueadas (Regla 2 meses)</th><th>Pérdidas Deducibles</th><th>Gastos Deducidos</th><th>Base Imponible del Ahorro</th><th>Impuesto Estimado (Aislado)*</th></tr>
+{%- endif %}
+{%- for summary in summaries %}
+<tr>
+<td>{{ summary.year }}</td>
+<td>€{{ summary.total_gains | num2 }}</td>
+<td>€{{ summary.total_losses | num2 }}</td>
+<td>€{{ summary.blocked_losses | num2 }}</td>
+<td>€{{ summary.deductible_losses | num2 }}</td>
+<td>€{{ summary.total_fees_eur | num2 }}</td>
+<td class='{{ 'gain' if summary.taxable_gain >= 0 else 'loss' }}'><strong>€{{ summary.taxable_gain | num2 }}</strong></td>
+<td><strong>€{{ summary.tax_due | num2 }}</strong></td>
+</tr>
+{%- endfor %}
+</table>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'><strong>* Isolated estimate.</strong> The tax column applies the savings-base scale to these stock gains <em>alone</em>. Your actual liability depends on your <strong>total</strong> savings income for the year (dividends, interest, gains from other assets) and any losses carried forward from prior years (4-year limit, Art. 49 LIRPF). Use this figure as a guide, not as the final tax due.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'><strong>* Estimación aislada.</strong> La columna de impuesto aplica la escala del ahorro a estas ganancias bursátiles de forma <em>aislada</em>. Tu cuota real depende de tu base del ahorro <strong>total</strong> del ejercicio (dividendos, intereses, ganancias de otros activos) y de las pérdidas pendientes de compensar de años anteriores (límite de 4 años, Art. 49 LIRPF). Usa esta cifra como orientación, no como la cuota definitiva.</p>
+{%- endif %}
+{%- if multi_broker %}
+{# ---- Realized Gains/Losses by Broker ---- #}
+<h2>{{ 'Ganancias/Pérdidas Realizadas por Bróker' if is_es else 'Realized Gains/Losses by Broker' }}</h2>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'>Attributed to the broker where each sale occurred. Because FIFO is applied across all brokers, a sale may draw on shares acquired at another broker; this table splits the <em>realized result</em> by selling broker, not by acquisition.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'>Atribuidas al bróker donde se produjo cada venta. Como el FIFO se aplica entre todos los brókers, una venta puede consumir acciones adquiridas en otro bróker; esta tabla reparte el <em>resultado realizado</em> por bróker vendedor, no por adquisición.</p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Broker</th><th>Realized Gains</th><th>Realized Losses</th><th>Net Realized G/L</th></tr>
+{%- else %}
+<tr><th>Bróker</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas</th><th>G/P Neta Realizada</th></tr>
+{%- endif %}
+{%- for r in broker_rows %}
+<tr><td>{{ r.broker }}</td><td>€{{ r.gains | num2 }}</td><td>€{{ r.losses | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td></tr>
+{%- endfor %}
+<tr><td><strong>Total</strong></td><td><strong>€{{ broker_totals.gains | num2 }}</strong></td><td><strong>€{{ broker_totals.losses | num2 }}</strong></td><td class='{{ 'gain' if broker_totals.net >= 0 else 'loss' }}'><strong>€{{ broker_totals.net | num2 }}</strong></td></tr>
+</table>
+{%- endif %}
+{%- if use_savings %}
+{# ---- Savings Base (two-bucket) ---- #}
+<h2>{{ 'Base del Ahorro — Ganancias + Dividendos/Intereses (Art. 49 LIRPF)' if is_es else 'Savings Base — Capital Gains + Dividends/Interest (Art. 49 LIRPF)' }}</h2>
+{%- if not is_es %}
+<p>Combines your stock gains/losses with dividend & interest income (RCM). A net loss in one category offsets up to the legal cap (25% from 2018) of the other category's positive balance; the rest carries forward 4 years. <strong>Foreign tax withheld is shown for reference only</strong> — the <em>deducción por doble imposición internacional</em> is applied by your advisor.</p>
+{%- else %}
+<p>Combina tus ganancias/pérdidas bursátiles con los dividendos e intereses (RCM). Una pérdida neta en una categoría compensa hasta el límite legal (25% desde 2018) del saldo positivo de la otra; el resto se arrastra 4 años. <strong>La retención en origen se muestra solo a título informativo</strong> — la <em>deducción por doble imposición internacional</em> la aplica tu asesor.</p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Year</th><th>Capital G/L (net)</th><th>Dividends + Interest</th><th>Cross-Category Offset</th><th>Taxable Savings Base</th><th>Foreign Tax (info)</th></tr>
+{%- else %}
+<tr><th>Año</th><th>Ganancia/Pérdida (neta)</th><th>Dividendos + Intereses</th><th>Compensación entre Categorías</th><th>Base del Ahorro Imponible</th><th>Retención Origen (info)</th></tr>
+{%- endif %}
+{%- for r in sledger.rows %}
+<tr>
+<td>{{ r.year }}</td>
+<td class='{{ 'gain' if r.gp_net >= 0 else 'loss' }}'>€{{ r.gp_net | num2 }}</td>
+<td>€{{ r.rcm_net | num2 }}</td>
+<td>{% if r.cross_offset > 0 %}€{{ r.cross_offset | num2 }}{% else %}—{% endif %}</td>
+<td><strong>€{{ r.savings_base | num2 }}</strong></td>
+<td>€{{ r.foreign_tax_eur | num2 }}</td>
+</tr>
+{%- endfor %}
+</table>
+{%- if sledger.total_foreign_tax > 0 %}
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'><em>Total foreign tax withheld: €{{ sledger.total_foreign_tax | num2 }} — claim as deducción por doble imposición internacional (advisor).</em></p>
+<p style='font-size: 11px; color: #555;'><em>Spain's tax treaties cap the foreign-tax credit at the treaty rate (<strong>15%</strong> for US dividends). Withholding above that is not creditable here — reclaim the excess from the source country (e.g. a corrected W-8BEN / US 1040-NR).</em></p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'><em>Retención total en origen: €{{ sledger.total_foreign_tax | num2 }} — reclámala como deducción por doble imposición internacional (asesor).</em></p>
+<p style='font-size: 11px; color: #555;'><em>Los convenios de doble imposición limitan la deducción al tipo del convenio (<strong>15%</strong> para dividendos de EE. UU.). La retención por encima de ese límite no es deducible aquí — reclama el exceso al país de origen (p. ej. un W-8BEN corregido / 1040-NR de EE. UU.).</em></p>
+{%- endif %}
+{%- if over15_flagged %}
+{%- if not is_es %}
+<p style='font-size: 11px; color: #cc6600;'><em>⚠️ Effective withholding above 15% detected: {{ over15_flagged }}. Only 15% is creditable in Spain; reclaim the rest at source.</em></p>
+{%- else %}
+<p style='font-size: 11px; color: #cc6600;'><em>⚠️ Retención efectiva superior al 15% detectada: {{ over15_flagged }}. Solo el 15% es deducible en España; reclama el resto en origen.</em></p>
+{%- endif %}
+{%- endif %}
+{%- endif %}
+{%- if sledger.gp_pending_end %}
+<p><strong>{{ 'Pérdidas patrimoniales pendientes de compensar:' if is_es else 'Pending capital losses carried forward:' }}</strong></p><ul>
+{%- for oy, rem, ub in sledger.gp_pending_end %}
+<li class='loss'>{{ oy }}: €{{ rem | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if sledger.rcm_pending_end %}
+<p><strong>{{ 'Pérdidas de RCM (dividendos/intereses) pendientes de compensar:' if is_es else 'Pending RCM (dividend/interest) losses carried forward:' }}</strong></p><ul>
+{%- for oy, rem, ub in sledger.rcm_pending_end %}
+<li class='loss'>{{ oy }}: €{{ rem | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if sledger.expired %}
+<p style='color:#cc0000;'><strong>{{ '⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):' if is_es else '⚠️ Losses that EXPIRED unused (4-year limit passed):' }}</strong></p><ul>
+{%- for bucket, oy, amount in sledger.expired %}
+<li style='color:#cc0000;'>{{ bucket }} {{ oy }}: €{{ amount | num2 }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- else %}
+{# ---- Loss Carryforward Ledger (single-bucket) ---- #}
+<h2>{{ 'Libro de Compensación de Pérdidas (Art. 49 LIRPF)' if is_es else 'Loss Carryforward Ledger (Art. 49 LIRPF)' }}</h2>
+{%- if not is_es %}
+<p>Net losses in a year offset savings-base gains of the following <strong>4 years</strong> (oldest losses first); unused losses then expire. This ledger simulates that across the tracked years. Cross-category offset against other savings income (dividends, interest) is still applied by your advisor at filing time.</p>
+{%- else %}
+<p>Las pérdidas netas de un ejercicio compensan ganancias de la base del ahorro de los <strong>4 ejercicios siguientes</strong> (primero las más antiguas); las no utilizadas caducan. Este libro simula esa compensación entre los años analizados. La compensación con otras rentas del ahorro (dividendos, intereses) la aplica tu asesor al presentar la declaración.</p>
+{%- endif %}
+{%- if seed_str %}
+<p style='font-size: 11px; color: #555;'><em>{% if is_es %}Inicializado con pérdidas pendientes de años anteriores — {{ seed_str }}{% else %}Seeded with prior-year pending losses — {{ seed_str }}{% endif %}</em></p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Year</th><th>Net Result</th><th>Prior-Year Loss Applied</th><th>Taxable After Carryforward</th></tr>
+{%- else %}
+<tr><th>Año</th><th>Resultado Neto</th><th>Pérdida de Años Anteriores Aplicada</th><th>Base Tras Compensación</th></tr>
+{%- endif %}
+{%- for r in cf_ledger.rows %}
+<tr>
+<td>{{ r.year }}</td>
+<td class='{{ 'gain' if r.net_result >= 0 else 'loss' }}'>€{{ r.net_result | num2 }}</td>
+<td>€{{ r.prior_losses_applied | num2 }}</td>
+<td><strong>€{{ r.taxable_after | num2 }}</strong></td>
+</tr>
+{%- endfor %}
+</table>
+{%- if cf_ledger.pending_end %}
+<p><strong>{{ 'Pérdidas pendientes de compensar (aún utilizables):' if is_es else 'Pending losses carried forward (still usable):' }}</strong></p><ul>
+{%- for origin_year, remaining, use_by in cf_ledger.pending_end %}
+<li class='loss'>{{ origin_year }}: €{{ remaining | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ use_by }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if cf_ledger.expired %}
+<p style='color:#cc0000;'><strong>{{ '⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):' if is_es else '⚠️ Losses that EXPIRED unused (4-year limit passed):' }}</strong></p><ul>
+{%- for origin_year, amount in cf_ledger.expired %}
+<li style='color:#cc0000;'>{{ origin_year }}: €{{ amount | num2 }}</li>
+{%- endfor %}
+</ul>
+{%- endif %}
+{%- if cf_no_losses %}
+<p><em>{{ 'No hay pérdidas pendientes de compensar.' if is_es else 'No losses to carry forward.' }}</em></p>
+{%- endif %}
+{%- endif %}
+{%- if transm_rows %}
+{# ---- Capital Gains Detail — Disposals ---- #}
+<h2>{{ 'Detalle de Ganancias Patrimoniales — Transmisiones (Modelo 100)' if is_es else 'Capital Gains Detail — Disposals (Modelo 100)' }}</h2>
+{%- if not is_es %}
+<p>One row per acquisition lot consumed by each sale (FIFO), with the figures the <em>ganancias y pérdidas patrimoniales</em> section needs. Fees are the pro-rata transmission costs; the <strong>Net Gain/Loss</strong> column already deducts them and sums to your total realized result.</p>
+<table class='ledger'><tr><th>Security</th><th>ISIN</th><th>Acq. date</th><th>Acq. value (EUR)</th><th>Transm. date</th><th>Transm. value (EUR)</th><th>Fees (EUR)</th><th>Net Gain/Loss (EUR)</th></tr>
+{%- else %}
+<p>Una fila por cada lote de adquisición consumido en cada venta (FIFO), con los datos que pide el apartado de <em>ganancias y pérdidas patrimoniales</em>. Los gastos son los costes de transmisión prorrateados; la columna <strong>G/P Neta</strong> ya los descuenta y suma tu resultado realizado total.</p>
+<table class='ledger'><tr><th>Valor</th><th>ISIN</th><th>Fecha adq.</th><th>Valor adq. (EUR)</th><th>Fecha transm.</th><th>Valor transm. (EUR)</th><th>Gastos (EUR)</th><th>G/P Neta (EUR)</th></tr>
+{%- endif %}
+{%- for r in transm_rows %}
+<tr><td>{{ r.symbol or '—' }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.acq_date | ld(is_es) }}</td><td>€{{ r.acq_value | num2 }}</td><td>{{ r.transm_date | ld(is_es) }}</td><td>€{{ r.transm_value | num2 }}</td><td>€{{ r.fee | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td></tr>
+{%- endfor %}
+<tr><td colspan='7'><strong>{{ 'G/P neta total' if is_es else 'Total net gain/loss' }}</strong></td><td class='{{ 'gain' if transm_total >= 0 else 'loss' }}'><strong>€{{ transm_total | num2 }}</strong></td></tr>
+</table>
+{%- endif %}
+{# ---- Modelo 100 Filing Guide ---- #}
+<h2>{{ 'Guía de Cumplimentación del Modelo 100 (IRPF)' if is_es else 'Modelo 100 Filing Guide (IRPF)' }}</h2>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verify the casilla numbers.</strong> Modelo 100 box numbers change almost every year. The <em>section names</em> below are stable; the casilla numbers are indicative — confirm them against the form for your filing year.</p>
+<table>
+<tr><th>Figure from this report</th><th>Modelo 100 section (apartado)</th><th>Casilla (verify)</th></tr>
+{%- else %}
+<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verifica los números de casilla.</strong> Las casillas del Modelo 100 cambian casi cada año. Los <em>nombres de apartado</em> de abajo son estables; los números de casilla son orientativos — confírmalos en el modelo de tu ejercicio.</p>
+<table>
+<tr><th>Dato de este informe</th><th>Apartado del Modelo 100</th><th>Casilla (verificar)</th></tr>
+{%- endif %}
+{%- for figure, apartado, casilla in modelo100_rows %}
+<tr><td>{{ figure }}</td><td>{{ apartado }}</td><td>{{ casilla }}</td></tr>
+{%- endfor %}
+</table>
+{%- if espp_early_sale_discounts or espp_discounts %}
+{# ---- ESPP 3-Year Holding Period Analysis ---- #}
+<h2>{{ 'Análisis del Período de Retención ESPP de 3 Años (Art. 42.3.f LIRPF)' if is_es else 'ESPP 3-Year Holding Period Analysis (Art. 42.3.f LIRPF)' }}</h2>
+{%- if espp_early_sale_discounts %}
+{%- if not is_es %}
+<p style='color: #cc0000;'><strong>⚠️ The following ESPP discounts are TAXABLE as salary income.</strong><br>Because specific ESPP shares were sold (according to FIFO rules) before reaching the 3-year holding period, they lose their tax exemption. You must file a Complementary Return (Declaración Complementaria) for the year they were originally purchased.</p>
+<table>
+<tr><th>Purchase Year (Complementary Return)</th><th>Taxable ESPP Discount (Salary Income)</th></tr>
+{%- else %}
+<p style='color: #cc0000;'><strong>⚠️ Los siguientes descuentos ESPP son IMPONIBLES como rendimiento del trabajo.</strong><br>Debido a que ciertas acciones ESPP fueron vendidas (según reglas FIFO) antes de alcanzar los 3 años de retención, pierden su exención fiscal. Debe presentar una Declaración Complementaria por el año en que fueron adquiridas originalmente.</p>
+<table>
+<tr><th>Año de Compra (Declaración Complementaria)</th><th>Descuento ESPP Imponible (Rendimiento del Trabajo)</th></tr>
+{%- endif %}
+{%- for year, amount in espp_early_sale_rows %}
+<tr>
+<td>{{ year }}</td>
+<td><strong style='color: #cc0000;'>€{{ amount | num2 }}</strong></td>
+</tr>
+{%- endfor %}
+</table>
+{%- elif espp_discounts %}
+{%- if not is_es %}
+<p style='color: green;'><strong>✅ No ESPP shares were sold before the 3-year holding period.</strong> All ESPP discounts may be exempt under Art. 42.3.f LIRPF (subject to €12,000/year limit).</p>
+{%- else %}
+<p style='color: green;'><strong>✅ No se vendieron acciones ESPP antes del período de retención de 3 años.</strong> Todos los descuentos ESPP pueden estar exentos según Art. 42.3.f LIRPF (sujeto al límite de €12.000/año).</p>
+{%- endif %}
+{%- endif %}
+{%- if not is_es %}
+<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANT:</strong> Employee must have signed the ESPP enrollment/agreement document from the company for each offering period to qualify for the tax exemption.</p>
+{%- else %}
+<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANTE:</strong> El empleado debe haber firmado el documento de inscripción/acuerdo ESPP de la empresa para cada período de oferta para poder optar a la exención fiscal.</p>
+{%- endif %}
+{%- endif %}
+{%- if securities is not none %}
+{# ---- Per-security ledgers (portfolio mode) ---- #}
+{%- for sec in ledger_sections %}
+<h2>{{ sec.head }} — {{ 'Transacciones y Detalle FIFO' if is_es else 'Transactions & FIFO Detail' }}</h2>
+{{ ledger_table(sec.events, is_es) }}
+<h3>{{ 'Detalles de Cálculo para Ventas' if is_es else 'Calculation Details for Sales' }}</h3>
+{{ calc_details(sec.events, is_es) }}
+{%- endfor %}
+{%- else %}
+<h2>{{ 'Libro de Transacciones Detallado' if is_es else 'Detailed Transaction Ledger' }}</h2>
+{{ ledger_table(single_events, is_es) }}
+<h2>{{ 'Detalles de Cálculo para Ventas' if is_es else 'Calculation Details for Sales' }}</h2>
+{{ calc_details(single_events, is_es) }}
+{%- endif %}
+</body></html>
