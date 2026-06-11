@@ -28,6 +28,11 @@ class ShareLot:
     price_eur: Decimal
     remaining_shares: Decimal
     notes: str = ""
+    # Provenance carried from the originating StockEvent so surviving holdings can
+    # be attributed per-broker and per-security in reporting/charts. Defaults keep
+    # single-security/E*TRADE callers working unchanged.
+    broker: str = "E*TRADE"
+    isin: str | None = None
 
 
 @dataclass
@@ -61,6 +66,11 @@ class StockEvent:
     shares: Decimal
     price_usd: Decimal
     fx_rate: Decimal | None = None
+    # Currency of ``price_usd``/``fees_usd`` (the field name is historical — it
+    # holds the price in ``currency``, not necessarily USD). Defaults to USD so
+    # existing callers are unchanged; ``resolved_fx_rate`` converts it to EUR via
+    # the ECB reference rate for this currency.
+    currency: str = "USD"
     fees_usd: Decimal = Decimal("0")
     shares_sold_to_cover: Decimal = Decimal("0")  # For VEST events
     notes: str = ""
@@ -68,6 +78,12 @@ class StockEvent:
     # primary source); the optional Revolut importer sets "Revolut". Used to tag
     # rows and produce per-broker subtotals in the report.
     broker: str = "E*TRADE"
+    # Canonical security identity. ``symbol`` is the display ticker; ``isin`` is the
+    # FIFO grouping key when known (Spanish FIFO is per homogeneous security = per
+    # ISIN). Both default empty/None so single-security callers need not set them;
+    # the portfolio runner groups events by ISIN (falling back to symbol).
+    symbol: str = ""
+    isin: str | None = None
     # Raw E-Trade order status for SELL events: "Settled", "Executed", "Open", etc.
     # Empty when unknown (e.g. VEST/BUY events, or orders.xlsx downloaded before
     # the Status column existed). Used to tell a settled sale from one whose RSU
@@ -87,7 +103,7 @@ class StockEvent:
             # Import here to avoid circular dependency
             from .ecb_rates import ECBRateFetcher
 
-            self._fx_rate_resolved = ECBRateFetcher.get_rate(self.event_date)
+            self._fx_rate_resolved = ECBRateFetcher.get_rate(self.event_date, self.currency)
 
         return self._fx_rate_resolved
 
@@ -103,6 +119,7 @@ class StockEvent:
 
     def __post_init__(self) -> None:
         """Convert numeric fields to Decimal if needed and validate."""
+        object.__setattr__(self, "currency", (self.currency or "USD").strip().upper())
         if not isinstance(self.shares, Decimal):
             object.__setattr__(self, "shares", Decimal(str(self.shares)))
         if not isinstance(self.price_usd, Decimal):
@@ -299,6 +316,8 @@ class TaxEngineState:
                     price_eur=lot.price_eur,
                     remaining_shares=lot.remaining_shares,
                     notes=lot.notes,
+                    broker=lot.broker,
+                    isin=lot.isin,
                 )
                 for lot in self.lots
             ],

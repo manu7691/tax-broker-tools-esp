@@ -8,7 +8,10 @@ required by Spanish tax law (Agencia Tributaria) for capital gains calculations 
 from collections import defaultdict
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
-from typing import Any
+from typing import TYPE_CHECKING, Any
+
+if TYPE_CHECKING:
+    from .portfolio import SecurityResult
 
 from .models import (
     CarryforwardLedger,
@@ -94,6 +97,8 @@ class TaxEngine:
             price_eur=price_eur,
             remaining_shares=shares,
             notes=event.notes,
+            broker=event.broker,
+            isin=event.isin,
         )
         self.state.lots.append(new_lot)
 
@@ -834,6 +839,37 @@ class TaxEngine:
             )
             html.append(f"<p style='font-size: 11px; color: #555;'><em>{ft_label}</em></p>")
 
+            cap_note = (
+                "Spain's tax treaties cap the foreign-tax credit at the treaty rate "
+                "(<strong>15%</strong> for US dividends). Withholding above that is not "
+                "creditable here — reclaim the excess from the source country "
+                "(e.g. a corrected W-8BEN / US 1040-NR)."
+                if not is_es else
+                "Los convenios de doble imposición limitan la deducción al tipo del convenio "
+                "(<strong>15%</strong> para dividendos de EE. UU.). La retención por encima de "
+                "ese límite no es deducible aquí — reclama el exceso al país de origen "
+                "(p. ej. un W-8BEN corregido / 1040-NR de EE. UU.)."
+            )
+            html.append(f"<p style='font-size: 11px; color: #555;'><em>{cap_note}</em></p>")
+
+            # Flag years whose effective withholding exceeds the 15% treaty rate.
+            over = [
+                (yr, (inc.foreign_tax_eur / inc.dividends_eur * 100).quantize(Decimal("0.1")))
+                for yr, inc in sorted(savings_income.items())
+                if inc.dividends_eur > 0
+                and inc.foreign_tax_eur > inc.dividends_eur * Decimal("0.15")
+            ]
+            if over:
+                flagged = ", ".join(f"{yr} ({rate}%)" for yr, rate in over)
+                warn = (
+                    f"⚠️ Effective withholding above 15% detected: {flagged}. Only 15% is "
+                    "creditable in Spain; reclaim the rest at source."
+                    if not is_es else
+                    f"⚠️ Retención efectiva superior al 15% detectada: {flagged}. Solo el 15% es "
+                    "deducible en España; reclama el resto en origen."
+                )
+                html.append(f"<p style='font-size: 11px; color: #cc6600;'><em>{warn}</em></p>")
+
         use_by = "use by" if not is_es else "usar antes de"
         if sledger.gp_pending_end:
             lbl = (
@@ -949,6 +985,85 @@ class TaxEngine:
             )
         html.append("</table>")
 
+    def _append_transmisiones_table(self, html: list[str], is_es: bool) -> None:
+        """Append a per-disposal table formatted for the Modelo 100 capital-gains entry.
+
+        One row per FIFO lot consumed by each sale, with the acquisition value, the
+        transmission value, the (pro-rata) fees, and the net gain/loss — i.e. exactly
+        the fields the *ganancias y pérdidas patrimoniales* section asks for. The net
+        gain/loss column sums to the engine's realized result (fees included).
+        """
+        sells = [
+            pe for pe in self.processed_events
+            if pe.event.event_type == EventType.SELL and pe.fifo_matches
+        ]
+        if not sells:
+            return
+
+        title = (
+            "Capital Gains Detail — Disposals (Modelo 100)"
+            if not is_es
+            else "Detalle de Ganancias Patrimoniales — Transmisiones (Modelo 100)"
+        )
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p>One row per acquisition lot consumed by each sale (FIFO), with the figures "
+                "the <em>ganancias y pérdidas patrimoniales</em> section needs. Fees are the "
+                "pro-rata transmission costs; the <strong>Net Gain/Loss</strong> column already "
+                "deducts them and sums to your total realized result.</p>"
+            )
+            html.append(
+                "<table class='ledger'><tr><th>Security</th><th>ISIN</th>"
+                "<th>Acq. date</th><th>Acq. value (EUR)</th><th>Transm. date</th>"
+                "<th>Transm. value (EUR)</th><th>Fees (EUR)</th><th>Net Gain/Loss (EUR)</th></tr>"
+            )
+        else:
+            html.append(
+                "<p>Una fila por cada lote de adquisición consumido en cada venta (FIFO), con los "
+                "datos que pide el apartado de <em>ganancias y pérdidas patrimoniales</em>. Los "
+                "gastos son los costes de transmisión prorrateados; la columna <strong>G/P Neta"
+                "</strong> ya los descuenta y suma tu resultado realizado total.</p>"
+            )
+            html.append(
+                "<table class='ledger'><tr><th>Valor</th><th>ISIN</th>"
+                "<th>Fecha adq.</th><th>Valor adq. (EUR)</th><th>Fecha transm.</th>"
+                "<th>Valor transm. (EUR)</th><th>Gastos (EUR)</th><th>G/P Neta (EUR)</th></tr>"
+            )
+
+        total_net = Decimal("0")
+        for pe in sells:
+            e = pe.event
+            sale_fees_eur = (
+                (e.fees_usd * e.resolved_fx_rate).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                if e.fees_usd > 0 else Decimal("0")
+            )
+            for m in pe.fifo_matches:
+                acq_value = (m.acquisition_price_eur * m.shares).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                transm_value = (e.price_eur * m.shares).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                fee_alloc = (
+                    (sale_fees_eur * m.shares / e.shares).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                    if e.shares > 0 else Decimal("0")
+                )
+                net = (m.realized_gain_loss - fee_alloc).quantize(Decimal("0.01"), ROUND_HALF_UP)
+                total_net += net
+                net_style = "gain" if net >= 0 else "loss"
+                html.append(
+                    f"<tr><td>{e.symbol or '—'}</td><td>{e.isin or '—'}</td>"
+                    f"<td>{m.acquisition_date.isoformat() if not is_es else m.acquisition_date.strftime('%d/%m/%Y')}</td>"
+                    f"<td>€{acq_value:,.2f}</td>"
+                    f"<td>{e.event_date.isoformat() if not is_es else e.event_date.strftime('%d/%m/%Y')}</td>"
+                    f"<td>€{transm_value:,.2f}</td><td>€{fee_alloc:,.2f}</td>"
+                    f"<td class='{net_style}'><strong>€{net:,.2f}</strong></td></tr>"
+                )
+        net_style = "gain" if total_net >= 0 else "loss"
+        total_label = "Total net gain/loss" if not is_es else "G/P neta total"
+        html.append(
+            f"<tr><td colspan='7'><strong>{total_label}</strong></td>"
+            f"<td class='{net_style}'><strong>€{total_net:,.2f}</strong></td></tr>"
+        )
+        html.append("</table>")
+
     def _append_broker_breakdown(self, html: list[str], is_es: bool) -> None:
         """Append a per-broker realized gain/loss subtotal table.
 
@@ -1026,7 +1141,231 @@ class TaxEngine:
         )
         html.append("</table>")
 
-    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> str:
+    def _append_portfolio_summary(
+        self, html: list[str], is_es: bool, securities: "list[SecurityResult]"
+    ) -> None:
+        """Append the per-security portfolio rollup (gains / losses / net / position).
+
+        Shown only in multi-security mode: one row per security (its own FIFO
+        queue, keyed by ISIN) plus a portfolio Total row that ties to the combined
+        savings base below.
+        """
+        title = "Portfolio Summary by Security" if not is_es else "Resumen de Cartera por Valor"
+        html.append(f"<h2>{title}</h2>")
+        if not is_es:
+            html.append(
+                "<p>Each security has its own FIFO queue (grouped by ISIN; the same ISIN "
+                "across brokers is merged). The savings base, 4-year carryforward and 25% "
+                "cross-category offset below operate on the <strong>portfolio total</strong>; "
+                "the 2-month wash-sale rule stays <strong>per security</strong>.</p>"
+            )
+        else:
+            html.append(
+                "<p>Cada valor tiene su propia cola FIFO (agrupada por ISIN; el mismo ISIN "
+                "en distintos brókers se fusiona). La base del ahorro, la compensación a 4 "
+                "años y el límite del 25% entre categorías de abajo operan sobre el "
+                "<strong>total de la cartera</strong>; la regla de los 2 meses se mantiene "
+                "<strong>por valor</strong>.</p>"
+            )
+        html.append("<table>")
+        if not is_es:
+            html.append(
+                "<tr><th>Security</th><th>ISIN</th><th>Broker(s)</th><th>Realized Gains</th>"
+                "<th>Realized Losses</th><th>Net G/L</th><th>Open Position (shares)</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Valor</th><th>ISIN</th><th>Bróker(es)</th><th>Ganancias Realizadas</th>"
+                "<th>Pérdidas Realizadas</th><th>G/P Neta</th><th>Posición Abierta (acciones)</th></tr>"
+            )
+        total_gains = Decimal("0")
+        total_losses = Decimal("0")
+        total_net = Decimal("0")
+        for r in securities:
+            summaries = r.engine.get_all_yearly_summaries()
+            gains = sum((s.total_gains for s in summaries), Decimal("0"))
+            losses = sum((s.deductible_losses for s in summaries), Decimal("0"))
+            net = r.net_gain_loss
+            total_gains += gains
+            total_losses += losses
+            total_net += net
+            brokers = ", ".join(sorted({pe.event.broker for pe in r.engine.processed_events})) or "—"
+            net_style = "gain" if net >= 0 else "loss"
+            html.append(
+                f"<tr><td>{r.security.label}</td><td>{r.security.isin or '—'}</td>"
+                f"<td>{brokers}</td><td>€{gains:,.2f}</td><td>€{losses:,.2f}</td>"
+                f"<td class='{net_style}'><strong>€{net:,.2f}</strong></td>"
+                f"<td>{r.engine.state.total_shares:,.4f}</td></tr>"
+            )
+        net_style = "gain" if total_net >= 0 else "loss"
+        total_label = "Total (Portfolio)" if not is_es else "Total (Cartera)"
+        html.append(
+            f"<tr><td><strong>{total_label}</strong></td><td></td><td></td>"
+            f"<td><strong>€{total_gains:,.2f}</strong></td>"
+            f"<td><strong>€{total_losses:,.2f}</strong></td>"
+            f"<td class='{net_style}'><strong>€{total_net:,.2f}</strong></td><td></td></tr>"
+        )
+        html.append("</table>")
+
+    def _append_ledger_table(
+        self, html: list[str], is_es: bool, events: list[ProcessedEvent]
+    ) -> None:
+        """Append the detailed FIFO transaction ledger table for ``events``."""
+        html.append("<table class='ledger'>")
+        if not is_es:
+            html.append(
+                "<tr><th>Date</th><th class='tipo'>Type</th><th>Broker</th><th>Shares</th><th>Price (orig.)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
+            )
+        else:
+            html.append(
+                "<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Bróker</th><th>Acciones</th><th>Precio (orig.)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
+            )
+
+        for pe in events:
+            e = pe.event
+            shares_sign = "+" if e.event_type != EventType.SELL else "-"
+            shares_str = f"{shares_sign}{TaxEngine.format_shares(e.shares)}"
+
+            # Translate EventType for Spanish
+            event_type_str = e.event_type.value
+            notes_str = e.notes
+            if is_es:
+                event_type_str = {
+                    EventType.VEST: "Concesión",
+                    EventType.SELL: "Venta",
+                    EventType.BUY: "Compra",
+                    EventType.EXERCISE: "Ejercicio",
+                }.get(e.event_type, event_type_str)
+
+                # Translate common notes
+                notes_str = (
+                    notes_str.replace("RSU Vest", "Concesión RSU")
+                    .replace("ESPP Purchase", "Compra ESPP")
+                    .replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
+                    .replace("Pending Settlement", "Pendiente de Liquidación")
+                    .replace("Manual Sell", "Venta Manual")
+                    .replace("Sell Order", "Orden de Venta")
+                    .replace("Revolut Buy", "Compra Revolut")
+                    .replace("Revolut Sell", "Venta Revolut")
+                    .replace("Includes", "Incluye")
+                    .replace("fees", "comisiones")
+                )
+
+            event_type_cell = f"{event_type_str}<br><small style='color:gray;'>{notes_str}</small>"
+            event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
+
+            gl_str = ""
+            wash_sale_note = ""
+            if pe.realized_gain_loss != 0:
+                gl_str = f"<strong>€{pe.realized_gain_loss:,.2f}</strong>"
+                if pe.event.event_type == EventType.SELL and pe.realized_gain_loss < 0 and "Wash Sale Blocked" in pe.event.notes:
+                    note_text = "Wash Sale Blocked" if not is_es else "Bloqueado Regla 2 Meses"
+                    wash_sale_note = f"<br><small style='color:red;'>{note_text}</small>"
+            elif e.event_type == EventType.SELL:
+                gl_str = "€0.00"
+
+            html.append("<tr>")
+            html.append(f"<td>{event_date_str}</td>")
+            html.append(f"<td class='tipo'>{event_type_cell}</td>")
+            html.append(f"<td>{e.broker}</td>")
+            html.append(f"<td>{shares_str}</td>")
+            price_cell = (
+                f"${e.price_usd:,.2f}" if e.currency == "USD" else f"{e.price_usd:,.2f} {e.currency}"
+            )
+            html.append(f"<td>{price_cell}</td>")
+            html.append(f"<td>{e.resolved_fx_rate:.4f}</td>")
+            html.append(f"<td>€{e.price_eur:,.4f}</td>")
+            html.append(f"<td>€{e.total_value_eur:,.2f}</td>")
+            html.append(f"<td>{TaxEngine.format_shares(pe.total_shares_after)}</td>")
+            html.append(f"<td>€{pe.avg_cost_eur_after:,.4f}</td>")
+            html.append(f"<td>{gl_str}{wash_sale_note}</td>")
+            html.append("</tr>")
+
+            if pe.fifo_matches:
+                for match in pe.fifo_matches:
+                    html.append("<tr style='background-color:#fafafa; font-style:italic;'>")
+                    html.append("<td></td>")
+                    match_label = "FIFO Match:" if not is_es else "Cruce FIFO:"
+                    # Span Type + Broker + Shares (the table gained a Broker column).
+                    html.append(f"<td colspan='3' style='text-align:right;'>{match_label}</td>")
+                    if not is_es:
+                        match_text = f"Matched {TaxEngine.format_shares(match.shares)} shares from acquisition on {match.acquisition_date} at €{match.acquisition_price_eur:,.4f}"
+                    else:
+                        acq_date_str = match.acquisition_date.strftime("%d/%m/%Y")
+                        match_text = f"Se cruzaron {TaxEngine.format_shares(match.shares)} acciones de la adquisición del {acq_date_str} a €{match.acquisition_price_eur:,.4f}"
+                    html.append(f"<td colspan='6'>{match_text}</td>")
+                    html.append(f"<td>€{match.realized_gain_loss:,.2f}</td>")
+                    html.append("</tr>")
+        html.append("</table>")
+
+    def _append_calc_details(
+        self, html: list[str], is_es: bool, events: list[ProcessedEvent]
+    ) -> None:
+        """Append the per-sale FIFO calculation breakdown for ``events``."""
+        sell_events = [pe for pe in events if pe.event.event_type == EventType.SELL]
+        if not sell_events:
+            empty_text = "No sales transactions found." if not is_es else "No se encontraron transacciones de venta."
+            html.append(f"<p><em>{empty_text}</em></p>")
+
+        for i, pe in enumerate(sell_events, 1):
+            e = pe.event
+            event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
+            sale_header = f"Sale on {event_date_str}" if not is_es else f"Venta el {event_date_str}"
+            html.append(f"<h3>{i}. {sale_header}</h3>")
+            html.append("<ul>")
+            sold_text = f"Sold: {TaxEngine.format_shares(e.shares)} shares @ €{e.price_eur:,.4f}" if not is_es else f"Vendido: {TaxEngine.format_shares(e.shares)} acciones @ €{e.price_eur:,.4f}"
+            html.append(f"<li><strong>{sold_text}</strong></li>")
+            matches_header = "FIFO Lot Matches" if not is_es else "Cruces de Lotes FIFO"
+            html.append(f"<li><strong>{matches_header}</strong>:</li>")
+            html.append("<ul>")
+            for match in pe.fifo_matches:
+                if not is_es:
+                    match_desc = f"Matched {TaxEngine.format_shares(match.shares)} shares acquired on {match.acquisition_date} @ €{match.acquisition_price_eur:,.4f}. "
+                    gl_label = "Gain/Loss"
+                else:
+                    acq_date_str = match.acquisition_date.strftime("%d/%m/%Y")
+                    match_desc = f"Cruza {TaxEngine.format_shares(match.shares)} acciones adquiridas el {acq_date_str} @ €{match.acquisition_price_eur:,.4f}. "
+                    gl_label = "Ganancia/Pérdida"
+                html.append(
+                    f"<li>{match_desc}"
+                    f"{gl_label}: <code>({e.price_eur:,.4f} - {match.acquisition_price_eur:,.4f}) * {TaxEngine.format_shares(match.shares)} = €{match.realized_gain_loss:,.2f}</code></li>"
+                )
+            html.append("</ul>")
+
+            tot_label = "Total Realized Gain/Loss" if not is_es else "Total Ganancia/Pérdida Realizada"
+            html.append(
+                f"<li><strong>{tot_label}</strong>: <strong>€{pe.realized_gain_loss:,.2f}</strong></li>"
+            )
+            if "Wash Sale Blocked" in pe.event.notes:
+                warn_text = (
+                    "Wash Sale Warning: This loss is blocked under Spanish rules due to a purchase of homogenous shares within 2 months."
+                    if not is_es else
+                    "Aviso de Regla de 2 Meses: Esta pérdida está bloqueada según la ley española debido a la compra de acciones homogéneas en un plazo de 2 meses."
+                )
+                html.append(f"<li><strong style='color:red;'>{warn_text}</strong></li>")
+            html.append("</ul>")
+
+    def _append_per_security_ledgers(
+        self, html: list[str], is_es: bool, securities: "list[SecurityResult]"
+    ) -> None:
+        """Append one ledger + FIFO-detail section per security (portfolio mode).
+
+        Each security starts on its own page (the ``h2`` page-break rule) and
+        carries its own transaction ledger and per-sale calculation breakdown.
+        """
+        sub = "Transactions & FIFO Detail" if not is_es else "Transacciones y Detalle FIFO"
+        details_title = (
+            "Calculation Details for Sales" if not is_es else "Detalles de Cálculo para Ventas"
+        )
+        for r in securities:
+            label = r.security.label
+            head = f"{label} ({r.security.isin})" if r.security.isin else label
+            html.append(f"<h2>{head} — {sub}</h2>")
+            self._append_ledger_table(html, is_es, r.engine.processed_events)
+            html.append(f"<h3>{details_title}</h3>")
+            self._append_calc_details(html, is_es, r.engine.processed_events)
+
+    def generate_html_content(self, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None, securities: "list[SecurityResult] | None" = None) -> str:
         """Generate HTML content for the tax report (supports English 'en' and Spanish 'es')."""
         is_es = lang.lower() == "es"
 
@@ -1175,6 +1514,10 @@ class TaxEngine:
                 )
             html.append("</ul>")
 
+        # Portfolio rollup (per-security gains/losses/net) — multi-security mode only.
+        if securities is not None:
+            self._append_portfolio_summary(html, is_es, securities)
+
         # Yearly Tax Summary Table (Modelo 100 - Savings Base)
         summary_title = (
             "Yearly Tax Summary (Modelo 100 - Savings Base)"
@@ -1237,6 +1580,9 @@ class TaxEngine:
             self._append_savings_section(html, is_es, savings_income, opening_losses)
         else:
             self._append_carryforward_section(html, is_es, opening_losses)
+
+        # Per-disposal capital-gains detail formatted for the Modelo 100 entry.
+        self._append_transmisiones_table(html, is_es)
 
         # Modelo 100 box guide (apartado names are stable; casillas shift yearly)
         self._append_modelo100_guide(html, is_es)
@@ -1302,143 +1648,27 @@ class TaxEngine:
 
 
 
-        # Transaction Ledger
-        ledger_title = "Detailed Transaction Ledger" if not is_es else "Libro de Transacciones Detallado"
-        html.append(f"<h2>{ledger_title}</h2>")
-        html.append("<table class='ledger'>")
-        if not is_es:
-            html.append(
-                "<tr><th>Date</th><th class='tipo'>Type</th><th>Broker</th><th>Shares</th><th>Price (USD)</th><th>FX Rate</th><th>Price (EUR)</th><th>Total Value (EUR)</th><th>Portfolio Qty</th><th>Avg Cost (EUR)</th><th>Realized G/L (EUR)</th></tr>"
-            )
+        # Transaction ledger + per-sale FIFO calculation details. In portfolio
+        # mode these are emitted once per security (each starting on its own page);
+        # otherwise once for the whole engine, exactly as before.
+        if securities is not None:
+            self._append_per_security_ledgers(html, is_es, securities)
         else:
-            html.append(
-                "<tr><th>Fecha</th><th class='tipo'>Tipo</th><th>Bróker</th><th>Acciones</th><th>Precio (USD)</th><th>Tipo Cambio</th><th>Precio (EUR)</th><th>Valor Total (EUR)</th><th>Cant. Cartera</th><th>Coste Medio (EUR)</th><th>G/P Realizada (EUR)</th></tr>"
+            ledger_title = (
+                "Detailed Transaction Ledger" if not is_es else "Libro de Transacciones Detallado"
             )
-
-        for pe in self.processed_events:
-            e = pe.event
-            shares_sign = "+" if e.event_type != EventType.SELL else "-"
-            shares_str = f"{shares_sign}{TaxEngine.format_shares(e.shares)}"
-
-            # Translate EventType for Spanish
-            event_type_str = e.event_type.value
-            notes_str = e.notes
-            if is_es:
-                event_type_str = {
-                    EventType.VEST: "Concesión",
-                    EventType.SELL: "Venta",
-                    EventType.BUY: "Compra",
-                    EventType.EXERCISE: "Ejercicio",
-                }.get(e.event_type, event_type_str)
-
-                # Translate common notes
-                notes_str = (
-                    notes_str.replace("RSU Vest", "Concesión RSU")
-                    .replace("ESPP Purchase", "Compra ESPP")
-                    .replace("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)")
-                    .replace("Pending Settlement", "Pendiente de Liquidación")
-                    .replace("Manual Sell", "Venta Manual")
-                    .replace("Sell Order", "Orden de Venta")
-                    .replace("Revolut Buy", "Compra Revolut")
-                    .replace("Revolut Sell", "Venta Revolut")
-                    .replace("Includes", "Incluye")
-                    .replace("fees", "comisiones")
-                )
-
-            event_type_cell = f"{event_type_str}<br><small style='color:gray;'>{notes_str}</small>"
-            event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
-
-            gl_str = ""
-            wash_sale_note = ""
-            if pe.realized_gain_loss != 0:
-                gl_str = f"<strong>€{pe.realized_gain_loss:,.2f}</strong>"
-                if pe.event.event_type == EventType.SELL and pe.realized_gain_loss < 0 and "Wash Sale Blocked" in pe.event.notes:
-                    note_text = "Wash Sale Blocked" if not is_es else "Bloqueado Regla 2 Meses"
-                    wash_sale_note = f"<br><small style='color:red;'>{note_text}</small>"
-            elif e.event_type == EventType.SELL:
-                gl_str = "€0.00"
-
-            html.append("<tr>")
-            html.append(f"<td>{event_date_str}</td>")
-            html.append(f"<td class='tipo'>{event_type_cell}</td>")
-            html.append(f"<td>{e.broker}</td>")
-            html.append(f"<td>{shares_str}</td>")
-            html.append(f"<td>${e.price_usd:,.2f}</td>")
-            html.append(f"<td>{e.resolved_fx_rate:.4f}</td>")
-            html.append(f"<td>€{e.price_eur:,.4f}</td>")
-            html.append(f"<td>€{e.total_value_eur:,.2f}</td>")
-            html.append(f"<td>{TaxEngine.format_shares(pe.total_shares_after)}</td>")
-            html.append(f"<td>€{pe.avg_cost_eur_after:,.4f}</td>")
-            html.append(f"<td>{gl_str}{wash_sale_note}</td>")
-            html.append("</tr>")
-
-            if pe.fifo_matches:
-                for match in pe.fifo_matches:
-                    html.append("<tr style='background-color:#fafafa; font-style:italic;'>")
-                    html.append("<td></td>")
-                    match_label = "FIFO Match:" if not is_es else "Cruce FIFO:"
-                    # Span Type + Broker + Shares (the table gained a Broker column).
-                    html.append(f"<td colspan='3' style='text-align:right;'>{match_label}</td>")
-                    if not is_es:
-                        match_text = f"Matched {TaxEngine.format_shares(match.shares)} shares from acquisition on {match.acquisition_date} at €{match.acquisition_price_eur:,.4f}"
-                    else:
-                        acq_date_str = match.acquisition_date.strftime("%d/%m/%Y")
-                        match_text = f"Se cruzaron {TaxEngine.format_shares(match.shares)} acciones de la adquisición del {acq_date_str} a €{match.acquisition_price_eur:,.4f}"
-                    html.append(f"<td colspan='6'>{match_text}</td>")
-                    html.append(f"<td>€{match.realized_gain_loss:,.2f}</td>")
-                    html.append("</tr>")
-        html.append("</table>")
-
-        # Calculation Details
-        details_title = "Calculation Details for Sales" if not is_es else "Detalles de Cálculo para Ventas"
-        html.append(f"<h2>{details_title}</h2>")
-        sell_events = [pe for pe in self.processed_events if pe.event.event_type == EventType.SELL]
-        if not sell_events:
-            empty_text = "No sales transactions found." if not is_es else "No se encontraron transacciones de venta."
-            html.append(f"<p><em>{empty_text}</em></p>")
-
-        for i, pe in enumerate(sell_events, 1):
-            e = pe.event
-            event_date_str = e.event_date.isoformat() if not is_es else e.event_date.strftime("%d/%m/%Y")
-            sale_header = f"Sale on {event_date_str}" if not is_es else f"Venta el {event_date_str}"
-            html.append(f"<h3>{i}. {sale_header}</h3>")
-            html.append("<ul>")
-            sold_text = f"Sold: {TaxEngine.format_shares(e.shares)} shares @ €{e.price_eur:,.4f}" if not is_es else f"Vendido: {TaxEngine.format_shares(e.shares)} acciones @ €{e.price_eur:,.4f}"
-            html.append(f"<li><strong>{sold_text}</strong></li>")
-            matches_header = "FIFO Lot Matches" if not is_es else "Cruces de Lotes FIFO"
-            html.append(f"<li><strong>{matches_header}</strong>:</li>")
-            html.append("<ul>")
-            for match in pe.fifo_matches:
-                if not is_es:
-                    match_desc = f"Matched {TaxEngine.format_shares(match.shares)} shares acquired on {match.acquisition_date} @ €{match.acquisition_price_eur:,.4f}. "
-                    gl_label = "Gain/Loss"
-                else:
-                    acq_date_str = match.acquisition_date.strftime("%d/%m/%Y")
-                    match_desc = f"Cruza {TaxEngine.format_shares(match.shares)} acciones adquiridas el {acq_date_str} @ €{match.acquisition_price_eur:,.4f}. "
-                    gl_label = "Ganancia/Pérdida"
-                html.append(
-                    f"<li>{match_desc}"
-                    f"{gl_label}: <code>({e.price_eur:,.4f} - {match.acquisition_price_eur:,.4f}) * {TaxEngine.format_shares(match.shares)} = €{match.realized_gain_loss:,.2f}</code></li>"
-                )
-            html.append("</ul>")
-
-            tot_label = "Total Realized Gain/Loss" if not is_es else "Total Ganancia/Pérdida Realizada"
-            html.append(
-                f"<li><strong>{tot_label}</strong>: <strong>€{pe.realized_gain_loss:,.2f}</strong></li>"
+            html.append(f"<h2>{ledger_title}</h2>")
+            self._append_ledger_table(html, is_es, self.processed_events)
+            details_title = (
+                "Calculation Details for Sales" if not is_es else "Detalles de Cálculo para Ventas"
             )
-            if "Wash Sale Blocked" in pe.event.notes:
-                warn_text = (
-                    "Wash Sale Warning: This loss is blocked under Spanish rules due to a purchase of homogenous shares within 2 months."
-                    if not is_es else
-                    "Aviso de Regla de 2 Meses: Esta pérdida está bloqueada según la ley española debido a la compra de acciones homogéneas en un plazo de 2 meses."
-                )
-                html.append(f"<li><strong style='color:red;'>{warn_text}</strong></li>")
-            html.append("</ul>")
+            html.append(f"<h2>{details_title}</h2>")
+            self._append_calc_details(html, is_es, self.processed_events)
 
         html.append("</body></html>")
         return "".join(html)
 
-    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None) -> None:
+    def generate_pdf_report(self, filepath: str, lang: str = "en", espp_discounts: dict[int, Decimal] | None = None, espp_early_sale_discounts: dict[int, Decimal] | None = None, opening_losses: dict[int, Decimal] | None = None, savings_income: dict[int, SavingsIncomeYear] | None = None, securities: "list[SecurityResult] | None" = None) -> None:
         """Generate a PDF tax report using Playwright (supports lang='en' or lang='es')."""
         try:
             from playwright.sync_api import sync_playwright
@@ -1447,7 +1677,7 @@ class TaxEngine:
             print("Please install it with: pip install playwright && playwright install")
             return
 
-        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts, opening_losses=opening_losses, savings_income=savings_income)
+        html_content = self.generate_html_content(lang=lang, espp_discounts=espp_discounts, espp_early_sale_discounts=espp_early_sale_discounts, opening_losses=opening_losses, savings_income=savings_income, securities=securities)
 
         try:
             with sync_playwright() as p:

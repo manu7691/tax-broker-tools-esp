@@ -19,11 +19,30 @@ from .models import (
     YearlyTaxSummary,
 )
 from .options_parser import load_options_events
+from .portfolio import (
+    PortfolioResult,
+    SecurityResult,
+    group_events_by_security,
+    run_portfolio,
+)
 from .revolut_parser import load_revolut_events
 from .rsu_parser import load_rsu_events
 from .sample_data import (
+    create_sample_dividends_by_symbol,
+    create_sample_espp_map,
     create_sample_events_with_ecb_rates,
     create_sample_events_with_manual_fx,
+    create_sample_multi_security_events,
+    create_sample_savings_income,
+)
+from .securities import (
+    IsinCache,
+    SecuritiesConfig,
+    Security,
+    build_isin_resolver,
+    grouping_key,
+    load_securities_config,
+    resolve_isin,
 )
 from .tax_engine import TaxEngine
 
@@ -45,7 +64,22 @@ __all__ = [
     "TaxEngine",
     "create_sample_events_with_manual_fx",
     "create_sample_events_with_ecb_rates",
+    "create_sample_multi_security_events",
+    "create_sample_savings_income",
+    "create_sample_espp_map",
+    "create_sample_dividends_by_symbol",
     "load_rsu_events",
     "load_options_events",
     "load_revolut_events",
+    "Security",
+    "SecuritiesConfig",
+    "grouping_key",
+    "resolve_isin",
+    "build_isin_resolver",
+    "IsinCache",
+    "load_securities_config",
+    "PortfolioResult",
+    "SecurityResult",
+    "group_events_by_security",
+    "run_portfolio",
 ]

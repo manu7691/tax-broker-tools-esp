@@ -118,11 +118,69 @@ class TestECBRateFetcher:
     def test_clear_cache(self):
         """Test that clear_cache empties the cache."""
         # Pre-populate cache
-        ECBRateFetcher._rate_cache[date(2021, 5, 17)] = Decimal("0.82")
+        ECBRateFetcher._rate_cache[("USD", date(2021, 5, 17))] = Decimal("0.82")
 
         ECBRateFetcher.clear_cache()
 
         assert len(ECBRateFetcher._rate_cache) == 0
+
+    def test_eur_is_one_without_network(self):
+        """EUR needs no conversion and never hits the API."""
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            assert ECBRateFetcher.get_rate(date(2021, 5, 17), "EUR") == Decimal("1")
+        mock_urlopen.assert_not_called()
+
+    def test_unsupported_currency_raises(self):
+        with pytest.raises(ValueError, match="not an ECB reference currency"):
+            ECBRateFetcher.get_rate(date(2021, 5, 17), "XYZ")
+
+    def test_gbp_uses_currency_in_url_and_caches_per_currency(self):
+        """A non-USD currency fetches its own series and caches under that code."""
+        mock_response = MagicMock()
+        mock_response.read.return_value = ECB_XML_RESPONSE.encode()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+
+        with patch("urllib.request.urlopen", return_value=mock_response) as mock_urlopen:
+            rate = ECBRateFetcher.get_rate(date(2021, 5, 17), "GBP")
+
+        assert "D.GBP.EUR" in mock_urlopen.call_args[0][0]
+        assert rate == pytest.approx(Decimal("0.8230"), abs=Decimal("0.0001"))
+        assert ("GBP", date(2021, 5, 17)) in ECBRateFetcher._rate_cache
+        # USD is a separate series, so the GBP fetch must not satisfy a USD lookup.
+        assert ("USD", date(2021, 5, 17)) not in ECBRateFetcher._rate_cache
+
+    def test_loads_legacy_flat_usd_cache(self, tmp_path, monkeypatch):
+        """A pre-existing flat {iso: rate} cache file is read as USD (no network)."""
+        cache = tmp_path / "legacy.json"
+        cache.write_text('{"2021-05-17": "0.8230"}', encoding="utf-8")
+        monkeypatch.setattr(ECBRateFetcher, "CACHE_FILE", cache)
+        ECBRateFetcher.clear_cache()
+
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            rate = ECBRateFetcher.get_rate(date(2021, 5, 17))  # USD
+        mock_urlopen.assert_not_called()
+        assert rate == Decimal("0.8230")
+
+    def test_disk_cache_roundtrip_per_currency(self, tmp_path, monkeypatch):
+        """Fetched rates persist nested per currency and reload without a refetch."""
+        cache = tmp_path / "cache.json"
+        monkeypatch.setattr(ECBRateFetcher, "CACHE_FILE", cache)
+        ECBRateFetcher.clear_cache()
+
+        mock_response = MagicMock()
+        mock_response.read.return_value = ECB_XML_RESPONSE.encode()
+        mock_response.__enter__ = MagicMock(return_value=mock_response)
+        mock_response.__exit__ = MagicMock(return_value=False)
+        with patch("urllib.request.urlopen", return_value=mock_response):
+            ECBRateFetcher.get_rate(date(2021, 5, 17), "GBP")
+
+        assert '"GBP"' in cache.read_text(encoding="utf-8")  # nested by currency
+        ECBRateFetcher.clear_cache()  # drop in-memory; force a disk reload
+        with patch("urllib.request.urlopen") as mock_urlopen:
+            rate = ECBRateFetcher.get_rate(date(2021, 5, 17), "GBP")
+        mock_urlopen.assert_not_called()
+        assert rate == pytest.approx(Decimal("0.8230"), abs=Decimal("0.0001"))
 
     def test_inverse_rate_calculation(self):
         """Test that EUR/USD is correctly inverted to USD/EUR."""
@@ -190,8 +248,8 @@ class TestECBRateFetcherBulk:
         with patch("urllib.request.urlopen", return_value=mock_response):
             ECBRateFetcher.get_rates_bulk([date(2021, 5, 17)])
 
-        # Cache should be populated
-        assert date(2021, 5, 17) in ECBRateFetcher._rate_cache
+        # Cache should be populated (keyed by (currency, date))
+        assert ("USD", date(2021, 5, 17)) in ECBRateFetcher._rate_cache
 
 
 class TestPrefetchECBRates:
@@ -264,6 +322,25 @@ class TestPrefetchECBRates:
         with patch.object(ECBRateFetcher, "get_rates_bulk"):
             prefetch_ecb_rates([])
             # Should handle gracefully
+
+    def test_prefetch_groups_by_currency(self):
+        """One bulk fetch per currency; EUR needs none."""
+        events = [
+            StockEvent(date(2021, 5, 17), EventType.VEST, Decimal("100"), Decimal("50")),
+            StockEvent(date(2021, 5, 18), EventType.BUY, Decimal("10"), Decimal("30"), currency="GBP"),
+            StockEvent(date(2021, 5, 19), EventType.BUY, Decimal("5"), Decimal("20"), currency="EUR"),
+        ]
+        with patch.object(ECBRateFetcher, "get_rates_bulk", return_value={}) as mock_bulk:
+            prefetch_ecb_rates(events)
+        fetched_currencies = {call.args[1] for call in mock_bulk.call_args_list}
+        assert fetched_currencies == {"USD", "GBP"}  # EUR skipped
+
+    def test_event_resolves_rate_with_its_currency(self):
+        """resolved_fx_rate fetches using the event's own currency."""
+        event = StockEvent(date(2021, 5, 17), EventType.BUY, Decimal("1"), Decimal("100"), currency="GBP")
+        with patch.object(ECBRateFetcher, "get_rate", return_value=Decimal("1.1")) as mock_get:
+            assert event.resolved_fx_rate == Decimal("1.1")
+        mock_get.assert_called_once_with(date(2021, 5, 17), "GBP")
 
 
 class TestECBRateFetcherDateRange:

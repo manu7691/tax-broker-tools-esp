@@ -98,21 +98,34 @@ if "%choice%"=="3" (
     pause
     goto menu
 )
-if "%choice%"=="4" (
-    echo Calculating Tax...
-    echo (Optional: drop a Revolut investment CSV in input\revolut\*.csv.
-    echo  Set the tracked ticker (and ISIN if available^) in input\ticker.json so
-    echo  same-stock rows merge into the FIFO pool; other tickers are ignored.^)
-    .venv\Scripts\tax-engine
-    pause
-    goto menu
+REM Calculate Tax uses a label (not an inline block) so the freshly-read prompt
+REM variable expands correctly — %var% set with set /p inside a parenthesised
+REM block is parse-time expanded (empty), which would break the toggle.
+if "%choice%"=="4" goto calc_tax
+if "%choice%"=="5" goto gen_charts
+REM Demo options 6/7 use labels so the freshly-read prompt variable expands
+REM correctly (see the :calc_tax note below).
+if "%choice%"=="6" goto demo_tax
+if "%choice%"=="7" goto demo_charts
+if "%choice%"=="8" (
+    exit /b 0
 )
-if "%choice%"=="5" (
-    echo ------------------------------------------
-    echo Generate Charts ^& Tax Dashboard
-    echo (Defaults: auto-detected ticker/company. Peers: edit input\peers.json)
-    echo ------------------------------------------
-    set CHART_ARGS=
+
+echo Invalid option.
+pause
+goto menu
+
+:gen_charts
+echo ------------------------------------------
+echo Generate Charts ^& Tax Dashboard
+echo ------------------------------------------
+set "CHART_ARGS="
+set /p all_sec="Process ALL securities across brokers (portfolio mode)? [y/N]: "
+if /i "%all_sec%"=="y" (
+    set "CHART_ARGS=--all-securities"
+    echo Portfolio mode: will process all securities present in E*TRADE and Revolut data.
+) else (
+    echo Single-security mode: please specify configuration override details below (or press Enter to auto-detect).
     set /p chart_ticker="Enter stock ticker (or Enter to auto-detect/fallback to DT): "
     if defined chart_ticker set CHART_ARGS=--ticker %chart_ticker%
     set /p chart_comp="Enter company name (or Enter to fetch from Yahoo Finance): "
@@ -123,29 +136,48 @@ if "%choice%"=="5" (
         set /p peer_input="Peer tickers, space-separated (or Enter for defaults DDOG ESTC): "
         if defined peer_input set CHART_ARGS=%CHART_ARGS% --peers %peer_input%
     )
-    "%PYTHON_BIN%" generate_charts.py %CHART_ARGS%
-    pause
-    goto menu
 )
-if "%choice%"=="6" (
-    echo Calculating Tax & PDF Report - demo data...
-    .venv\Scripts\tax-demo
-    pause
-    goto menu
-)
-if "%choice%"=="7" (
-    echo ------------------------------------------
-    echo Generate Charts ^& Tax Dashboard - demo data
-    echo ------------------------------------------
-    "%PYTHON_BIN%" generate_charts.py --demo
-    pause
-    goto menu
-)
-if "%choice%"=="8" (
-    exit /b 0
-)
+"%PYTHON_BIN%" generate_charts.py %CHART_ARGS%
+pause
+goto menu
 
-echo Invalid option.
+:calc_tax
+echo ------------------------------------------
+echo Calculating Tax...
+echo (Optional: drop Revolut investment CSV^(s^) in input\revolut\*.csv.^)
+echo ------------------------------------------
+set "ENGINE_ARGS="
+set /p all_sec="Process ALL securities across brokers (portfolio mode)? [y/N]: "
+if /i "%all_sec%"=="y" set "ENGINE_ARGS=--all-securities"
+if defined ENGINE_ARGS (
+    echo Portfolio mode: each security gets its own FIFO queue, rolled up into one savings base.
+    echo Tip: add ISINs in input\securities.json ^('isin_map'^) to merge the same stock across brokers.
+) else (
+    echo Single-security mode: the ticker in input\ticker.json ^(matching Revolut rows merge in^).
+)
+.venv\Scripts\tax-engine %ENGINE_ARGS%
+pause
+goto menu
+
+:demo_tax
+echo ------------------------------------------
+echo Calculating Tax ^& PDF Report - demo data...
+echo ------------------------------------------
+set "DEMO_ARGS="
+set /p demo_multi="Multi-symbol portfolio demo (several securities + a GBP one)? [y/N]: "
+if /i "%demo_multi%"=="y" set "DEMO_ARGS=--all-securities"
+.venv\Scripts\tax-demo %DEMO_ARGS%
+pause
+goto menu
+
+:demo_charts
+echo ------------------------------------------
+echo Generate Charts ^& Tax Dashboard - demo data
+echo ------------------------------------------
+set "DEMO_ARGS="
+set /p demo_multi="Multi-symbol portfolio demo (shows the per-security chart)? [y/N]: "
+if /i "%demo_multi%"=="y" set "DEMO_ARGS=--all-securities"
+"%PYTHON_BIN%" generate_charts.py --demo %DEMO_ARGS%
 pause
 goto menu
 

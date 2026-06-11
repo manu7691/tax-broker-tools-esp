@@ -6,9 +6,11 @@ SMA calculations, and peer group normalized returns.
 """
 
 import datetime
-import requests
 from datetime import date, timedelta
 from decimal import Decimal
+from typing import Any
+
+import requests
 
 
 def fetch_latest_price(ticker: str) -> Decimal | None:
@@ -25,75 +27,75 @@ def fetch_latest_price(ticker: str) -> Decimal | None:
     return None
 
 
-def fetch_historical_market_data(ticker: str, start_date: date) -> tuple[list[dict], float, float, float, dict, dict]:
+def fetch_historical_market_data(ticker: str, start_date: date) -> tuple[list[dict[str, Any]], float, float, float, dict[str, str], dict[str, str]]:
     """Fetch daily historical stock prices starting 300 days before the first transaction date to today, calculating 50 & 200 SMA."""
-    quotes = []
+    quotes: list[dict[str, Any]] = []
     current_price = 0.0
     sma50_val = 0.0
     sma200_val = 0.0
     signal = {"en": "Neutral", "es": "Neutral"}
     advice = {"en": "No market trend data available.", "es": "No hay datos de tendencia de mercado disponibles."}
-    
+
     try:
         # Fetch starting 300 days before the first transaction to allow SMA200 calculation on day 1
         fetch_start = start_date - timedelta(days=300)
         period1 = int(datetime.datetime.combine(fetch_start, datetime.time.min).replace(tzinfo=datetime.timezone.utc).timestamp())
         period2 = int(datetime.datetime.combine(date.today() + timedelta(days=1), datetime.time.min).replace(tzinfo=datetime.timezone.utc).timestamp())
-        
+
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?period1={period1}&period2={period2}&interval=1d"
         r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
         if r.status_code != 200:
             # Fallback to standard 5y range
             url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?range=5y&interval=1d"
             r = requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=5)
-            
+
         if r.status_code == 200:
             result = r.json()['chart']['result'][0]
             timestamps = result['timestamp']
             closes = result['indicators']['quote'][0]['close']
-            
-            raw_quotes = []
-            for t, c in zip(timestamps, closes):
+
+            raw_quotes: list[dict[str, Any]] = []
+            for t, c in zip(timestamps, closes, strict=False):
                 if c is not None:
                     dt_str = datetime.datetime.fromtimestamp(t, tz=datetime.timezone.utc).date().isoformat()
                     raw_quotes.append({"date": dt_str, "close": float(c)})
-            
+
             # Calculate SMAs
             for idx, q in enumerate(raw_quotes):
                 close_val = q["close"]
-                
+
                 # 50 SMA
                 if idx >= 49:
                     sma50 = sum(x["close"] for x in raw_quotes[idx-49:idx+1]) / 50.0
                 else:
                     sma50 = None
-                    
+
                 # 200 SMA
                 if idx >= 199:
                     sma200 = sum(x["close"] for x in raw_quotes[idx-199:idx+1]) / 200.0
                 else:
                     sma200 = None
-                    
+
                 quotes.append({
                     "date": q["date"],
                     "close": close_val,
                     "sma50": sma50,
                     "sma200": sma200
                 })
-            
+
             if quotes:
                 latest_quote = quotes[-1]
                 # Try to get the actual real-time price first, otherwise fallback to the last close
                 live_price = fetch_latest_price(ticker)
                 current_price = float(live_price) if live_price is not None else latest_quote["close"]
-                
+
                 # Determine signal
                 if latest_quote["sma50"] and latest_quote["sma200"]:
                     s50 = latest_quote["sma50"]
                     s200 = latest_quote["sma200"]
                     sma50_val = s50
                     sma200_val = s200
-                    
+
                     if current_price > s50 and current_price > s200:
                         signal = {
                             "en": "Bullish (Strong Growth Trend)",
@@ -123,18 +125,18 @@ def fetch_historical_market_data(ticker: str, start_date: date) -> tuple[list[di
                         }
     except Exception as e:
         print(f"Warning: Failed to fetch historical data for {ticker}: {e}")
-        
+
     return quotes, current_price, sma50_val, sma200_val, signal, advice
 
 
-def fetch_peers_data(peers: list[str], start_date: date) -> dict[str, list[dict]]:
+def fetch_peers_data(peers: list[str], start_date: date) -> dict[str, list[dict[str, Any]]]:
     """Fetch daily quotes for peers and return normalized performance starting from first date."""
-    peers_quotes = {}
-    
+    peers_quotes: dict[str, list[dict[str, Any]]] = {}
+
     # We query the exact range since start_date to today
     period1 = int(datetime.datetime.combine(start_date, datetime.time.min).replace(tzinfo=datetime.timezone.utc).timestamp())
     period2 = int(datetime.datetime.combine(date.today() + timedelta(days=1), datetime.time.min).replace(tzinfo=datetime.timezone.utc).timestamp())
-    
+
     for peer in peers:
         url = f"https://query1.finance.yahoo.com/v8/finance/chart/{peer}?period1={period1}&period2={period2}&interval=1d"
         try:
@@ -143,24 +145,24 @@ def fetch_peers_data(peers: list[str], start_date: date) -> dict[str, list[dict]
                 result = r.json()['chart']['result'][0]
                 timestamps = result.get('timestamp', [])
                 closes = result.get('indicators', {}).get('quote', [{}])[0].get('close', [])
-                
-                raw = []
-                for t, c in zip(timestamps, closes):
+
+                raw: list[dict[str, Any]] = []
+                for t, c in zip(timestamps, closes, strict=False):
                     if c is not None:
                         dt_str = datetime.datetime.fromtimestamp(t, tz=datetime.timezone.utc).date().isoformat()
                         raw.append({"date": dt_str, "close": float(c)})
-                
+
                 if raw:
                     first_close = raw[0]["close"]
                     # Calculate percentage return relative to first day
-                    normalized = []
+                    normalized: list[dict[str, Any]] = []
                     for q in raw:
                         pct = ((q["close"] - first_close) / first_close) * 100.0
                         normalized.append({"date": q["date"], "pct": pct, "price": q["close"]})
                     peers_quotes[peer] = normalized
         except Exception as e:
             print(f"Warning: Failed to fetch peer comparison for {peer}: {e}")
-            
+
     return peers_quotes
 
 

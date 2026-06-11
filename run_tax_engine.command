@@ -101,38 +101,57 @@ while true; do
         4)
             echo "------------------------------------------"
             echo "Calculating Tax..."
-            echo "(Optional: drop a Revolut investment CSV in input/revolut/*.csv."
-            echo " Set the tracked ticker (and ISIN if available) in input/ticker.json"
-            echo " so same-stock rows merge into the FIFO pool; other tickers are ignored.)"
+            echo "(Optional: drop Revolut investment CSV(s) in input/revolut/*.csv.)"
             echo "------------------------------------------"
-            .venv/bin/tax-engine
+            read -p "Process ALL securities across brokers (portfolio mode)? [y/N]: " all_sec
+            ENGINE_ARGS=""
+            case "$all_sec" in
+                [Yy]*)
+                    ENGINE_ARGS="--all-securities"
+                    echo "Portfolio mode: each security gets its own FIFO queue, rolled up into one savings base."
+                    echo "Tip: add ISINs in input/securities.json ('isin_map') to merge the same stock across brokers."
+                    ;;
+                *)
+                    echo "Single-security mode: the ticker in input/ticker.json (matching Revolut rows merge in)."
+                    ;;
+            esac
+            .venv/bin/tax-engine $ENGINE_ARGS
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
         5)
             echo "------------------------------------------"
             echo "Generate Charts & Tax Dashboard"
-            echo "(Defaults: auto-detected ticker/company. Peers: edit input/peers.json)"
             echo "------------------------------------------"
+            read -p "Process ALL securities across brokers (portfolio mode)? [y/N]: " all_sec
             CHART_ARGS=""
-            read -p "Enter stock ticker (or Enter to auto-detect/fallback to DT): " chart_ticker
-            if [ -n "$chart_ticker" ]; then
-                CHART_ARGS="--ticker $chart_ticker"
-                read -p "Enter company name (or Enter to fetch from Yahoo Finance): " chart_comp
-                if [ -n "$chart_comp" ]; then
-                    CHART_ARGS="$CHART_ARGS --company-name \"$chart_comp\""
-                fi
-            fi
-            read -p "Enter current stock price in USD (or press Enter for live): " chart_price
-            if [ -n "$chart_price" ]; then
-                CHART_ARGS="$CHART_ARGS --current-price $chart_price"
-            fi
-            if [ ! -f "input/peers.json" ]; then
-                read -p "Peer tickers to compare, space-separated (or Enter for defaults DDOG ESTC): " peer_input
-                if [ -n "$peer_input" ]; then
-                    CHART_ARGS="$CHART_ARGS --peers $peer_input"
-                fi
-            fi
+            case "$all_sec" in
+                [Yy]*)
+                    CHART_ARGS="--all-securities"
+                    echo "Portfolio mode: will process all securities present in E*TRADE and Revolut data."
+                    ;;
+                *)
+                    echo "Single-security mode: please specify configuration override details below (or press Enter to auto-detect)."
+                    read -p "Enter stock ticker (or Enter to auto-detect/fallback to DT): " chart_ticker
+                    if [ -n "$chart_ticker" ]; then
+                        CHART_ARGS="--ticker $chart_ticker"
+                        read -p "Enter company name (or Enter to fetch from Yahoo Finance): " chart_comp
+                        if [ -n "$chart_comp" ]; then
+                            CHART_ARGS="$CHART_ARGS --company-name \"$chart_comp\""
+                        fi
+                    fi
+                    read -p "Enter current stock price in USD (or press Enter for live): " chart_price
+                    if [ -n "$chart_price" ]; then
+                        CHART_ARGS="$CHART_ARGS --current-price $chart_price"
+                    fi
+                    if [ ! -f "input/peers.json" ]; then
+                        read -p "Peer tickers to compare, space-separated (or Enter for defaults DDOG ESTC): " peer_input
+                        if [ -n "$peer_input" ]; then
+                            CHART_ARGS="$CHART_ARGS --peers $peer_input"
+                        fi
+                    fi
+                    ;;
+            esac
             "$PYTHON_BIN" generate_charts.py $CHART_ARGS
             echo ""
             read -p "Press Enter to return to menu..."
@@ -141,7 +160,11 @@ while true; do
             echo "------------------------------------------"
             echo "Calculating Tax & PDF Report - demo data..."
             echo "------------------------------------------"
-            .venv/bin/tax-demo
+            read -p "Multi-symbol portfolio demo (several securities + a GBP one)? [y/N]: " demo_multi
+            case "$demo_multi" in
+                [Yy]*) .venv/bin/tax-demo --all-securities ;;
+                *)     .venv/bin/tax-demo ;;
+            esac
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
@@ -149,7 +172,11 @@ while true; do
             echo "------------------------------------------"
             echo "Generate Charts & Tax Dashboard - demo data"
             echo "------------------------------------------"
-            "$PYTHON_BIN" generate_charts.py --demo
+            read -p "Multi-symbol portfolio demo (shows the per-security chart)? [y/N]: " demo_multi
+            case "$demo_multi" in
+                [Yy]*) "$PYTHON_BIN" generate_charts.py --demo --all-securities ;;
+                *)     "$PYTHON_BIN" generate_charts.py --demo ;;
+            esac
             echo ""
             read -p "Press Enter to return to menu..."
             ;;

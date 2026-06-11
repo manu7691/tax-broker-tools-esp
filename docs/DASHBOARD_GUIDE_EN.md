@@ -63,15 +63,34 @@ Priority order (highest wins):
 2. **`input/peers.json`** — persistent config, read on every run.
 3. Built-in fallback: `["DDOG", "ESTC"]`.
 
-To set your own peers permanently, create `input/peers.json`:
+To set your own peers permanently, create `input/peers.json`. 
 
-```json
-["DDOG", "MSFT", "NVDA"]
-```
+* **Single-Security Format (flat list):**
+  ```json
+  ["DDOG", "MSFT", "NVDA"]
+  ```
+
+* **Multi-Security / Portfolio Format (ticker dictionary):**
+  If you operate in portfolio mode, you can specify custom competitors for each individual security:
+  ```json
+  {
+    "DT": ["DDOG", "ESTC"],
+    "TSLA": ["RIVN", "LCID", "NIO"],
+    "NVDA": ["AMD", "INTC"]
+  }
+  ```
 
 If the file is absent and you run via the menu launcher, it will ask you once before
 generating. You can add as many tickers as you like — each one appears as a line in the
 chart and as a Yahoo Finance link in the Intel Hub.
+
+---
+
+## Portfolio Mode & Sticky Menu Features
+
+* **Sticky Navigation Header:** The dashboard controls (Language toggle, Security Switcher dropdown, Privacy button, and Tab Bar) are pinned to the top of the browser window using a glassmorphic background blur (`backdrop-filter`). This ensures you can switch tabs or swap securities instantly without scrolling back to the top.
+* **Portfolio Summary Card:** If you process multiple securities (by enabling portfolio mode), a top-level **Portfolio Allocation Doughnut Chart** and a detailed **Holdings Table** (listing shares, ISINs, average costs, market values, unrealized gains, and portfolio weight) will appear at the top of the "My Stock" page.
+* **Dynamic Dropdown Security Switcher:** When multiple securities are present, a dropdown selection appears in the header. Selecting a different symbol instantly updates all dashboard widgets, charts, simulated sales, and peer groups in real time.
 
 ---
 

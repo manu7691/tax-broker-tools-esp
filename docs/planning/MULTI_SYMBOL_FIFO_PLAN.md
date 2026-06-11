@@ -1,10 +1,16 @@
 # Multi-Symbol, Multi-Platform FIFO — Design Plan
 
-> **Status:** Draft / planning only.
-> Nothing here is implemented yet. It captures the target architecture for turning
-> the current single-security engine into a portfolio-wide one that ingests
-> multiple securities from multiple platforms (E\*TRADE, Revolut, Trade Republic, …)
-> and produces a single Spanish savings-base result.
+> **Status:** Phases 1–4 and 6 implemented; phase 5 deferred (needs a sample).
+> This captures the target architecture for turning the current single-security
+> engine into a portfolio-wide one that ingests multiple securities from multiple
+> platforms (E\*TRADE, Revolut, Trade Republic, …) and produces a single Spanish
+> savings-base result. **Phases 1–4** (model + ISIN grouping + aggregation;
+> per-security + portfolio reporting behind `--all-securities`; ticker→ISIN
+> resolution; multi-currency FX) and **Phase 6** (charts: per-security portfolio
+> breakdown) have landed. **Phase 5 (Trade Republic)** is deferred: TR issues only
+> PDFs, and the usable CSV (community `pytr` `account_transactions.csv`:
+> `;`-delimited, has ISIN/Shares/Value/Fees/Taxes, EUR, localized labels) needs a
+> real sample to pin the value-sign convention and Type strings before it's safe.
 
 ---
 
@@ -135,14 +141,26 @@ class PlatformParser(Protocol):
 
 ## 6. Phased rollout
 
-1. **Model + grouping**: add `symbol`/`isin` to `StockEvent`/`ShareLot`; build
-   `portfolio.py` group-by-ISIN runner + aggregation; Revolut emits all tickers.
+1. ✅ **Model + grouping** *(done)*: added `symbol`/`isin` to `StockEvent`/`ShareLot`;
+   built `portfolio.py` group-by-ISIN runner + aggregation and `securities.py`
+   (`Security` + `securities.json`); Revolut emits all tickers via `all_securities`.
    (Gains export only — has ISIN. No new platforms yet.)
-2. **Reporting**: per-security sections + portfolio rollup + per-broker subtotal.
-3. **Ticker→ISIN resolution** for movements-only feeds (`securities.json` + cache).
-4. **Multi-currency FX** generalization.
+2. ✅ **Reporting** *(done)*: per-security Portfolio Summary table + per-security
+   ledger/FIFO sections + per-broker subtotal + combined savings base, behind
+   `--all-securities` (auto-on with `securities.json`). Single-stock mode unchanged.
+3. ✅ **Ticker→ISIN resolution** *(done)*: the movements export emits all tickers,
+   each resolved via `securities.json` `isin_map` → ISINs learned from the gains
+   export in the same folder → persistent `.isin_cache.json` (`build_isin_resolver`),
+   falling back to ticker grouping with a visible caveat. Network lookup is a
+   pluggable hook (`network=`), off by default.
+4. ✅ **Multi-currency FX** *(done)*: `ECBRateFetcher.get_rate(date, currency)` for
+   any ECB reference currency (per-currency cache, backward-compatible with the
+   old USD-only file); `StockEvent.currency` drives EUR conversion; Revolut accepts
+   any ECB currency; non-ECB currencies are skipped with a warning.
 5. **Trade Republic** parser (after we get a sample export) + any other platform.
-6. **Charts**: multi-security selector.
+   *Deferred — needs a real export sample (likely the `pytr` `;`-delimited CSV).*
+6. ✅ **Charts** *(done)*: per-security Portfolio breakdown chart (invested + realized
+   per security) in the Advanced tab, shown only when >1 security is present.
 
 Each phase is independently shippable and keeps single-stock mode green.
 

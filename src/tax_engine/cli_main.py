@@ -27,7 +27,9 @@ from tax_engine import (
     prefetch_ecb_rates,
 )
 from tax_engine.options_parser import load_options_events
+from tax_engine.portfolio import SecurityResult, run_portfolio
 from tax_engine.revolut_parser import load_revolut_events, merge_savings_income
+from tax_engine.securities import SecuritiesConfig, load_securities_config
 
 
 def load_prior_losses(path: Path) -> dict[int, Decimal]:
@@ -646,6 +648,45 @@ def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = Non
             sell.notes = sell.notes.replace("Sell Order", "Manual Sell")
 
 
+def build_portfolio_or_engine(
+    etrade_events: list[StockEvent],
+    revolut_events: list[StockEvent],
+    *,
+    all_securities: bool,
+    securities_config: SecuritiesConfig | None = None,
+    primary_symbol: str | None = None,
+    primary_isin: str | None = None,
+) -> tuple[TaxEngine, list[SecurityResult] | None, list[StockEvent]]:
+    """Assemble events and run either the single-security engine or the portfolio.
+
+    In ``all_securities`` mode the E*TRADE (employer) events are tagged with the
+    primary identity so they merge with the same ISIN/ticker from other brokers,
+    every security gets its own ISIN-keyed FIFO queue, and the returned engine is
+    the portfolio *aggregate* (driving the combined savings base + reporting) with
+    the per-security results alongside. Otherwise a single engine processes the
+    merged event stream, exactly as before.
+
+    Returns ``(engine, report_securities_or_None, all_events)``.
+    """
+    if all_securities and (primary_symbol or primary_isin):
+        for e in etrade_events:
+            e.symbol = primary_symbol or e.symbol
+            if primary_isin:
+                e.isin = primary_isin or e.isin
+
+    events = etrade_events + revolut_events
+    auto_detect_sell_to_cover(events)
+    prefetch_ecb_rates(events)
+
+    if all_securities:
+        portfolio = run_portfolio(events, config=securities_config)
+        return portfolio.aggregate, portfolio.results, events
+
+    engine = TaxEngine()
+    engine.process_all(events)
+    return engine, None, events
+
+
 def main() -> None:
     """Run the tax engine with actual data from Excel files."""
     parser = argparse.ArgumentParser(
@@ -690,6 +731,14 @@ def main() -> None:
         help="Ticker to filter the optional Revolut CSV when no ISIN is available "
         "(ISIN is preferred). Overrides input/ticker.json.",
     )
+    parser.add_argument(
+        "--all-securities",
+        action="store_true",
+        help="Portfolio mode: process every security across all platforms, each "
+        "with its own FIFO queue (grouped by ISIN), and roll them up into one "
+        "savings base. Auto-enabled when input/securities.json is present. Without "
+        "it, only the primary security (input/ticker.json) is processed, as before.",
+    )
     args = parser.parse_args()
     input_dir: Path = args.input_dir
     output_dir: Path = args.output_dir
@@ -714,29 +763,41 @@ def main() -> None:
     rsu_events = load_rsu_events(input_dir / "rsu")
     options_events = load_options_stock_events(input_dir)
 
-    # Optional Revolut export: same security (matched on ISIN), folded into the
-    # same FIFO pool so cross-broker FIFO and the 2-month wash-sale rule apply.
+    # Portfolio mode: process every security (each with its own ISIN-keyed FIFO
+    # queue) and roll them up. Auto-enabled when input/securities.json exists, or
+    # via --all-securities. Without it, behaviour = today (primary security only).
     config_symbol, config_isin = load_security_config(input_dir)
+    securities_config = load_securities_config(input_dir)
+    all_securities = args.all_securities or (input_dir / "securities.json").exists()
+
+    # Optional Revolut export. In single-security mode it is filtered to the
+    # tracked security (matched on ISIN) and folded into the same FIFO pool; in
+    # portfolio mode it emits every ticker from the gains export (each ISIN-tagged).
     revolut_isin = (args.revolut_isin or config_isin) or None
     revolut_symbol = (args.revolut_symbol or config_symbol) or None
     revolut_events, revolut_income = load_revolut_events(
-        input_dir, isin=revolut_isin, symbol=revolut_symbol
+        input_dir, isin=revolut_isin, symbol=revolut_symbol,
+        all_securities=all_securities, isin_map=securities_config.isin_map,
     )
     if revolut_income:
         savings_income = merge_savings_income(savings_income, revolut_income)
 
-    # Combine all events (engine.process_all handles chronological sorting internally)
-    events = espp_events + sell_events + rsu_events + options_events + revolut_events
-
-    # Auto-detect sell-to-cover vs manual sells
-    auto_detect_sell_to_cover(events)
-
-    # Pre-fetch all ECB rates in one API call (more efficient)
-    prefetch_ecb_rates(events)
-
-    # Create engine and process events
-    engine = TaxEngine()
-    engine.process_all(events)
+    # Assemble events and run the engine (single-security) or the portfolio
+    # (all securities, each with its own ISIN-keyed FIFO queue rolled up into one
+    # savings base). The returned engine drives the prints + report below.
+    etrade_events = espp_events + sell_events + rsu_events + options_events
+    engine, report_securities, events = build_portfolio_or_engine(
+        etrade_events, revolut_events,
+        all_securities=all_securities,
+        securities_config=securities_config,
+        primary_symbol=config_symbol,
+        primary_isin=config_isin,
+    )
+    if report_securities is not None:
+        print(
+            f"Portfolio mode: {len(report_securities)} security(ies) processed — "
+            f"{', '.join(r.security.label for r in report_securities)}."
+        )
 
     # Print results
     engine.print_ledger()
@@ -795,10 +856,25 @@ def main() -> None:
         print("     document from the company for each offering period.")
         print()
 
-    # Show current state
-    print(f"\nCurrent Position: {engine.state.total_shares} shares")
-    print(f"Current Informational Avg Cost: €{engine.state.avg_cost_eur:,.4f}")
-    print(f"Total Portfolio Cost: €{engine.state.total_portfolio_cost_eur:,.4f}")
+    # Show current state. In portfolio mode the aggregate mixes securities, so a
+    # single "avg cost / shares" line is meaningless — print one row per security.
+    if report_securities is not None:
+        print("\nCurrent Positions (per security):")
+        for r in report_securities:
+            st = r.engine.state
+            if st.total_shares > 0:
+                print(
+                    f"  {r.security.label}: {st.total_shares:,.4f} shares, "
+                    f"avg cost €{st.avg_cost_eur:,.4f}, cost basis €{st.total_portfolio_cost_eur:,.2f}"
+                )
+        total_cost = sum(
+            (r.engine.state.total_portfolio_cost_eur for r in report_securities), Decimal("0")
+        )
+        print(f"Total cost basis across securities: €{total_cost:,.2f}")
+    else:
+        print(f"\nCurrent Position: {engine.state.total_shares} shares")
+        print(f"Current Informational Avg Cost: €{engine.state.avg_cost_eur:,.4f}")
+        print(f"Total Portfolio Cost: €{engine.state.total_portfolio_cost_eur:,.4f}")
 
     # Generate PDF reports (English and Spanish for Hacienda)
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -808,11 +884,13 @@ def main() -> None:
     print(f"Generating English PDF report at: {pdf_path_en}...")
     engine.generate_pdf_report(pdf_path_en, lang="en", espp_discounts=espp_discounts,
                                espp_early_sale_discounts=espp_early_sales,
-                               opening_losses=opening_losses, savings_income=savings_income)
+                               opening_losses=opening_losses, savings_income=savings_income,
+                               securities=report_securities)
     print(f"Generating Spanish PDF report (for Hacienda) at: {pdf_path_es}...")
     engine.generate_pdf_report(pdf_path_es, lang="es", espp_discounts=espp_discounts,
                                espp_early_sale_discounts=espp_early_sales,
-                               opening_losses=opening_losses, savings_income=savings_income)
+                               opening_losses=opening_losses, savings_income=savings_income,
+                               securities=report_securities)
     print("PDF generation complete.")
 
 

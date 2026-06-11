@@ -32,6 +32,9 @@ To share this repository with your teammates or show it to your tax advisor, the
 *   **How the PDF Report & Dashboard Connect:**
     *   🇺🇸 [REPORT_VS_DASHBOARD_EN.md](docs/REPORT_VS_DASHBOARD_EN.md)
     *   🇪🇸 [REPORT_VS_DASHBOARD_ES.md](docs/REPORT_VS_DASHBOARD_ES.md)
+*   **Multiple Securities & Brokers (Portfolio Mode) Guide:**
+    *   🇺🇸 [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md)
+    *   🇪🇸 [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md)
 
 ---
 
@@ -198,7 +201,8 @@ Everything lives under `input/`. Menu options 1–2 create most of these automat
 | `input/options/*.pdf` | If you exercised options | E-Trade → Documents → option exercise confirmations |
 | `input/prior_losses.json` | Optional | Pending losses from before your data window, e.g. `{"2019": 1500}` |
 | `input/savings_income.json` | Optional | Dividends/interest (see *Filing Spanish Renta* above) |
-| `input/ticker.json` | For Revolut | Tracked security, e.g. `{"ticker": "DT", "isin": "US..."}` — the ISIN drives the Revolut filter |
+| `input/ticker.json` | For Revolut | Primary/employer security, e.g. `{"ticker": "DT", "isin": "US..."}` — the ISIN drives the single-security Revolut filter |
+| `input/securities.json` | Optional | Multi-security config: turns on portfolio mode and maps tickers→ISINs (see *Multiple securities & brokers* below) |
 | `input/revolut/*.csv` | Optional | Revolut investment CSV — *Account statement* (preferred) or *Profit & Loss* (see below) |
 
 ### Revolut (optional)
@@ -207,7 +211,17 @@ If you also hold **the same company stock** on Revolut, export its **account sta
 
 > An older **realized gains/losses** export (`Date acquired, Date sold, … ISIN, Gross proceeds`) is also accepted (filtered by ISIN; its "Other income & fees" section adds to dividend/interest totals), but it only lists *sells* — prefer the account statement above so your buys are included.
 
-Matched rows are folded into the **same FIFO pool** as your E\*TRADE shares, so FIFO ordering and the 2-month wash-sale rule apply across both brokers, as Spain requires for homogeneous securities. Gains are computed in EUR at the **official ECB rate per date** (Revolut's own FX column is ignored). Only USD (ECB-converted) and EUR (1:1) rows are processed; other currencies are skipped with a warning. **Requires the complete acquisition history for that security** so the global FIFO queue never goes negative. When more than one broker is present, the PDF tags each ledger row with a **Broker** column and adds a *Realized Gains/Losses by Broker* subtotal; the charts use the same combined position. Format reference: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
+Matched rows are folded into the **same FIFO pool** as your E\*TRADE shares, so FIFO ordering and the 2-month wash-sale rule apply across both brokers, as Spain requires for homogeneous securities. Gains are computed in EUR at the **official ECB rate per date** (Revolut's own FX column is ignored). Rows in **EUR (1:1) or any ECB reference currency** (USD, GBP, CHF, …) are converted; currencies the ECB does not publish are skipped with a warning. **Requires the complete acquisition history for that security** so the global FIFO queue never goes negative. When more than one broker is present, the PDF tags each ledger row with a **Broker** column and adds a *Realized Gains/Losses by Broker* subtotal; the charts use the same combined position. Format reference: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
+
+### Multiple securities & brokers (portfolio mode)
+
+By default the tool tracks **one** security (your employer stock). If you also traded **other** securities (e.g. on Revolut), turn on **portfolio mode**: every security gets its own FIFO queue (grouped by **ISIN**), and the results roll up into one Spanish savings base.
+
+- **Turn it on:** the launcher's *Calculate Tax* option now asks *"Process ALL securities across brokers?"*; or run `tax-engine --all-securities`; or simply create `input/securities.json` (its presence auto-enables it).
+- **`input/securities.json`** (all fields optional): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limits which securities are processed (empty = all), and `isin_map` supplies ISINs for the ticker-only Revolut *account statement* so the same stock merges across brokers reliably.
+- **Output:** the PDF adds a **Portfolio Summary by Security** table plus a separate ledger + FIFO section per security; the savings base, 4-year carryforward and 25% cross-offset run on the portfolio total, while the 2-month wash-sale rule stays per security. The dashboard adds a per-security breakdown chart.
+
+Full walkthrough: [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md) · [🇪🇸 ES](docs/MULTI_SECURITY_GUIDE_ES.md).
 
 ## ❓ Troubleshooting
 
@@ -250,6 +264,9 @@ Para compartir este repositorio con tus compañeros de equipo o mostrárselo a t
 *   **Cómo se conectan el Informe PDF y el Panel:**
     *   🇺🇸 [REPORT_VS_DASHBOARD_EN.md](docs/REPORT_VS_DASHBOARD_EN.md)
     *   🇪🇸 [REPORT_VS_DASHBOARD_ES.md](docs/REPORT_VS_DASHBOARD_ES.md)
+*   **Guía de Varios Valores y Brókers (Modo Cartera):**
+    *   🇺🇸 [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md)
+    *   🇪🇸 [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md)
 
 ---
 
@@ -416,7 +433,8 @@ Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría autom
 | `input/options/*.pdf` | Si ejerciste opciones | E-Trade → Documents → confirmaciones de ejercicio de opciones |
 | `input/prior_losses.json` | Opcional | Pérdidas pendientes de antes de tu ventana de datos, p. ej. `{"2019": 1500}` |
 | `input/savings_income.json` | Opcional | Dividendos/intereses (ver *Declarar en Renta* arriba) |
-| `input/ticker.json` | Para Revolut | Valor analizado, p. ej. `{"ticker": "DT", "isin": "US..."}` — el ISIN filtra el CSV de Revolut |
+| `input/ticker.json` | Para Revolut | Valor principal/de empresa, p. ej. `{"ticker": "DT", "isin": "US..."}` — el ISIN filtra el CSV de Revolut en modo de un solo valor |
+| `input/securities.json` | Opcional | Configuración multivalor: activa el modo cartera y asigna tickers→ISINs (ver *Varios valores y brókers* abajo) |
 | `input/revolut/*.csv` | Opcional | CSV de inversión de Revolut — *Extracto de cuenta* (preferido) o *Profit & Loss* (ver abajo) |
 
 ### Revolut (opcional)
@@ -425,7 +443,17 @@ Si además tienes **las mismas acciones de la empresa** en Revolut, exporta su *
 
 > También se acepta un export más antiguo de **ganancias/pérdidas realizadas** (`Date acquired, Date sold, … ISIN, Gross proceeds`) (filtrado por ISIN; su sección "Other income & fees" se suma a dividendos/intereses), pero solo lista *ventas* — usa preferentemente el extracto de cuenta para que se incluyan tus compras.
 
-Las filas coincidentes se integran en el **mismo conjunto FIFO** que tus acciones de E\*TRADE, de modo que el orden FIFO y la regla de los 2 meses (*wash sale*) se aplican entre ambos brókers, como exige España para los valores homogéneos. Las ganancias se calculan en EUR al **tipo oficial del BCE de cada fecha** (se ignora la columna FX de Revolut). Solo se procesan filas en USD (convertidas con el BCE) y EUR (1:1); otras divisas se omiten con un aviso. **Requiere el historial completo de adquisiciones** de ese valor para que la cola FIFO global nunca quede en negativo. Cuando hay más de un bróker, el PDF marca cada fila del libro con una columna **Bróker** y añade un subtotal *Ganancias/Pérdidas Realizadas por Bróker*; los gráficos usan la misma posición combinada. Formato de referencia: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
+Las filas coincidentes se integran en el **mismo conjunto FIFO** que tus acciones de E\*TRADE, de modo que el orden FIFO y la regla de los 2 meses (*wash sale*) se aplican entre ambos brókers, como exige España para los valores homogéneos. Las ganancias se calculan en EUR al **tipo oficial del BCE de cada fecha** (se ignora la columna FX de Revolut). Se convierten las filas en **EUR (1:1) o en cualquier divisa de referencia del BCE** (USD, GBP, CHF, …); las divisas que el BCE no publica se omiten con un aviso. **Requiere el historial completo de adquisiciones** de ese valor para que la cola FIFO global nunca quede en negativo. Cuando hay más de un bróker, el PDF marca cada fila del libro con una columna **Bróker** y añade un subtotal *Ganancias/Pérdidas Realizadas por Bróker*; los gráficos usan la misma posición combinada. Formato de referencia: [`docs/revolut-movements.example.csv`](docs/revolut-movements.example.csv).
+
+### Varios valores y brókers (modo cartera)
+
+Por defecto la herramienta analiza **un** valor (las acciones de tu empresa). Si además operaste con **otros** valores (p. ej. en Revolut), activa el **modo cartera**: cada valor tiene su propia cola FIFO (agrupada por **ISIN**) y los resultados se consolidan en una única base del ahorro española.
+
+- **Cómo activarlo:** la opción *Calcular Impuestos* del menú ahora pregunta *«¿Procesar TODOS los valores entre brókers?»*; o ejecuta `tax-engine --all-securities`; o simplemente crea `input/securities.json` (su presencia lo activa automáticamente).
+- **`input/securities.json`** (todos los campos opcionales): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limita qué valores se procesan (vacío = todos) e `isin_map` aporta los ISINs del *extracto de cuenta* de Revolut (que solo tiene ticker) para que el mismo valor se fusione entre brókers de forma fiable.
+- **Resultado:** el PDF añade una tabla **Resumen de Cartera por Valor** y una sección de libro + FIFO por valor; la base del ahorro, la compensación a 4 años y el límite del 25% operan sobre el total de la cartera, mientras que la regla de los 2 meses se mantiene por valor. El panel añade un gráfico de desglose por valor.
+
+Guía completa: [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md) · [🇺🇸 EN](docs/MULTI_SECURITY_GUIDE_EN.md).
 
 ## ❓ Solución de Problemas
 
