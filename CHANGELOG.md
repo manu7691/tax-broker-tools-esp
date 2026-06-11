@@ -104,6 +104,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Internal: split report rendering out of `tax_engine.py` into a new
+  `report.py` (`ReportRenderer`); `tax_engine.py` is now calculation-only and its
+  reporting methods delegate to it. No change to output or the public API.
+- Internal: the PDF/HTML report is now rendered from a Jinja template
+  (`templates/report.html.j2`) instead of inline string concatenation. Output is
+  byte-for-byte equivalent (verified across all report branches). Adds a `jinja2`
+  dependency.
+- Tooling: CI now runs across Python **3.10–3.13** (was 3.12–3.13) to match the
+  advertised `requires-python = ">=3.10"`, type-checks against the 3.10 floor, and
+  reports test coverage (`pytest-cov`, non-blocking).
 - Dashboard break-even: clearer description of why it can look high (Spanish FIFO
   leaves the newest lots; EUR cost shown as a USD price at today's FX; the full-
   portfolio line also recovers past realized losses), and a **per-broker filter**

@@ -13,7 +13,8 @@ This is a **Spanish Tax Engine** that calculates capital gains tax using the **F
 ## Architecture Notes
 
 - **models.py**: Data classes (`StockEvent`, `ProcessedEvent`, `YearlyTaxSummary`, `TaxEngineState`, `ShareLot`, `FifoMatch`)
-- **tax_engine.py**: Core calculation logic using FIFO lots, progressive tax scale, and wash sale rules
+- **tax_engine.py**: Core calculation logic only (FIFO lots, progressive tax scale, wash sale rules, carryforward/savings ledgers). The `TaxEngine` reporting methods (`print_ledger`, `print_tax_summary`, `generate_html_content`, `generate_pdf_report`) are thin delegators to `report.py`.
+- **report.py**: Report rendering (`ReportRenderer`). Console tables plus the bilingual HTML/PDF report, rendered from the Jinja template `templates/report.html.j2`. No tax calculation — it only reads computed results off the engine.
 - **ecb_rates.py**: Fetches USD/EUR rates from ECB Statistical Data Warehouse
 - **rsu_parser.py**: Parses RSU confirmation PDFs using regex
 - **options_parser.py**: Parses Stock Options exercise confirmations
