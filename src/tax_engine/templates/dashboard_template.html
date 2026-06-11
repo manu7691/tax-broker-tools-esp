@@ -63,11 +63,19 @@
         }
 
         .header-controls {
+            position: sticky;
+            top: -24px;
+            z-index: 1000;
+            background: rgba(15, 23, 42, 0.85);
+            backdrop-filter: blur(12px);
+            -webkit-backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 24px;
+            margin: 0 -24px 32px -24px;
             display: flex;
-            justify-content: center;
+            justify-content: space-between;
             align-items: center;
             gap: 16px;
-            margin-bottom: 32px;
             flex-wrap: wrap;
         }
 
@@ -416,28 +424,76 @@
     <div class="header">
         <h1 data-i18n="header_title">My Stock Performance & Tax Dashboard</h1>
         <div class="subtitle" data-i18n="header_subtitle">A simple summary of your RSU and ESPP shares, how much tax you saved, and your investment decisions.</div>
+    </div>
         
-        <div class="header-controls">
+    <div class="header-controls">
+        <!-- Left side controls group -->
+        <div style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap;">
             <!-- Language Selector -->
-            <div class="lang-selector-container" style="display: inline-flex; gap: 8px; margin-right: 12px;">
+            <div class="lang-selector-container" style="display: inline-flex; gap: 8px;">
                 <button id="lang-en-btn" class="privacy-toggle-btn active-lang" onclick="setLanguage('en')" style="padding: 10px 16px; font-weight: 700;">🇬🇧 EN</button>
                 <button id="lang-es-btn" class="privacy-toggle-btn" onclick="setLanguage('es')" style="padding: 10px 16px; font-weight: 700;">🇪🇸 ES</button>
+            </div>
+
+            <!-- Security Switcher (Dynamic Dropdown) -->
+            <div id="security-switcher-container" style="display: none; align-items: center; gap: 8px;">
+                <label for="securitySelect" style="font-weight: 700; font-size: 0.95rem; color: var(--text-secondary);" data-i18n="select_security_label">Security:</label>
+                <select id="securitySelect" onchange="onSecurityChange(this.value)" class="privacy-toggle-btn" style="padding: 10px 16px; font-weight: 700; background: var(--bg-secondary); cursor: pointer; outline: none; border-radius: 8px;">
+                    <!-- Populated dynamically -->
+                </select>
             </div>
 
             <button id="privacyBtn" class="privacy-toggle-btn" onclick="togglePrivacy()">
                 <span>👁️</span> <span id="privacy-btn-text" data-i18n="privacy_btn_hide">Hide Sensitive Data</span>
             </button>
-            <div class="tab-bar">
-                <button id="btn-mystock" class="tab-btn active" onclick="switchTab('mystock')" data-i18n="tab_mystock">📊 My Stock</button>
-                <button id="btn-sell" class="tab-btn" onclick="switchTab('sell')" data-i18n="tab_sell">💸 Should I Sell?</button>
-                <button id="btn-taxes" class="tab-btn" onclick="switchTab('taxes')" data-i18n="tab_taxes">🧾 My Taxes</button>
-                <button id="btn-advanced" class="tab-btn" onclick="switchTab('advanced')" data-i18n="tab_advanced">🔬 Advanced (for the curious)</button>
-            </div>
+        </div>
+
+        <!-- Right side tab group -->
+        <div class="tab-bar" style="margin: 0;">
+            <button id="btn-mystock" class="tab-btn active" onclick="switchTab('mystock')" data-i18n="tab_mystock">📊 My Stock</button>
+            <button id="btn-sell" class="tab-btn" onclick="switchTab('sell')" data-i18n="tab_sell">💸 Should I Sell?</button>
+            <button id="btn-taxes" class="tab-btn" onclick="switchTab('taxes')" data-i18n="tab_taxes">🧾 My Taxes</button>
+            <button id="btn-advanced" class="tab-btn" onclick="switchTab('advanced')" data-i18n="tab_advanced">🔬 Advanced (for the curious)</button>
         </div>
     </div>
     
     <!-- Tab 1: My Stock (situation today) -->
     <div id="tab-mystock" class="dashboard tab-content active">
+        <!-- PORTFOLIO: Roll-up Overview -->
+        <div id="portfolio-summary-card" class="card full-width" style="display:none; margin-bottom: 24px;">
+            <h2 data-i18n="portfolio_summary_title">💼 Portfolio Roll-up Overview</h2>
+            <div class="analysis-text" data-i18n="portfolio_summary_desc">
+                An aggregated view of your entire investment portfolio across all brokers. Select an individual stock from the dropdown above to update the detailed simulations, trends, and countdown charts.
+            </div>
+            
+            <div style="display: grid; grid-template-columns: 1fr 2fr; gap: 24px; align-items: start; margin-top: 16px;">
+                <div style="min-height: 250px; position: relative;">
+                    <canvas id="portfolioAllocationChart"></canvas>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
+                        <thead>
+                            <tr>
+                                <th data-i18n="th_ticker">Ticker</th>
+                                <th data-i18n="th_isin">ISIN</th>
+                                <th data-i18n="th_shares">Shares Held</th>
+                                <th data-i18n="th_avg_cost">Avg Cost</th>
+                                <th data-i18n="th_current_price">Current Price</th>
+                                <th data-i18n="th_market_value">Market Value</th>
+                                <th data-i18n="th_unrealized_pl">Unrealized P&L</th>
+                                <th data-i18n="th_realized_pl">Realized P&L</th>
+                                <th data-i18n="th_dividends">Dividends</th>
+                                <th data-i18n="th_allocation">Allocation %</th>
+                            </tr>
+                        </thead>
+                        <tbody id="holdings-table-body">
+                            <!-- Populated dynamically -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
         <!-- HERO: Your situation today -->
         <div class="card full-width">
             <h2 data-i18n="hero_title">📊 Your situation today</h2>
@@ -604,7 +660,7 @@
                 </span>
             </h2>
             <div class="analysis-text" data-i18n="breakeven_card_desc" style="margin-bottom: 20px;">
-                Calculate the exact USD price required to sell all remaining shares without losing money, factoring in purchase costs, dollar devaluation, and past realized losses.
+                The USD price to sell your remaining shares without losing money. It can look high for three reasons: <strong>Spanish FIFO leaves your newest (often priciest) lots</strong> as the unsold ones; the cost basis is in <strong>euros</strong> and shown as a USD price at today's rate (a weaker dollar raises it); and the "full portfolio" line also has to recover any <strong>past realized losses</strong>.
             </div>
 
             <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 24px; align-items: start;">
@@ -644,6 +700,16 @@
                         <input type="checkbox" id="be-exclude-espp" onchange="updateSimulation()" style="cursor: pointer; width: 16px; height: 16px; accent-color: var(--accent-blue);">
                         <span data-i18n="be_exclude_espp">Exclude ESPP shares (RSUs only)</span>
                     </label>
+
+                    <div id="be-broker-row" style="display: none; align-items: center; gap: 8px; font-size: 0.85rem; color: var(--text-secondary);">
+                        <span data-i18n="be_broker_filter">Broker:</span>
+                        <select id="be-broker-filter" onchange="updateSimulation()" style="background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 4px 8px; border-radius: 6px; font-size: 0.85rem; font-family: inherit; outline: none; cursor: pointer;">
+                            <option value="" data-i18n="be_broker_all">All brokers</option>
+                        </select>
+                    </div>
+                    <div id="be-broker-note" data-i18n="be_broker_note" style="display: none; font-size: 0.78rem; color: var(--accent-yellow);">
+                        Informational only: Spanish FIFO treats all brokers as one pool per security, so a per-broker break-even isn't a tax figure.
+                    </div>
                 </div>
 
                 <!-- Sensitivity Chart Panel -->
@@ -718,6 +784,17 @@
 
     <!-- Tab 4: Advanced (for the curious) -->
     <div id="tab-advanced" class="dashboard tab-content">
+        <!-- Per-security portfolio breakdown (only rendered when >1 security) -->
+        <div id="securities-card" class="card full-width" style="display:none;">
+            <h2 data-i18n="securities_chart_title">How is your portfolio split across securities?</h2>
+            <div class="analysis-text" data-i18n="securities_chart_desc">
+                When you hold more than one security (e.g. employer stock plus stocks traded on Revolut), each one gets its own FIFO queue. This breaks the portfolio down by security.
+            </div>
+            <div class="chart-container">
+                <canvas id="securitiesChart"></canvas>
+            </div>
+        </div>
+
         <!-- Per-broker breakdown (only rendered when >1 broker is present) -->
         <div id="broker-card" class="card full-width" style="display:none;">
             <h2 data-i18n="broker_chart_title">Which broker did this position come from?</h2>
@@ -726,6 +803,48 @@
             </div>
             <div class="chart-container">
                 <canvas id="brokerChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Realized gains & estimated tax per year (portfolio aggregate) -->
+        <div id="yearly-tax-card" class="card full-width" style="display:none;">
+            <h2 data-i18n="yearly_tax_title">Realized Gains & Estimated Tax by Year</h2>
+            <div class="analysis-text" data-i18n="yearly_tax_desc">
+                Your net realized capital gain/loss and the isolated estimated savings tax for each year. The tax is an isolated estimate on these stock gains alone — your real liability depends on your total savings income and prior-year carryforward.
+            </div>
+            <div class="chart-container">
+                <canvas id="yearlyTaxChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Currency exposure (only when more than one currency is present) -->
+        <div id="currency-card" class="card full-width" style="display:none;">
+            <h2 data-i18n="currency_title">Currency Exposure</h2>
+            <div class="analysis-text" data-i18n="currency_desc">
+                Your current portfolio market value (EUR) grouped by each security's trading currency — your FX exposure.
+            </div>
+            <div class="chart-container" style="max-width: 420px; margin: 0 auto;">
+                <canvas id="currencyChart"></canvas>
+            </div>
+        </div>
+
+        <!-- Tax-loss harvesting (only when there are unrealized-loss positions) -->
+        <div id="harvest-card" class="card full-width" style="display:none;">
+            <h2 data-i18n="harvest_title">Tax-Loss Harvesting</h2>
+            <div class="analysis-text" data-i18n="harvest_desc">
+                Open positions currently at an <strong>unrealized loss</strong>. Selling them this year would realize the loss to offset your realized gains. ⚠️ If you re-buy the same security (any broker) within <strong>2 months</strong>, the loss is blocked by the Spanish wash-sale rule.
+            </div>
+            <div id="harvest-summary" class="analysis-text" style="font-weight: 600;"></div>
+            <div style="overflow-x:auto;">
+                <table style="width:100%; border-collapse: collapse; font-size: 0.9rem;">
+                    <thead><tr>
+                        <th data-i18n="th_ticker">Ticker</th>
+                        <th data-i18n="th_isin">ISIN</th>
+                        <th data-i18n="th_shares">Shares Held</th>
+                        <th data-i18n="harvest_th_loss">Unrealized Loss (EUR)</th>
+                    </tr></thead>
+                    <tbody id="harvest-table-body"></tbody>
+                </table>
             </div>
         </div>
 
@@ -853,7 +972,7 @@
                         <select id="alertTypeSelect" style="width: 100%; background: var(--bg-primary); border: 1px solid var(--border); color: var(--text-primary); padding: 10px; border-radius: 6px; font-size: 0.85rem; font-family: inherit; outline: none;" onchange="updateAlertGenerator()">
                             <option value="fx" selected data-i18n="opt_fx">USD/EUR Exchange Rate</option>
                             <option value="dt_sma" data-i18n="opt_dt_sma">__COMPANY_NAME__ (__TICKER__) Price vs SMA 200</option>
-                            <option value="peer_earnings" id="opt-peer-earnings">Peer Earnings News</option>
+                            <option value="peer_earnings" id="opt-peer-earnings" data-i18n="opt_peer_earnings">Peer Earnings News</option>
                             <option value="espp_unlock" data-i18n="opt_espp_unlock">ESPP Next Tax Unlock Date</option>
                         </select>
                     </div>
@@ -934,17 +1053,24 @@
     </div>
 
     <script>
-        const rawEvents = __CHART_DATA__;
-        const rawFxHistory = __FX_HISTORY__;
-        const decompData = __DECOMP_DATA__;
-        const historicalQuotes = __HISTORICAL_QUOTES__;
-        const esppLots = __ESPP_LOTS__;
-        const unsoldLots = __UNSOLD_LOTS__;
+        const multiSecurityData = __MULTI_SECURITY_DATA__;
+        const holdingsTable = __HOLDINGS_TABLE__;
+        const totalPortfolioValue = __TOTAL_PORTFOLIO_VALUE__;
+        const yearlyTaxData = __YEARLY_TAX_DATA__;
+        const currencyExposure = __CURRENCY_EXPOSURE__;
+        const harvestData = __HARVEST_DATA__;
+
+        let rawEvents = __CHART_DATA__;
+        let rawFxHistory = __FX_HISTORY__;
+        let decompData = __DECOMP_DATA__;
+        let historicalQuotes = __HISTORICAL_QUOTES__;
+        let esppLots = __ESPP_LOTS__;
+        let unsoldLots = __UNSOLD_LOTS__;
         const savingsIncome = __SAVINGS_INCOME__;
         const currentYearRcm = __CURRENT_YEAR_RCM__;
-        const peerTickers = __PEER_TICKERS__;
-        const mainTicker = "__TICKER__";
-        const companyName = "__COMPANY_NAME__";
+        let peerTickers = __PEER_TICKERS__;
+        let mainTicker = "__TICKER__";
+        let companyName = "__COMPANY_NAME__";
 
         // --- Localized date helpers ---
         const MONTHS_SHORT = {
@@ -968,12 +1094,12 @@
         }
 
         // Live Price, FX rate, and Average cost variables
-        const livePriceUsd = __LIVE_PRICE_USD__;
-        const liveFxRate = __LIVE_FX_RATE__;
-        const myAvgCostUsd = __MY_AVG_COST_USD__;
+        let livePriceUsd = __LIVE_PRICE_USD__;
+        let liveFxRate = __LIVE_FX_RATE__;
+        let myAvgCostUsd = __MY_AVG_COST_USD__;
         
-        const trendSignal = __TREND_SIGNAL__;
-        const trendAdvice = __TREND_ADVICE__;
+        let trendSignal = __TREND_SIGNAL__;
+        let trendAdvice = __TREND_ADVICE__;
 
         const locales = {
             en: {
@@ -1048,6 +1174,20 @@
                 broker_chart_desc: "When you hold the same stock across more than one broker (e.g. E*TRADE + Revolut), this breaks the position down by broker: how much you invested (<strong>cost basis, EUR</strong>) and the realized gain/loss booked at each. FIFO and the 2-month rule still run across all of them together, as Spanish law requires.",
                 broker_chart_invested: "Invested (cost basis, EUR)",
                 broker_chart_realized: "Realized gain/loss (EUR)",
+                securities_chart_title: "How is your portfolio split across securities?",
+                securities_chart_desc: "When you hold more than one security (e.g. your employer stock plus stocks traded on Revolut), each one gets its <strong>own FIFO queue</strong>, grouped by ISIN. This shows how much you invested (<strong>cost basis, EUR</strong>) and the realized gain/loss for each. The taxable savings base combines all of them; the 2-month wash-sale rule stays per security.",
+                securities_chart_invested: "Invested (cost basis, EUR)",
+                securities_chart_realized: "Realized gain/loss (EUR)",
+                yearly_tax_title: "Realized Gains & Estimated Tax by Year",
+                yearly_tax_desc: "Your net realized capital gain/loss and the isolated estimated savings tax for each year. The tax is an isolated estimate on these stock gains alone — your real liability depends on your total savings income and prior-year carryforward.",
+                yearly_tax_net: "Net realized gain/loss (EUR)",
+                yearly_tax_tax: "Estimated tax (isolated, EUR)",
+                currency_title: "Currency Exposure",
+                currency_desc: "Your current portfolio market value (EUR) grouped by each security's trading currency — your FX exposure.",
+                harvest_title: "Tax-Loss Harvesting",
+                harvest_desc: "Open positions currently at an <strong>unrealized loss</strong>. Selling them this year would realize the loss to offset your realized gains. ⚠️ If you re-buy the same security (any broker) within <strong>2 months</strong>, the loss is blocked by the Spanish wash-sale rule.",
+                harvest_th_loss: "Unrealized Loss (EUR)",
+                harvest_summary: "Up to {loss} of losses could be harvested in {year} against {gains} of realized gains.",
                 price_chart_title: "Stock Price & Transaction History (USD)",
                 price_chart_desc: "Hover over the dots to see details of past transactions (Vests, Buys, Sells). <strong>💡 Tip: Click on any dot to open Yahoo Finance news for that date range to see what happened in the market.</strong>",
                 price_chart_tip: "Clicking a point opens Yahoo Finance news for a 10-day window around the transaction.",
@@ -1108,6 +1248,7 @@
                 lbl_notes: "Notes: ",
                 lbl_type: "Type: ",
                 lbl_price: "Price: ",
+                lbl_val_eur: "Value (EUR): ",
                 lbl_shares: "Shares: ",
                 lbl_tx_fx: "Transaction FX: ",
                 intel_hub_title: "Market Intelligence & Competitor Hub",
@@ -1116,38 +1257,39 @@
                 intel_competitors_desc: "Track and compare real-time pricing, valuation multiples, and trends of key peer companies:",
                 intel_tools_title: "Market Comparisons",
                 intel_tools_desc: "Compare charts and valuation metrics side-by-side with peers:",
-                intel_peer_analysis: `${mainTicker} Peer Valuation Analysis`,
+                intel_peer_analysis: "{ticker} Peer Valuation Analysis",
                 intel_interactive_chart: "Interactive Performance Chart",
                 intel_btn_analyze: "📊 Analyze ➔",
                 intel_btn_compare: "📈 Compare ➔",
                 intel_macro_title: "Macro Factors & News",
                 intel_macro_desc: "Events that strongly dictate tech stock valuations:",
                 intel_li_rates: "<strong style=\"color: var(--text-primary);\">Central Bank Interest Rates</strong>: Lower rates usually boost high-growth tech valuations; higher rates depress them.",
-                intel_li_news: `<strong style="color: var(--text-primary);">Live Earnings Reports</strong>: Track ${companyName} (${mainTicker}) upcoming earnings reports and announcements to avoid selling right before volatile reports.`,
+                intel_li_news: "<strong style=\"color: var(--text-primary);\">Live Earnings Reports</strong>: Track {company} ({ticker}) upcoming earnings reports and announcements to avoid selling right before volatile reports.",
                 th_calendar_alert: "Alerts",
                 add_to_calendar: "Add Reminder",
                 alerts_card_title: "Market Sentinel & Sell Alert Configurator",
                 alerts_card_desc: "Set up automated push notifications, calendar alerts, and email notifications to know exactly when to sell without checking the dashboard daily.",
                 alerts_sec2_title: "Real-Time Price & Indicator Alerts",
                 alerts_sec2_desc: "Set up instant push notifications on your phone or email using TradingView or your broker when indicators cross:",
-                alerts_rule_sma: `<strong>SMA Crossover</strong>: Trigger when ${mainTicker} price crosses the 50-day or 200-day SMA (Bullish/Bearish signal changes).`,
+                alerts_rule_sma: "<strong>SMA Crossover</strong>: Trigger when {ticker} price crosses the 50-day or 200-day SMA (Bullish/Bearish signal changes).",
                 alerts_rule_fx: "<strong>Exchange Rate Threshold</strong>: Trigger when USD/EUR exchange rate drops below 0.90 (dollar devaluing) or rises above 0.95 (dollar strengthening).",
-                alerts_rule_earnings: `<strong>Broker Earnings Calendar</strong>: Enable notifications for ${companyName} (${mainTicker}) and peer earnings reports to avoid selling right before massive volatility.`,
+                alerts_rule_earnings: "<strong>Broker Earnings Calendar</strong>: Enable notifications for {company} ({ticker}) and peer earnings reports to avoid selling right before massive volatility.",
                 alerts_btn_tview: "Set up TradingView Alerts",
                 alerts_btn_galerts: "Set up Google Alerts",
                 generator_title: "Quick Alert Creator",
                 generator_desc: "Select a key metric to generate your recommended alert configuration:",
                 generator_label_select: "Select Alert Type:",
                 opt_fx: "USD/EUR Exchange Rate",
-                opt_dt_sma: `${mainTicker} Price vs SMA 200`,
+                opt_dt_sma: "{ticker} Price vs SMA 200",
                 opt_espp_unlock: "ESPP Next Tax Unlock Date",
+                opt_peer_earnings: "Peer Earnings News",
                 tax_opt_title: "Hacienda Savings Tax Bracket Optimizer",
                 tax_opt_desc: "Spanish savings income (capital gains) tax is progressive. Keep your gains within lower brackets to optimize tax efficiency.",
                 risk_card_title: "How much of my money is in this one stock?",
                 risk_card_desc: "Holding a high percentage of your liquid wealth in a single company stock increases your downside risk. Track your exposure level:",
                 risk_net_worth_label: "Enter Estimated Total Liquid Net Worth (EUR):",
-                peer_chart_title: "How my stock compares to similar companies",
-                peer_chart_desc: `Compares the percentage return of ${mainTicker} vs. ${peerTickers.join(', ')} since your first transaction date. All lines start at 0% on day one.`,
+                peer_chart_title: "How my stock compares to similar companies ({ticker})",
+                peer_chart_desc: "Compares the percentage return of {ticker} vs. {peers} since your first transaction date. All lines start at 0% on day one.",
                 breakeven_card_title: "The price I'd need to sell at to not lose money",
                 breakeven_card_desc: "Calculate the exact USD price required to sell all remaining shares without losing money, factoring in purchase costs, dollar devaluation, and past realized losses.",
                 be_stats_title: "Real-Time Breakeven Calculator",
@@ -1158,7 +1300,23 @@
                 be_chart_label_unsold: "Fresh-Start Breakeven (0% gain/loss on current shares only)",
                 be_chart_label_port: "Full Portfolio Breakeven (Offsets past net gains/losses)",
                 be_chart_label_current: "Current Simulated Position",
-                be_exclude_espp: "Exclude ESPP shares (RSUs only)"
+                be_exclude_espp: "Exclude ESPP shares (RSUs only)",
+                be_broker_filter: "Broker:",
+                be_broker_all: "All brokers",
+                be_broker_note: "Informational only: Spanish FIFO treats all brokers as one pool per security, so a per-broker break-even isn't a tax figure.",
+                portfolio_summary_title: "💼 Portfolio Roll-up Overview",
+                portfolio_summary_desc: "An aggregated view of your entire investment portfolio across all brokers. Select an individual stock from the dropdown above to update the detailed simulations, trends, and countdown charts.",
+                th_ticker: "Ticker",
+                th_isin: "ISIN",
+                th_shares: "Shares Held",
+                th_avg_cost: "Avg Cost (EUR)",
+                th_current_price: "Current Price (USD)",
+                th_market_value: "Market Value (EUR)",
+                th_unrealized_pl: "Unrealized P&L (EUR)",
+                th_realized_pl: "Realized P&L (EUR)",
+                th_dividends: "Dividends (EUR)",
+                th_allocation: "Allocation %",
+                select_security_label: "Select Security:"
             },
             es: {
                 header_title: "Mi Panel de Rendimiento de Acciones e Impuestos",
@@ -1232,6 +1390,20 @@
                 broker_chart_desc: "Cuando tienes la misma acción en más de un bróker (p. ej. E*TRADE + Revolut), esto desglosa la posición por bróker: cuánto invertiste (<strong>coste de adquisición, EUR</strong>) y la ganancia/pérdida realizada en cada uno. El FIFO y la regla de los 2 meses se aplican entre todos en conjunto, como exige la ley española.",
                 broker_chart_invested: "Invertido (coste de adquisición, EUR)",
                 broker_chart_realized: "Ganancia/pérdida realizada (EUR)",
+                securities_chart_title: "¿Cómo se reparte tu cartera entre valores?",
+                securities_chart_desc: "Cuando tienes más de un valor (p. ej. las acciones de tu empresa más acciones operadas en Revolut), cada uno tiene su <strong>propia cola FIFO</strong>, agrupada por ISIN. Esto muestra cuánto invertiste (<strong>coste de adquisición, EUR</strong>) y la ganancia/pérdida realizada de cada uno. La base del ahorro imponible los combina todos; la regla de los 2 meses se mantiene por valor.",
+                securities_chart_invested: "Invertido (coste de adquisición, EUR)",
+                securities_chart_realized: "Ganancia/pérdida realizada (EUR)",
+                yearly_tax_title: "Ganancias Realizadas e Impuesto Estimado por Año",
+                yearly_tax_desc: "Tu ganancia/pérdida patrimonial neta realizada y el impuesto del ahorro estimado (aislado) de cada año. El impuesto es una estimación aislada sobre estas ganancias bursátiles — tu cuota real depende de tu base del ahorro total y de las pérdidas pendientes de años anteriores.",
+                yearly_tax_net: "G/P neta realizada (EUR)",
+                yearly_tax_tax: "Impuesto estimado (aislado, EUR)",
+                currency_title: "Exposición por Divisa",
+                currency_desc: "El valor de mercado actual de tu cartera (EUR) agrupado por la divisa de cotización de cada valor — tu exposición a divisas.",
+                harvest_title: "Cosecha de Pérdidas Fiscales",
+                harvest_desc: "Posiciones abiertas actualmente con <strong>pérdida latente</strong>. Venderlas este año realizaría la pérdida para compensar tus ganancias realizadas. ⚠️ Si recompras el mismo valor (cualquier bróker) en <strong>2 meses</strong>, la pérdida queda bloqueada por la regla española de los 2 meses.",
+                harvest_th_loss: "Pérdida Latente (EUR)",
+                harvest_summary: "Se podrían cosechar hasta {loss} de pérdidas en {year} contra {gains} de ganancias realizadas.",
                 price_chart_title: "Historial de Precios y Transacciones (USD)",
                 price_chart_desc: "Pase el cursor sobre los puntos para ver los detalles de las transacciones pasadas (Vests, Compras, Ventas). <strong>💡 Consejo: Haga clic en cualquier punto para abrir las noticias de Yahoo Finance de ese rango de fechas y ver qué pasó en el mercado.</strong>",
                 price_chart_tip: "Hacer clic en un punto abre las noticias de Yahoo Finance para un período de 10 día alrededor de la transacción.",
@@ -1292,46 +1464,48 @@
                 lbl_notes: "Notas: ",
                 lbl_type: "Tipo: ",
                 lbl_price: "Precio: ",
+                lbl_val_eur: "Valor (EUR): ",
                 lbl_shares: "Acciones: ",
                 lbl_tx_fx: "FX en Transacción: ",
                 intel_hub_title: "Centro de Inteligencia de Mercado y Competidores",
                 intel_hub_desc: "Evalúe si es un buen momento para vender en función del rendimiento de los competidores, las condiciones macroeconómicas y la inteligencia de mercado en vivo.",
                 intel_competitors_title: "Grupo de Pares de Observabilidad",
-                intel_competitors_desc: "Realice el seguimiento y compare precios en tiempo real, múltiplos de valoración y tendencias de competidores clave:",
+                intel_competitors_desc: "Sigue y compara en tiempo real los precios, los múltiplos de valoración y las tendencias de las principales empresas competidoras:",
                 intel_tools_title: "Comparativas de Mercado",
-                intel_tools_desc: "Compare gráficos y métricas de valoración de forma paralela con sus pares:",
-                intel_peer_analysis: `Análisis de Valoración de Pares de ${mainTicker}`,
+                intel_tools_desc: "Compara gráficos y métricas de valoración en paralelo con los competidores:",
+                intel_peer_analysis: "Análisis de Valoración de Pares de {ticker}",
                 intel_interactive_chart: "Gráfico de Rendimiento Interactivo",
                 intel_btn_analyze: "📊 Analizar ➔",
                 intel_btn_compare: "📈 Comparar ➔",
                 intel_macro_title: "Factores Macroeconómicos y Noticias",
                 intel_macro_desc: "Eventos que condicionan fuertemente la valoración de las acciones tecnológicas:",
                 intel_li_rates: "<strong style=\"color: var(--text-primary);\">Tipos de Interés de Bancos Centrales</strong>: Tipos más bajos suelen impulsar las valoraciones tecnológicas de alto crecimiento; tipos más altos las deprimen.",
-                intel_li_news: `<strong style="color: var(--text-primary);">Informes de Resultados en Directo</strong>: Siga los próximos informes de resultados y anuncios de ${companyName} (${mainTicker}) para evitar vender justo antes de informes volátiles.`,
+                intel_li_news: "<strong style=\"color: var(--text-primary);\">Informes de Resultados en Directo</strong>: Siga los próximos informes de resultados y anuncios de {company} ({ticker}) para evitar vender justo antes de informes volátiles.",
                 th_calendar_alert: "Alertas",
                 add_to_calendar: "Recordatorio",
                 alerts_card_title: "Centinela del Mercado y Configurador de Alertas",
                 alerts_card_desc: "Configure notificaciones push automáticas, alertas de calendario y correos para saber exactamente cuándo vender sin necesidad de revisar este panel todos los días.",
                 alerts_sec2_title: "Alertas de Precio e Indicadores en Tiempo Real",
                 alerts_sec2_desc: "Configure notificaciones push en su móvil o email usando TradingView o su bróker cuando los indicadores crucen:",
-                alerts_rule_sma: `<strong>Cruce de SMA</strong>: Activar cuando el precio de ${mainTicker} cruce la SMA de 50 o 200 días (cambio de señal alcista/bajista).`,
+                alerts_rule_sma: "<strong>Cruce de SMA</strong>: Activar cuando el precio de {ticker} cruce la SMA de 50 o 200 días (cambio de señal alcista/bajista).",
                 alerts_rule_fx: "<strong>Límite de Tipo de Cambio</strong>: Activar cuando el tipo USD/EUR caiga por debajo de 0.90 (dólar devaluándose) o suba por encima de 0.95 (dólar fortaleciéndose).",
-                alerts_rule_earnings: `<strong>Calendario de Resultados del Bróker</strong>: Active avisos para los informes de resultados de ${companyName} (${mainTicker}) y sus pares para evitar vender antes de alta volatilidad.`,
+                alerts_rule_earnings: "<strong>Calendario de Resultados del Bróker</strong>: Active avisos para los informes de resultados de {company} ({ticker}) y sus pares para evitar vender antes de alta volatilidad.",
                 alerts_btn_tview: "Configurar Alertas en TradingView",
                 alerts_btn_galerts: "Configurar Alertas de Google",
                 generator_title: "Creador Rápido de Alertas",
                 generator_desc: "Seleccione una métrica clave para generar la configuración recomendada de su alerta:",
                 generator_label_select: "Seleccione Tipo de Alerta:",
                 opt_fx: "Tipo de Cambio USD/EUR",
-                opt_dt_sma: `Precio ${mainTicker} vs SMA 200`,
+                opt_dt_sma: "Precio {ticker} vs SMA 200",
                 opt_espp_unlock: "Próxima Fecha de Desbloqueo de ESPP",
+                opt_peer_earnings: "Noticias de Resultados de Competidores",
                 tax_opt_title: "Optimizador de Tramos de IRPF del Ahorro (Hacienda)",
                 tax_opt_desc: "La tributación sobre las ganancias patrimoniales (base imponible del ahorro) en España es progresiva. Mantenga sus plusvalías en tramos más bajos para optimizar su factura fiscal.",
                 risk_card_title: "¿Cuánto de mi dinero está en esta sola acción?",
                 risk_card_desc: "Mantener un porcentaje elevado de su patrimonio líquido en acciones de una sola empresa aumenta su exposición a caídas. Siga su nivel de exposición:",
                 risk_net_worth_label: "Introduzca su Patrimonio Líquido Estimado Total (EUR):",
-                peer_chart_title: "Cómo se compara mi acción con empresas similares",
-                peer_chart_desc: `Compara el rendimiento porcentual de ${mainTicker} frente a ${peerTickers.join(', ')} desde la fecha de su primera transacción. Todas las líneas comienzan en el 0% el primer día.`,
+                peer_chart_title: "Cómo se compara mi acción con empresas similares ({ticker})",
+                peer_chart_desc: "Compara el rendimiento porcentual de {ticker} frente a {peers} desde la fecha de su primera transacción. Todas las líneas comienzan en el 0% el primer día.",
                 breakeven_card_title: "El precio al que tendría que vender para no perder dinero",
                 breakeven_card_desc: "Calcule el precio exacto en USD necesario para vender todas sus acciones restantes sin perder dinero, teniendo en cuenta los costes de compra, la devaluación del dólar y las pérdidas realizadas acumuladas del pasado.",
                 be_stats_title: "Calculadora de Punto de Equilibrio en Tiempo Real",
@@ -1342,7 +1516,23 @@
                 be_chart_label_unsold: "Equilibrio Desde Cero (0% ganancia/pérdida solo en acciones actuales)",
                 be_chart_label_port: "Equilibrio de Portafolio Completo (Compensa ganancias/pérdidas pasadas)",
                 be_chart_label_current: "Posición Simulada Actual",
-                be_exclude_espp: "Excluir acciones ESPP (solo RSUs)"
+                be_exclude_espp: "Excluir acciones ESPP (solo RSUs)",
+                be_broker_filter: "Bróker:",
+                be_broker_all: "Todos los brókers",
+                be_broker_note: "Solo informativo: el FIFO español trata todos los brókers como un único conjunto por valor, así que un break-even por bróker no es una cifra fiscal.",
+                portfolio_summary_title: "💼 Resumen de Cartera Agregado",
+                portfolio_summary_desc: "Una vista agregada de toda su cartera de inversiones en todos los brókers. Seleccione una acción individual en el menú desplegable de arriba para actualizar las simulaciones, tendencias y gráficos de cuenta atrás.",
+                th_ticker: "Ticker",
+                th_isin: "ISIN",
+                th_shares: "Acciones retenidas",
+                th_avg_cost: "Coste medio (EUR)",
+                th_current_price: "Precio actual (USD)",
+                th_market_value: "Valor de mercado (EUR)",
+                th_unrealized_pl: "P&G no realizada (EUR)",
+                th_realized_pl: "P&G realizada (EUR)",
+                th_dividends: "Dividendos (EUR)",
+                th_allocation: "Asignación %",
+                select_security_label: "Seleccionar Acción:"
             }
         };
 
@@ -1359,7 +1549,11 @@
             document.querySelectorAll('[data-i18n]').forEach(el => {
                 const key = el.getAttribute('data-i18n');
                 if (locales[lang][key]) {
-                    el.innerHTML = locales[lang][key];
+                    let txt = locales[lang][key];
+                    txt = txt.replace(/{ticker}/g, mainTicker)
+                             .replace(/{company}/g, companyName)
+                             .replace(/{peers}/g, peerTickers.join(', '));
+                    el.innerHTML = txt;
                 }
             });
             
@@ -1409,6 +1603,12 @@
                 };
                 charts.rsu.update();
             }
+            if (charts.yearlyTax) {
+                charts.yearlyTax.data.datasets[0].label = locales[currentLang].yearly_tax_net;
+                charts.yearlyTax.data.datasets[1].label = locales[currentLang].yearly_tax_tax;
+                charts.yearlyTax.update();
+            }
+            if (typeof updateHarvestSummary === 'function') updateHarvestSummary();
             if (charts.trend) {
                 charts.trend.data.datasets[0].label = locales[currentLang].lbl_stock_price;
                 charts.trend.data.datasets[1].label = locales[currentLang].lbl_sma50;
@@ -1728,6 +1928,23 @@
         }
 
         // --- Breakeven Price Calculator ---
+        // Populate the break-even broker filter from the current security's unsold
+        // lots; only shown when the position spans more than one broker.
+        function populateBrokerFilter() {
+            const sel = document.getElementById('be-broker-filter');
+            const row = document.getElementById('be-broker-row');
+            if (!sel || !row) return;
+            const brokers = [...new Set((unsoldLots || []).map(l => l.broker).filter(Boolean))].sort();
+            sel.length = 1;        // keep the "All brokers" option
+            sel.value = '';
+            brokers.forEach(b => {
+                const o = document.createElement('option');
+                o.value = b; o.textContent = b;
+                sel.appendChild(o);
+            });
+            row.style.display = brokers.length > 1 ? 'flex' : 'none';
+        }
+
         function updateBreakevenCalculator(simPrice, simFx) {
             const excludeEspp = document.getElementById('be-exclude-espp') && document.getElementById('be-exclude-espp').checked;
 
@@ -1737,6 +1954,16 @@
                 filteredLots = unsoldLots.filter(lot => !lot.notes.includes('ESPP'));
                 filteredDecomp = decompData.filter(d => !d.is_espp);
             }
+
+            // Optional per-broker view of the remaining shares (informational — see
+            // the note: Spanish FIFO treats all brokers as one pool per security).
+            const brokerSel = document.getElementById('be-broker-filter');
+            const selectedBroker = brokerSel ? brokerSel.value : '';
+            if (selectedBroker) {
+                filteredLots = filteredLots.filter(lot => lot.broker === selectedBroker);
+            }
+            const brokerNote = document.getElementById('be-broker-note');
+            if (brokerNote) brokerNote.style.display = selectedBroker ? 'block' : 'none';
 
             const remainingShares = filteredLots.reduce((acc, lot) => acc + lot.shares, 0);
             const remainingCostBasisEur = filteredLots.reduce((acc, lot) => acc + (lot.shares * lot.price_eur), 0);
@@ -2177,8 +2404,220 @@
             el.innerHTML = `<table><thead><tr><th>${t.div_th_year}</th><th>${t.div_th_dividends}</th><th>${t.div_th_interest}</th><th>${t.div_th_total}</th></tr></thead><tbody>${rows}</tbody></table>`;
         }
 
+        // Initialize switcher dropdown and holdings table if multiple securities exist
+        function initPortfolioViews() {
+            const tableBody = document.getElementById('holdings-table-body');
+            const switcherContainer = document.getElementById('security-switcher-container');
+            const switcherSelect = document.getElementById('securitySelect');
+            const portfolioSummaryCard = document.getElementById('portfolio-summary-card');
+
+            if (holdingsTable && holdingsTable.length > 1) {
+                portfolioSummaryCard.style.display = 'block';
+                switcherContainer.style.display = 'inline-flex';
+                
+                // Populate switcher options
+                switcherSelect.innerHTML = '';
+                holdingsTable.forEach(h => {
+                    const option = document.createElement('option');
+                    option.value = h.ticker;
+                    option.textContent = h.ticker;
+                    if (h.ticker === mainTicker) {
+                        option.selected = true;
+                    }
+                    switcherSelect.appendChild(option);
+                });
+
+                // Populate holdings table
+                tableBody.innerHTML = '';
+                holdingsTable.forEach(h => {
+                    const row = document.createElement('tr');
+                    const gainStyle = h.gain_loss_eur >= 0 ? 'color: var(--accent-green);' : 'color: var(--accent-red);';
+                    const realizedStyle = h.realized_pl_eur >= 0 ? 'color: var(--accent-green);' : 'color: var(--accent-red);';
+                    row.innerHTML = `
+                        <td><strong>${h.ticker}</strong></td>
+                        <td><small style="color: var(--text-secondary);">${h.isin}</small></td>
+                        <td class="sensitive">${h.shares.toLocaleString(undefined, {maximumFractionDigits: 4})}</td>
+                        <td class="sensitive">€${h.avg_cost_eur.toFixed(2)}</td>
+                        <td>$${h.price_usd.toFixed(2)}</td>
+                        <td class="sensitive">€${h.value_eur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td class="sensitive" style="${gainStyle}">${h.gain_loss_eur >= 0 ? '+' : ''}€${h.gain_loss_eur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td class="sensitive" style="${realizedStyle}">${h.realized_pl_eur >= 0 ? '+' : ''}€${h.realized_pl_eur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td class="sensitive">€${(h.dividends_eur || 0).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                        <td><strong>${h.allocation_pct.toFixed(1)}%</strong></td>
+                    `;
+                    tableBody.appendChild(row);
+                });
+
+                // Initialize portfolio allocation pie chart
+                const tickers = holdingsTable.map(h => h.ticker);
+                const values = holdingsTable.map(h => h.value_eur);
+                const colors = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
+                
+                charts.allocation = new Chart(document.getElementById('portfolioAllocationChart').getContext('2d'), {
+                    type: 'doughnut',
+                    data: {
+                        labels: tickers,
+                        datasets: [{
+                            data: values,
+                            backgroundColor: colors.slice(0, tickers.length),
+                            borderColor: '#1e293b',
+                            borderWidth: 2
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'bottom',
+                                labels: { color: '#f8fafc' }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        const val = context.raw;
+                                        const pct = (val / totalPortfolioValue * 100).toFixed(1);
+                                        return ` ${context.label}: €${val.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${pct}%)`;
+                                    }
+                                }
+                            }
+                        }
+                    }
+                });
+            }
+        }
+
+        function onSecurityChange(ticker) {
+            const data = multiSecurityData[ticker];
+            if (!data) return;
+
+            // Update local state variables
+            mainTicker = data.ticker;
+            companyName = data.company_name;
+            rawEvents = data.chart_data;
+            rawFxHistory = data.fx_history;
+            decompData = data.decomp_data;
+            historicalQuotes = data.historical_quotes;
+            esppLots = data.espp_lots;
+            unsoldLots = data.unsold_lots;
+            peerTickers = data.peer_tickers;
+            livePriceUsd = data.live_price_usd;
+            liveFxRate = data.live_fx_rate;
+            myAvgCostUsd = data.my_avg_cost_usd;
+            trendSignal = data.trend_signal;
+            trendAdvice = data.trend_advice;
+
+            // Update scorecards
+            document.getElementById('rsu-delta-value').textContent = data.rsu_delta_str;
+            if (data.rsu_delta >= 0) {
+                document.getElementById('rsu-delta-value').style.color = 'var(--accent-green)';
+                document.getElementById('rsu-delta-value').textContent = '+' + data.rsu_delta_str;
+            } else {
+                document.getElementById('rsu-delta-value').style.color = 'var(--accent-red)';
+            }
+            
+            const setSecText = (id, val) => { const e = document.getElementById(id); if (e) e.textContent = val; };
+            setSecText('scorecard-espp-secured', data.espp_secured_str);
+            setSecText('scorecard-espp-atrisk', data.espp_at_risk_str);
+            setSecText('scorecard-espp-lost', data.espp_lost_str);
+
+            // Hide/Show ESPP card depending on if ESPP data exists for this security
+            const esppCards = document.querySelectorAll('.card:has(#esppChart), .card:has(#espp-countdown-body)');
+            const hasEspp = esppLots && esppLots.length > 0;
+            esppCards.forEach(c => {
+                c.style.display = hasEspp ? '' : 'none';
+            });
+
+            // Hide/Show RSU card depending on if RSU data exists
+            const rsuCards = document.querySelectorAll('.card:has(#rsuChart)');
+            const hasRsu = rawEvents.some(e => e.type === 'VEST');
+            rsuCards.forEach(c => {
+                c.style.display = hasRsu ? '' : 'none';
+            });
+
+            // Reset slider limits
+            resetSliders();
+
+            // Rebuild the break-even broker filter for this security's lots
+            populateBrokerFilter();
+
+            // Update charts with the new security data
+            updateCharts(data);
+
+            // Refresh UI components
+            setLanguage(currentLang);
+        }
+
+        function resetSliders() {
+            sliderPrice.min = (livePriceUsd * 0.5).toFixed(1);
+            sliderPrice.max = (livePriceUsd * 1.5).toFixed(1);
+            sliderPrice.value = livePriceUsd.toFixed(2);
+            sliderFx.value = liveFxRate.toFixed(4);
+        }
+
+        function updateCharts(data) {
+            // Update ESPP chart
+            if (charts.espp && data.espp_secured !== undefined) {
+                charts.espp.data.datasets[0].data = [data.espp_secured, data.espp_at_risk, data.espp_lost];
+                charts.espp.update();
+            }
+            
+            // Update RSU hold delta chart
+            if (charts.rsu) {
+                charts.rsu.data.datasets[0].data = [data.rsu_vest_val, data.rsu_hold_val];
+                charts.rsu.data.datasets[0].backgroundColor = ['#3b82f6', data.rsu_hold_val >= data.rsu_vest_val ? '#10b981' : '#ef4444'];
+                charts.rsu.update();
+            }
+            
+            // Update Trend chart
+            if (charts.trend) {
+                charts.trend.data.datasets[0].data = data.historical_quotes.map(q => ({ x: q.date, y: q.close }));
+                charts.trend.data.datasets[1].data = data.historical_quotes.filter(q => q.sma50 !== null).map(q => ({ x: q.date, y: q.sma50 }));
+                charts.trend.data.datasets[2].data = data.historical_quotes.filter(q => q.sma200 !== null).map(q => ({ x: q.date, y: q.sma200 }));
+                charts.trend.data.datasets[3].data = data.historical_quotes.filter(q => q.avg_cost_usd !== null).map(q => ({ x: q.date, y: q.avg_cost_usd }));
+                charts.trend.data.datasets[4].data = data.historical_quotes.map(q => ({ x: q.date, y: data.my_avg_cost_usd }));
+                charts.trend.options.scales.x.min = data.first_transaction_date;
+                charts.trend.update();
+            }
+            
+            // Update Decomposition chart
+            if (charts.decomp) {
+                charts.decomp.data.labels = data.decomp_data.map(d => formatDate(d.date));
+                charts.decomp.data.datasets[0].data = data.decomp_data.map(d => d.stock_gain);
+                charts.decomp.data.datasets[1].data = data.decomp_data.map(d => d.fx_gain);
+                charts.decomp.update();
+            }
+            
+            // Update Price & Transactions chart
+            if (charts.price) {
+                const vests = data.chart_data.filter(e => e.type === 'VEST');
+                const buys = data.chart_data.filter(e => e.type === 'BUY');
+                const sells = data.chart_data.filter(e => e.type === 'SELL');
+                const exercises = data.chart_data.filter(e => e.type === 'EXERCISE');
+                
+                charts.price.data.datasets[0].data = vests.map(e => ({ x: e.date, y: e.price_usd, info: e }));
+                charts.price.data.datasets[1].data = buys.map(e => ({ x: e.date, y: e.price_usd, info: e }));
+                charts.price.data.datasets[2].data = exercises.map(e => ({ x: e.date, y: e.price_usd, info: e }));
+                charts.price.data.datasets[3].data = sells.map(e => ({ x: e.date, y: e.price_usd, info: e }));
+                charts.price.data.datasets[4].data = data.chart_data.map(e => ({ x: e.date, y: e.price_usd }));
+                charts.price.update();
+            }
+            
+            // Update FX history chart
+            if (charts.fx) {
+                charts.fx.data.datasets[0].data = data.fx_history.map(e => ({ x: e.date, y: e.rate }));
+                charts.fx.data.datasets[1].data = data.chart_data.map(e => ({ x: e.date, y: e.fx_rate, info: e }));
+                charts.fx.update();
+            }
+
+            // Update Peer returns chart
+            renderPeersChart(data.peer_data);
+        }
+
         // Initialize simulator & scenario planner & ESPP Active Lots & Alert Generator
+        initPortfolioViews();
         updateSituationToday();
+        populateBrokerFilter();
         updateSimulation();
         updateEsppSellWarning();
         renderSavingsIncome();
@@ -2235,6 +2674,61 @@
             }
         });
 
+        // --- Per-security breakdown (only when more than one security is present) ---
+        const securitiesData = __SECURITIES_DATA__;
+        if (securitiesData && securitiesData.securities && securitiesData.securities.length > 1) {
+            document.getElementById('securities-card').style.display = '';
+            charts.securities = new Chart(document.getElementById('securitiesChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: securitiesData.securities,
+                    datasets: [
+                        {
+                            label: locales[currentLang].securities_chart_invested,
+                            data: securitiesData.invested,
+                            backgroundColor: '#3b82f6',
+                            borderColor: '#1e293b',
+                            borderWidth: 1
+                        },
+                        {
+                            label: locales[currentLang].securities_chart_realized,
+                            data: securitiesData.realized,
+                            backgroundColor: securitiesData.realized.map(v => v >= 0 ? '#10b981' : '#ef4444'),
+                            borderColor: '#1e293b',
+                            borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#f8fafc' } },
+                        tooltip: {
+                            callbacks: {
+                                title: function(items) {
+                                    const i = items[0].dataIndex;
+                                    const isin = securitiesData.isin[i];
+                                    return isin ? `${securitiesData.securities[i]} (${isin})` : securitiesData.securities[i];
+                                },
+                                label: function(context) {
+                                    return ` ${context.dataset.label}: €${context.raw.toFixed(2)}`;
+                                },
+                                afterBody: function(items) {
+                                    const i = items[0].dataIndex;
+                                    return `Open position: ${securitiesData.position[i]} shares`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } },
+                        y: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } }
+                    }
+                }
+            });
+        }
+
         // --- Per-broker breakdown (only when more than one broker is present) ---
         const brokerData = __BROKER_DATA__;
         if (brokerData && brokerData.brokers && brokerData.brokers.length > 1) {
@@ -2279,6 +2773,92 @@
                     }
                 }
             });
+        }
+
+        // --- Realized gains & estimated tax by year (portfolio aggregate) ---
+        if (yearlyTaxData && yearlyTaxData.length > 0) {
+            document.getElementById('yearly-tax-card').style.display = '';
+            charts.yearlyTax = new Chart(document.getElementById('yearlyTaxChart').getContext('2d'), {
+                type: 'bar',
+                data: {
+                    labels: yearlyTaxData.map(d => d.year),
+                    datasets: [
+                        {
+                            label: locales[currentLang].yearly_tax_net,
+                            data: yearlyTaxData.map(d => d.net),
+                            backgroundColor: yearlyTaxData.map(d => d.net >= 0 ? '#10b981' : '#ef4444'),
+                            borderColor: '#1e293b', borderWidth: 1
+                        },
+                        {
+                            label: locales[currentLang].yearly_tax_tax,
+                            data: yearlyTaxData.map(d => d.tax),
+                            backgroundColor: '#f59e0b', borderColor: '#1e293b', borderWidth: 1
+                        }
+                    ]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#f8fafc' } },
+                        tooltip: { callbacks: { label: c => ` ${c.dataset.label}: €${c.raw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}` } }
+                    },
+                    scales: {
+                        x: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } },
+                        y: { ticks: { color: '#f8fafc' }, grid: { color: 'rgba(148,163,184,0.1)' } }
+                    }
+                }
+            });
+        }
+
+        // --- Currency exposure (only when more than one currency is present) ---
+        if (currencyExposure && currencyExposure.labels && currencyExposure.labels.length > 1) {
+            document.getElementById('currency-card').style.display = '';
+            const curColors = ['#3b82f6', '#10b981', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
+            charts.currency = new Chart(document.getElementById('currencyChart').getContext('2d'), {
+                type: 'doughnut',
+                data: {
+                    labels: currencyExposure.labels,
+                    datasets: [{ data: currencyExposure.values, backgroundColor: curColors.slice(0, currencyExposure.labels.length), borderColor: '#1e293b', borderWidth: 2 }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { position: 'bottom', labels: { color: '#f8fafc' } },
+                        tooltip: { callbacks: { label: function(c) {
+                            const tot = currencyExposure.values.reduce((a, b) => a + b, 0);
+                            const pct = tot > 0 ? (c.raw / tot * 100).toFixed(1) : '0';
+                            return ` ${c.label}: €${c.raw.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})} (${pct}%)`;
+                        } } }
+                    }
+                }
+            });
+        }
+
+        // --- Tax-loss harvesting (open positions at an unrealized loss) ---
+        function updateHarvestSummary() {
+            const el = document.getElementById('harvest-summary');
+            if (!el || !harvestData || !harvestData.candidates || !harvestData.candidates.length) return;
+            const fmt = v => '€' + Number(v).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+            el.innerHTML = (locales[currentLang].harvest_summary || '')
+                .replace('{loss}', fmt(Math.abs(harvestData.total_harvestable)))
+                .replace('{gains}', fmt(harvestData.realized_gains_this_year))
+                .replace('{year}', harvestData.year);
+        }
+        if (harvestData && harvestData.candidates && harvestData.candidates.length > 0) {
+            document.getElementById('harvest-card').style.display = '';
+            const hbody = document.getElementById('harvest-table-body');
+            hbody.innerHTML = '';
+            harvestData.candidates.forEach(c => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td><strong>${c.ticker}</strong></td>
+                    <td><small style="color: var(--text-secondary);">${c.isin || '—'}</small></td>
+                    <td class="sensitive">${c.shares.toLocaleString(undefined, {maximumFractionDigits: 4})}</td>
+                    <td class="sensitive" style="color: var(--accent-red);">€${c.unrealized_loss_eur.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>
+                `;
+                hbody.appendChild(tr);
+            });
+            updateHarvestSummary();
         }
 
         // --- RSU Hold vs Vest Strategy Bar Chart ---
@@ -2447,7 +3027,7 @@
                         callbacks: {
                             afterBody: function(context) {
                                 const index = context[0].dataIndex;
-                                const item = decompData[index];
+                                  const item = decompData[index];
                                 return `\nTotal realized gain: €${item.total_gain.toFixed(2)}\nNotes: ${item.notes}`;
                             }
                         }
@@ -2628,70 +3208,81 @@
         });
         
         // --- Comparative Peer Group Performance Chart ---
-        const peerData = __PEER_DATA__;
-        const PEER_COLORS = ['#10b981', '#ef4444', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
-        const peerDatasets = peerTickers.map((t, i) => ({
-            label: t,
-            data: (peerData[t] || []).map(e => ({ x: e.date, y: e.pct })),
-            borderColor: PEER_COLORS[i % PEER_COLORS.length],
-            borderWidth: 2,
-            backgroundColor: 'transparent',
-            fill: false,
-            pointRadius: 1,
-            tension: 0.1
-        }));
-        charts.peers = new Chart(document.getElementById('peerChart').getContext('2d'), {
-            type: 'line',
-            data: {
-                datasets: [
-                    {
-                        label: mainTicker,
-                        data: (peerData[mainTicker] || []).map(e => ({ x: e.date, y: e.pct })),
-                        borderColor: '#3b82f6',
-                        borderWidth: 2.5,
-                        backgroundColor: 'rgba(59, 130, 246, 0.05)',
-                        fill: true,
-                        pointRadius: 1,
-                        tension: 0.1
-                    },
-                    ...peerDatasets
-                ]
-            },
-            options: {
-                responsive: true,
-                maintainAspectRatio: false,
-                scales: {
-                    x: {
-                        type: 'time',
-                        time: {
-                            unit: 'month',
-                            displayFormats: { month: 'MMM yyyy' }
+        function renderPeersChart(currentPeerData) {
+            const PEER_COLORS = ['#10b981', '#ef4444', '#f59e0b', '#a855f7', '#06b6d4', '#ec4899'];
+            
+            const activePeers = peerTickers.filter(t => t !== mainTicker);
+            const peerDatasets = activePeers.map((t, i) => ({
+                label: t,
+                data: (currentPeerData[t] || []).map(e => ({ x: e.date, y: e.pct })),
+                borderColor: PEER_COLORS[i % PEER_COLORS.length],
+                borderWidth: 2,
+                backgroundColor: 'transparent',
+                fill: false,
+                pointRadius: 1,
+                tension: 0.1
+            }));
+            
+            const mainDataset = {
+                label: mainTicker,
+                data: (currentPeerData[mainTicker] || []).map(e => ({ x: e.date, y: e.pct })),
+                borderColor: '#3b82f6',
+                borderWidth: 2.5,
+                backgroundColor: 'rgba(59, 130, 246, 0.05)',
+                fill: true,
+                pointRadius: 1,
+                tension: 0.1
+            };
+
+            if (charts.peers) {
+                charts.peers.destroy();
+            }
+
+            charts.peers = new Chart(document.getElementById('peerChart').getContext('2d'), {
+                type: 'line',
+                data: {
+                    datasets: [mainDataset, ...peerDatasets]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    scales: {
+                        x: {
+                            type: 'time',
+                            time: {
+                                unit: 'month',
+                                displayFormats: { month: 'MMM yyyy' }
+                            },
+                            grid: { color: '#334155' },
+                            ticks: { color: '#94a3b8', callback: fmtMonthYear },
+                            title: { display: true, text: locales[currentLang].lbl_date, color: '#94a3b8' }
                         },
-                        grid: { color: '#334155' },
-                        ticks: { color: '#94a3b8', callback: fmtMonthYear },
-                        title: { display: true, text: 'Date', color: '#94a3b8' }
-                    },
-                    y: {
-                        grid: { color: '#334155' },
-                        title: { display: true, text: 'Normalized Return (%)', color: '#94a3b8' },
-                        ticks: {
-                            callback: function(value) {
-                                return value + '%';
+                        y: {
+                            grid: { color: '#334155' },
+                            title: { display: true, text: 'Normalized Return (%)', color: '#94a3b8' },
+                            ticks: {
+                                callback: function(value) {
+                                    return value + '%';
+                                }
                             }
                         }
-                    }
-                },
-                plugins: {
-                    tooltip: {
-                        callbacks: {
-                            label: function(context) {
-                                return `${context.dataset.label}: ${context.raw.y.toFixed(1)}%`;
+                    },
+                    plugins: {
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return ` ${context.dataset.label}: ${context.raw.y.toFixed(1)}%`;
+                                }
                             }
+                        },
+                        legend: {
+                            position: 'bottom',
+                            labels: { color: '#f8fafc' }
                         }
                     }
                 }
-            }
-        });
+            });
+        }
         
         // --- Breakeven Price & USD Devaluation Curve Chart ---
         const beRemainingShares = unsoldLots.reduce((acc, lot) => acc + lot.shares, 0);
@@ -2780,7 +3371,11 @@
                 }
             }
         });
-        
+
+        // Initialize peers chart
+        const peerData = __PEER_DATA__;
+        renderPeersChart(peerData);
+
         // Initialize language
         setLanguage('en');
     </script>

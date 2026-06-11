@@ -63,15 +63,34 @@ muestran los tickers que configures. Orden de prioridad (el mayor gana):
 2. **`input/peers.json`** — configuración persistente, se lee en cada ejecución.
 3. Valores predeterminados: `["DDOG", "ESTC"]`.
 
-Para establecer tus propios pares de forma permanente, crea `input/peers.json`:
+Para establecer tus propios pares de forma permanente, crea `input/peers.json`.
 
-```json
-["DDOG", "MSFT", "NVDA"]
-```
+* **Formato de un solo valor (lista simple):**
+  ```json
+  ["DDOG", "MSFT", "NVDA"]
+  ```
+
+* **Formato Multivalor / Cartera (diccionario por ticker):**
+  Si trabajas en modo cartera, puedes definir competidores específicos para cada acción:
+  ```json
+  {
+    "DT": ["DDOG", "ESTC"],
+    "TSLA": ["RIVN", "LCID", "NIO"],
+    "NVDA": ["AMD", "INTC"]
+  }
+  ```
 
 Si el archivo no existe y usas el menú del lanzador, se te preguntará una vez antes de
 generar el panel. Puedes añadir tantos tickers como quieras — cada uno aparecerá como
 una línea en el gráfico y como un enlace de Yahoo Finance en el Hub de Inteligencia.
+
+---
+
+## Modo Cartera y Navegación Flotante (Sticky)
+
+* **Menú de Navegación Flotante:** Los controles del panel (idioma, selector de acción, botón de privacidad y pestañas) se quedan fijos en la parte superior de la ventana del navegador con un fondo translúcido y desenfoque de cristal (`backdrop-filter`). Así puedes cambiar de pestaña o valor al instante sin tener que volver arriba.
+* **Tarjeta de Resumen de Cartera:** Si analizas varios valores (modo cartera), aparecerá arriba de todo en la pestaña "Mis Acciones" un **Gráfico de Asignación de Cartera** (anillo) y una **Tabla de Posiciones** detallada (acciones, ISIN, coste medio, valor de mercado, ganancia latente y peso en cartera).
+* **Selector Dinámico de Valores:** Cuando hay más de una acción en cartera, aparece un menú desplegable en la barra superior. Al seleccionar otro ticker, todos los gráficos, estimadores de ventas y listas de competidores se actualizan en vivo al instante.
 
 ---
 

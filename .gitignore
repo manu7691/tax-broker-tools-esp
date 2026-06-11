@@ -22,3 +22,6 @@ charts_dashboard_demo.html
 
 # ECB exchange-rate cache
 .ecb_rate_cache.json
+
+# Ticker -> ISIN resolution cache
+.isin_cache.json

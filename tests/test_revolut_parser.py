@@ -14,16 +14,28 @@ Key behaviour under test:
 from datetime import date
 from decimal import Decimal
 from pathlib import Path
+from typing import Any
 from unittest.mock import patch
 
 import pytest
 
 from tax_engine.models import EventType, SavingsIncomeYear
 from tax_engine.revolut_parser import (
+    load_revolut_dividends_by_symbol,
     load_revolut_savings_income,
     load_revolut_trade_events,
     merge_savings_income,
 )
+from tax_engine.securities import IsinCache
+
+
+@pytest.fixture()  # type: ignore[misc]
+def isolated_isin_cache(tmp_path: Path, monkeypatch: Any) -> Any:
+    """Isolate the persistent ISIN cache so all-securities resolution stays hermetic."""
+    monkeypatch.setattr(IsinCache, "CACHE_FILE", tmp_path / ".isin_cache.json")
+    IsinCache.clear()
+    yield
+    IsinCache.clear()
 
 # Tracked security for these tests = Tesla.
 TSLA_ISIN = "US88160R1014"
@@ -109,6 +121,39 @@ class TestSellSynthesis:
         assert all(e.broker == "Revolut" for e in events)
 
 
+class TestAllSecurities:
+    """all_securities=True emits every ticker from the gains export, ISIN-tagged."""
+
+    def test_emits_all_tickers_unfiltered(self, input_dir: Path) -> None:
+        events = load_revolut_trade_events(input_dir, all_securities=True)
+        # 4 sell rows (TSLA, NVDA, TSLA, ADBE) -> 4 BUY + 4 SELL = 8 events.
+        assert len(events) == 8
+        tickers = {e.symbol for e in events}
+        assert tickers == {"TSLA", "NVDA", "ADBE"}
+
+    def test_events_carry_symbol_and_isin(self, input_dir: Path) -> None:
+        events = load_revolut_trade_events(input_dir, all_securities=True)
+        nvda = next(e for e in events if e.symbol == "NVDA")
+        assert nvda.isin == "US67066G1040"
+        assert nvda.broker == "Revolut"
+        # Every emitted event is ISIN-tagged (gains export carries ISIN per row).
+        assert all(e.isin for e in events)
+
+    def test_filtered_mode_still_tags_symbol_and_isin(self, input_dir: Path) -> None:
+        # Even when filtering to one security, events should carry identity now.
+        events = load_revolut_trade_events(input_dir, isin=TSLA_ISIN)
+        assert all(e.symbol == "TSLA" and e.isin == TSLA_ISIN for e in events)
+
+    def test_all_securities_income_unfiltered(self, input_dir: Path) -> None:
+        with patch(
+            "tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")
+        ):
+            income = load_revolut_savings_income(input_dir, all_securities=True)
+        # Both the TSLA (2022) and NVDA (2022) dividend rows are summed.
+        assert set(income) == {2022}
+        assert income[2022].dividends_eur == Decimal("14.00")  # 10 + 4
+
+
 class TestCurrencyHandling:
     def test_eur_rows_convert_one_to_one(self, tmp_path: Path) -> None:
         csv_text = (
@@ -124,7 +169,9 @@ class TestCurrencyHandling:
         sell = next(e for e in events if e.event_type == EventType.SELL)
         assert sell.price_usd == Decimal("75.0000")  # 150 / 2
 
-    def test_unsupported_currency_skipped(self, tmp_path: Path) -> None:
+    def test_gbp_rows_defer_to_ecb(self, tmp_path: Path) -> None:
+        # GBP is an ECB reference currency: events carry currency=GBP and an
+        # unresolved fx_rate (the engine converts via the ECB GBP series per date).
         csv_text = (
             "Income from Sells\n"
             "Date acquired,Date sold,Symbol,Security name,ISIN,Country,Quantity,"
@@ -133,6 +180,20 @@ class TestCurrencyHandling:
         )
         (tmp_path / "revolut").mkdir()
         (tmp_path / "revolut" / "gbp.csv").write_text(csv_text, encoding="utf-8")
+        events = load_revolut_trade_events(tmp_path, isin=TSLA_ISIN)
+        assert len(events) == 2
+        assert all(e.currency == "GBP" and e.fx_rate is None for e in events)
+
+    def test_truly_unsupported_currency_skipped(self, tmp_path: Path) -> None:
+        # A currency the ECB does not publish is skipped (no rate source).
+        csv_text = (
+            "Income from Sells\n"
+            "Date acquired,Date sold,Symbol,Security name,ISIN,Country,Quantity,"
+            "Cost basis,Gross proceeds,Gross PnL,Currency\n"
+            "2021-01-01,2021-06-01,TSLA,Tesla,US88160R1014,US,2,100.00,150.00,50.00,XYZ\n"
+        )
+        (tmp_path / "revolut").mkdir()
+        (tmp_path / "revolut" / "xyz.csv").write_text(csv_text, encoding="utf-8")
         assert load_revolut_trade_events(tmp_path, isin=TSLA_ISIN) == []
 
 
@@ -187,6 +248,55 @@ class TestMovementsFormat:
 
     def test_no_dividend_section_means_no_income(self, movements_dir: Path) -> None:
         assert load_revolut_savings_income(movements_dir, symbol="DT") == {}
+
+
+class TestMovementsAllSecurities:
+    """all_securities=True emits every ticker from the movements export and
+    resolves each ticker→ISIN (user map → ISINs learned from the gains export)."""
+
+    @pytest.fixture()  # type: ignore[misc]
+    def movements_dir(self, tmp_path: Path) -> Path:
+        (tmp_path / "revolut").mkdir(parents=True)
+        (tmp_path / "revolut" / "account-data.csv").write_text(_MOVEMENTS_CSV, encoding="utf-8")
+        return tmp_path
+
+    def test_emits_all_tickers_unfiltered(
+        self, movements_dir: Path, isolated_isin_cache: Any
+    ) -> None:
+        events = load_revolut_trade_events(movements_dir, all_securities=True)
+        assert {e.symbol for e in events} == {"TSLA", "DT", "ADBE"}
+        # No ISIN source available -> every movements event groups by ticker.
+        assert all(e.isin is None for e in events)
+        assert all(e.broker == "Revolut" for e in events)
+
+    def test_per_ticker_split_does_not_cross_tickers(
+        self, movements_dir: Path, isolated_isin_cache: Any
+    ) -> None:
+        # The TSLA split must rescale only TSLA trades; DT buys are untouched.
+        events = load_revolut_trade_events(movements_dir, all_securities=True)
+        dt = [e for e in events if e.symbol == "DT"]
+        assert [e.shares for e in dt] == [Decimal("0.02272727"), Decimal("0.17277259")]
+
+    def test_isin_map_resolves_ticker(
+        self, movements_dir: Path, isolated_isin_cache: Any
+    ) -> None:
+        dt_isin = "US26614N1028"
+        events = load_revolut_trade_events(
+            movements_dir, all_securities=True, isin_map={"DT": dt_isin}
+        )
+        assert all(e.isin == dt_isin for e in events if e.symbol == "DT")
+
+    def test_learns_isin_from_gains_export_in_same_folder(
+        self, movements_dir: Path, isolated_isin_cache: Any
+    ) -> None:
+        # Drop a gains export (which carries ISINs) next to the movements file.
+        (movements_dir / "revolut" / "gains.csv").write_text(_SELLS_CSV, encoding="utf-8")
+        events = load_revolut_trade_events(movements_dir, all_securities=True)
+        # Every TSLA event (gains AND movements) now carries the learned ISIN.
+        tsla = [e for e in events if e.symbol == "TSLA"]
+        assert tsla and all(e.isin == TSLA_ISIN for e in tsla)
+        # DT appears only in movements (not the gains export) -> stays unresolved.
+        assert all(e.isin is None for e in events if e.symbol == "DT")
 
 
 class TestStockSplitNormalization:
@@ -270,6 +380,32 @@ class TestSavingsIncome:
 
     def test_income_absent_without_filter(self, input_dir: Path) -> None:
         assert load_revolut_savings_income(input_dir) == {}
+
+    def test_dividends_by_symbol(self, input_dir: Path) -> None:
+        # The "Other income & fees" section has a TSLA (10.00) and an NVDA (4.00)
+        # dividend row; per-symbol totals are gross EUR (ECB rate mocked to 1).
+        with patch(
+            "tax_engine.revolut_parser.ECBRateFetcher.get_rate", return_value=Decimal("1")
+        ):
+            by_symbol = load_revolut_dividends_by_symbol(input_dir)
+        assert by_symbol == {"TSLA": Decimal("10.00"), "NVDA": Decimal("4.00")}
+
+    def test_dividends_by_symbol_absent_folder(self, tmp_path: Path) -> None:
+        assert load_revolut_dividends_by_symbol(tmp_path) == {}
+
+    def test_symbol_less_income_classified_as_interest(self, tmp_path: Path) -> None:
+        # A symbol-bearing row is a dividend; a symbol-less row is cash interest.
+        csv_text = (
+            "Other income & fees\n"
+            "Date,Symbol,Security name,ISIN,Country,Gross amount,Withholding tax,Net Amount,Currency\n"
+            "2022-03-15,TSLA,Tesla,US88160R1014,US,10.00,0.00,10.00,EUR\n"
+            "2022-07-01,,Cash,,,5.00,0.00,5.00,EUR\n"
+        )
+        (tmp_path / "revolut").mkdir()
+        (tmp_path / "revolut" / "income.csv").write_text(csv_text, encoding="utf-8")
+        income = load_revolut_savings_income(tmp_path, all_securities=True)
+        assert income[2022].dividends_eur == Decimal("10.00")  # TSLA has a symbol
+        assert income[2022].interest_eur == Decimal("5.00")    # symbol-less → interest
 
 
 class TestMergeSavingsIncome:

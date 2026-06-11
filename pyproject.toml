@@ -68,6 +68,7 @@ ignore = [
 [tool.ruff.lint.per-file-ignores]
 "main.py" = ["E402"]  # Module level import not at top (sys.path manipulation)
 "demo.py" = ["E402"]  # Module level import not at top (sys.path manipulation)
+"generate_charts.py" = ["E402"]  # Module level import not at top (sys.path manipulation)
 
 [tool.ruff.lint.isort]
 known-first-party = ["tax_engine"]

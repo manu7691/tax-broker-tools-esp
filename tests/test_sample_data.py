@@ -132,3 +132,69 @@ def test_sample_data_ledger_output(capsys):
     assert "2020" in captured.out
     assert "2021" in captured.out
     assert "2022" in captured.out
+
+
+class TestMultiSecuritySample:
+    """The portfolio demo dataset spans several securities and currencies."""
+
+    def test_spans_multiple_securities_and_currencies(self):
+        from tax_engine import create_sample_multi_security_events
+
+        events = create_sample_multi_security_events()
+        # Every event is tagged with an identity (symbol + ISIN).
+        assert all(e.symbol and e.isin for e in events)
+        symbols = {e.symbol for e in events}
+        assert {"DT", "TSLA", "NVDA", "SHEL"} <= symbols
+        # Exercises the multi-currency path: at least one non-USD (GBP) security.
+        assert "GBP" in {e.currency for e in events}
+
+    def test_portfolio_runs_and_groups_per_security(self):
+        from tax_engine import create_sample_multi_security_events, run_portfolio
+
+        portfolio = run_portfolio(create_sample_multi_security_events())
+        labels = [r.security.label for r in portfolio.results]
+        assert labels == ["ADBE", "DT", "NVDA", "SHEL", "TSLA"]  # sorted by label
+        # NVDA is bought-and-held → open position, no realized result.
+        nvda = next(r for r in portfolio.results if r.security.label == "NVDA")
+        assert nvda.engine.state.total_shares > 0
+        assert nvda.net_gain_loss == Decimal("0")
+        # SHEL (GBP): sold 30 of 40 → a realized gain plus a small open GBP position
+        # (so the demo also shows currency exposure).
+        shel = next(r for r in portfolio.results if r.security.label == "SHEL")
+        assert shel.engine.state.total_shares == Decimal("10")
+        assert shel.net_gain_loss > 0
+        # ADBE is sold at a loss in 2020 → an early-year loss for the carryforward.
+        adbe = next(r for r in portfolio.results if r.security.label == "ADBE")
+        assert adbe.net_gain_loss < 0
+
+    def test_savings_income_and_carryforward_application(self):
+        from tax_engine import (
+            create_sample_multi_security_events,
+            create_sample_savings_income,
+            run_portfolio,
+        )
+
+        agg = run_portfolio(create_sample_multi_security_events()).aggregate
+        ledger = agg.compute_savings_ledger(create_sample_savings_income())
+        rows = {r.year: r for r in ledger.rows}
+        # 2020's loss is APPLIED against 2021's gain (carryforward application).
+        assert rows[2021].gp_prior_applied > 0
+        # 2022 is a net capital loss with dividend income → 25% cross-offset fires.
+        assert rows[2022].gp_net < 0
+        assert rows[2022].cross_offset > 0
+
+    def test_espp_map_has_discount_and_flags_early_sales(self):
+        from tax_engine import (
+            create_sample_espp_map,
+            create_sample_multi_security_events,
+            run_portfolio,
+        )
+        from tax_engine.cli_main import detect_espp_early_sales
+
+        espp_map = create_sample_espp_map()
+        # Each ESPP purchase has FMV above the (discounted) purchase price.
+        assert all(fmv > price for fmv, price in espp_map.values())
+
+        agg = run_portfolio(create_sample_multi_security_events()).aggregate
+        early, details = detect_espp_early_sales(agg.processed_events, espp_map)
+        assert early  # at least one ESPP lot was sold before the 3-year mark

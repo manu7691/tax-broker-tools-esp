@@ -1,8 +1,9 @@
-import datetime
-from unittest.mock import patch, MagicMock
-from decimal import Decimal
 from datetime import date
-from tax_engine.market_data import fetch_latest_price, fetch_historical_market_data
+from decimal import Decimal
+from unittest.mock import MagicMock, patch
+
+from tax_engine.market_data import fetch_historical_market_data, fetch_latest_price
+
 
 @patch("requests.get")
 def test_fetch_latest_price_success(mock_get):
@@ -20,7 +21,7 @@ def test_fetch_latest_price_success(mock_get):
         }
     }
     mock_get.return_value = mock_response
-    
+
     price = fetch_latest_price("AAPL")
     assert price == Decimal("123.45")
     mock_get.assert_called_once_with(
@@ -34,7 +35,7 @@ def test_fetch_latest_price_failure(mock_get):
     mock_response = MagicMock()
     mock_response.status_code = 404
     mock_get.return_value = mock_response
-    
+
     price = fetch_latest_price("AAPL")
     assert price is None
 
@@ -61,12 +62,12 @@ def test_fetch_historical_market_data_with_live_price(mock_get, mock_fetch_lates
         }
     }
     mock_get.return_value = mock_response
-    
+
     # Mock live price
     mock_fetch_latest.return_value = Decimal("105.50")
-    
+
     quotes, current_price, sma50, sma200, signal, advice = fetch_historical_market_data("AAPL", date(2023, 1, 1))
-    
+
     assert len(quotes) == 1
     assert quotes[0]["close"] == 100.0
     assert current_price == 105.50
@@ -95,12 +96,12 @@ def test_fetch_historical_market_data_fallback_to_close(mock_get, mock_fetch_lat
         }
     }
     mock_get.return_value = mock_response
-    
+
     # Mock live price failing / returning None
     mock_fetch_latest.return_value = None
-    
+
     quotes, current_price, sma50, sma200, signal, advice = fetch_historical_market_data("AAPL", date(2023, 1, 1))
-    
+
     assert len(quotes) == 1
     assert quotes[0]["close"] == 100.0
     assert current_price == 100.0
