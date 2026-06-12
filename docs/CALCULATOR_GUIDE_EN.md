@@ -1,4 +1,4 @@
-# Teammate's Guide: E-Trade Spanish Tax Calculator
+# Teammate's Guide: Multi-Broker Spanish Tax Calculator
 
 ![Spanish Tax Calculator Architecture](./images/calculator_banner_en.png)
 
@@ -88,7 +88,7 @@ To run the engine, follow these simple steps:
 ### Step 2: Organize the Files
 Ensure your project folder structure looks like this:
 ```text
-tax-etrade/
+tax-broker-tools-esp/
 ├── input/
 │   ├── espp/
 │   │   └── BenefitHistory.xlsx
@@ -107,9 +107,9 @@ tax-etrade/
 The project includes self-executable scripts that automatically bootstrap the virtual environment and dependencies. You do not need to install python packages manually.
 
 * **On macOS:**
-  * Double-click [run_tax_engine.command](file:///Users/manu.lopez/tax-etrade/run_tax_engine.command) in Finder, or run `./run_tax_engine.command` in your terminal.
+  * Double-click [run_tax_engine.command](file:///Users/manu.lopez/tax-broker-tools-esp/run_tax_engine.command) in Finder, or run `./run_tax_engine.command` in your terminal.
 * **On Windows:**
-  * Double-click [run_tax_engine.bat](file:///Users/manu.lopez/tax-etrade/run_tax_engine.bat).
+  * Double-click [run_tax_engine.bat](file:///Users/manu.lopez/tax-broker-tools-esp/run_tax_engine.bat).
 
 ---
 

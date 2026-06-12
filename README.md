@@ -1,11 +1,11 @@
-# E-Trade Spanish Tax Engine / Motor Fiscal de España para E-Trade
+# Spanish Broker Tax Tools / Herramientas Fiscales de Brókers en España
 
 🇺🇸 [English README](#english-version) | 🇪🇸 [README en Español](#version-en-espanol)
 
 ---
 
 <a name="english-version"></a>
-# 🇺🇸 E-Trade Spanish Tax Engine
+# 🇺🇸 Spanish Broker Tax Tools
 
 Calculates capital gains tax using the Spanish FIFO cost basis method and progressive savings tax scale for stocks acquired through RSU vesting, ESPP purchases, and options exercises.
 
@@ -241,7 +241,7 @@ Full walkthrough: [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md) 
 <br>
 
 <a name="version-en-espanol"></a>
-# 🇪🇸 Motor Fiscal de España para E-Trade
+# 🇪🇸 Herramientas Fiscales de Brókers en España
 
 Calcula el impuesto sobre las ganancias patrimoniales utilizando el método de asignación FIFO obligatorio en España y la escala progresiva del gravamen del ahorro para acciones adquiridas a través de RSU (acciones gratuitas), ESPP (compra con descuento) y ejercicio de opciones.
 

@@ -7,19 +7,35 @@ echo "=========================================="
 echo "   Spanish Tax Engine - Setup & Run"
 echo "=========================================="
 
-# 1. Check for Python 3
-if ! command -v python3 &> /dev/null; then
-    echo "Error: Python 3 is not installed."
-    echo "Please install Python 3 from https://www.python.org/downloads/"
-    echo "or run 'brew install python' if you have Homebrew."
+# 1. Find a suitable Python 3 version (>= 3.10)
+PYTHON_CMD=""
+for cmd in python3.12 python3.11 python3.10 python3; do
+    if command -v "$cmd" &> /dev/null; then
+        ver=$("$cmd" -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")' 2>/dev/null)
+        if [ $? -eq 0 ]; then
+            major=$(echo "$ver" | cut -d. -f1)
+            minor=$(echo "$ver" | cut -d. -f2)
+            if [ "$major" -eq 3 ] && [ "$minor" -ge 10 ]; then
+                PYTHON_CMD="$cmd"
+                break
+            fi
+        fi
+    fi
+done
+
+if [ -z "$PYTHON_CMD" ]; then
+    echo "Error: Python >= 3.10 is required, but not found."
+    echo "Please install Python 3.10+ (e.g., via 'brew install python@3.12' or from python.org)."
     read -p "Press Enter to exit..."
     exit 1
 fi
 
+echo "Using Python executable: $PYTHON_CMD ($($PYTHON_CMD --version))"
+
 # 2. Create Virtual Environment if missing
 if [ ! -d ".venv" ]; then
     echo "Creating Python virtual environment (.venv)..."
-    python3 -m venv .venv
+    "$PYTHON_CMD" -m venv .venv
     if [ $? -ne 0 ]; then
         echo "Error creating virtual environment."
         read -p "Press Enter to exit..."

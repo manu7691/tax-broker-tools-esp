@@ -1,4 +1,4 @@
-# Guía para el Equipo: Calculadora Fiscal E-Trade (FIFO España)
+# Guía para el Equipo: Calculadora Fiscal Multibróker (FIFO España)
 
 ![Calculadora Fiscal E-Trade](./images/calculator_banner_es.png)
 
@@ -88,7 +88,7 @@ Para utilizar la herramienta, sigue estos sencillos pasos:
 ### Paso 2: Organizar los Archivos
 Asegúrate de que la estructura de carpetas de tu proyecto se vea así:
 ```text
-tax-etrade/
+tax-broker-tools-esp/
 ├── input/
 │   ├── espp/
 │   │   └── BenefitHistory.xlsx
@@ -101,15 +101,16 @@ tax-etrade/
 │   │   └── option_exercise_1.pdf
 │   ├── prior_losses.json   # opcional: pérdidas pendientes de antes de tu ventana de datos
 │   └── savings_income.json # opcional: dividendos/intereses por año (EUR)
+└── ...
 ```
 
 ### Paso 3: Ejecutar el Programa
 El proyecto incluye scripts autoejecutables que configuran automáticamente el entorno virtual y las dependencias necesarias. No es necesario instalar paquetes de python de forma manual.
 
 * **En macOS:**
-  * Haz doble clic en el archivo [run_tax_engine.command](file:///Users/manu.lopez/tax-etrade/run_tax_engine.command) desde el Finder, o ejecuta `./run_tax_engine.command` en tu terminal.
+  * Haz doble clic en el archivo [run_tax_engine.command](file:///Users/manu.lopez/tax-broker-tools-esp/run_tax_engine.command) desde el Finder, o ejecuta `./run_tax_engine.command` en tu terminal.
 * **En Windows:**
-  * Haz doble clic en [run_tax_engine.bat](file:///Users/manu.lopez/tax-etrade/run_tax_engine.bat).
+  * Haz doble clic en [run_tax_engine.bat](file:///Users/manu.lopez/tax-broker-tools-esp/run_tax_engine.bat).
 
 ---
 
