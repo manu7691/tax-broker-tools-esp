@@ -35,6 +35,9 @@ To share this repository with your teammates or show it to your tax advisor, the
 *   **Multiple Securities & Brokers (Portfolio Mode) Guide:**
     *   🇺🇸 [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md)
     *   🇪🇸 [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md)
+*   **How the PDF Report Is Generated (slide deck for your tax advisor):**
+    *   🇺🇸 [PDF_REPORT_PRESENTATION_EN.md](docs/PDF_REPORT_PRESENTATION_EN.md) · [PDF](docs/PDF_REPORT_PRESENTATION_EN.pdf)
+    *   🇪🇸 [PDF_REPORT_PRESENTATION_ES.md](docs/PDF_REPORT_PRESENTATION_ES.md) · [PDF](docs/PDF_REPORT_PRESENTATION_ES.pdf)
 
 ---
 
@@ -268,6 +271,9 @@ Para compartir este repositorio con tus compañeros de equipo o mostrárselo a t
 *   **Guía de Varios Valores y Brókers (Modo Cartera):**
     *   🇺🇸 [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md)
     *   🇪🇸 [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md)
+*   **Cómo se genera el Informe PDF (presentación para tu gestor fiscal):**
+    *   🇺🇸 [PDF_REPORT_PRESENTATION_EN.md](docs/PDF_REPORT_PRESENTATION_EN.md) · [PDF](docs/PDF_REPORT_PRESENTATION_EN.pdf)
+    *   🇪🇸 [PDF_REPORT_PRESENTATION_ES.md](docs/PDF_REPORT_PRESENTATION_ES.md) · [PDF](docs/PDF_REPORT_PRESENTATION_ES.pdf)
 
 ---
 

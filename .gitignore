@@ -16,6 +16,7 @@ input/*
 
 # Generated reports
 *.pdf
+!PDF_REPORT_PRESENTATION_*.pdf
 tax_report_*.md
 charts_dashboard.html
 charts_dashboard_demo.html
