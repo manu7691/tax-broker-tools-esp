@@ -57,17 +57,28 @@ _EVENT_TYPE_ES = {
     EventType.EXERCISE: "Ejercicio",
 }
 
-# Common English ledger notes -> Spanish, applied as ordered substring replacements.
+# Common English ledger notes -> Spanish, applied as ordered substring
+# replacements. Order matters: longer/more specific phrases come before the
+# shorter ones they contain (e.g. the "Options …" phrases before "Stock Option").
 _NOTE_REPLACEMENTS_ES = [
+    ("Wash Sale Blocked Loss", "Pérdida Bloqueada Regla 2 Meses"),
     ("RSU Vest", "Concesión RSU"),
     ("ESPP Purchase", "Compra ESPP"),
     ("Sell-to-Cover (Auto-detected)", "Venta para Impuestos (Automático)"),
     ("Pending Settlement", "Pendiente de Liquidación"),
     ("Manual Sell", "Venta Manual"),
     ("Sell Order", "Orden de Venta"),
+    ("Options Same-Day Sale", "Venta Mismo Día de Opciones"),
+    ("Options Exercise", "Ejercicio de Opciones"),
+    ("Same-Day Sale", "Venta Mismo Día"),
+    ("Restricted Stock", "Acciones Restringidas"),
+    ("Stock Option", "Opción sobre Acciones"),
     ("Revolut Buy", "Compra Revolut"),
     ("Revolut Sell", "Venta Revolut"),
     ("Includes", "Incluye"),
+    ("strike", "precio ejercicio"),
+    ("order", "orden"),
+    ("Unknown", "Desconocido"),
     ("fees", "comisiones"),
 ]
 
@@ -100,89 +111,27 @@ _ENV.filters["tetype"] = _translate_event_type
 _ENV.filters["tnotes"] = _translate_notes
 
 
-# --- Modelo 100 crosswalk rows (apartado names are stable; casillas shift) ---
-#
-# Box numbers ("casillas") change almost every campaign, so the guide anchors on
-# the stable section names (*apartados*) and flags the casilla numbers as values
-# to verify against the current year's form.
-_MODELO100_ROWS_EN: list[tuple[str, str, str]] = [
-    (
-        "Each sale: transmission value, acquisition value, gain/loss",
-        "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
-        "≈ 0328–0344",
-    ),
-    (
-        "Net balance of gains/losses (savings base)",
-        "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
-        "≈ 0424 / 0425",
-    ),
-    (
-        "Dividends & interest (RCM)",
-        "Rendimientos del capital mobiliario a integrar en la base imponible del ahorro (dividends, interest)",
-        "≈ 0027–0031",
-    ),
-    (
-        "Foreign tax withheld (US)",
-        "Deducción por doble imposición internacional",
-        "≈ 0588 / 0589",
-    ),
-    (
-        "Prior-year pending losses (this ledger's 'pending')",
-        "Saldos netos negativos de ejercicios anteriores pendientes de compensar (one box per origin year)",
-        "≈ 0439–0443",
-    ),
-    ("Resulting savings tax base", "Base imponible del ahorro", "≈ 0460"),
-    (
-        "ESPP early-sale discount (if any)",
-        "Rendimientos del trabajo — via Declaración Complementaria for the purchase year",
-        "trabajo boxes",
-    ),
-]
-_MODELO100_ROWS_ES: list[tuple[str, str, str]] = [
-    (
-        "Cada venta: valor de transmisión, de adquisición y ganancia/pérdida",
-        "Ganancias y pérdidas patrimoniales derivadas de la transmisión de acciones negociadas en mercados oficiales (base del ahorro)",
-        "≈ 0328–0344",
-    ),
-    (
-        "Saldo neto de ganancias y pérdidas (base del ahorro)",
-        "Saldo neto de ganancias y pérdidas patrimoniales a integrar en la base imponible del ahorro",
-        "≈ 0424 / 0425",
-    ),
-    (
-        "Dividendos e intereses (RCM)",
-        "Rendimientos del capital mobiliario a integrar en la base imponible del ahorro (dividendos, intereses)",
-        "≈ 0027–0031",
-    ),
-    (
-        "Retención en origen (EE. UU.)",
-        "Deducción por doble imposición internacional",
-        "≈ 0588 / 0589",
-    ),
-    (
-        "Pérdidas pendientes de años anteriores ('pendientes' de este libro)",
-        "Saldos netos negativos de ejercicios anteriores pendientes de compensar (una casilla por año de origen)",
-        "≈ 0439–0443",
-    ),
-    ("Base imponible del ahorro resultante", "Base imponible del ahorro", "≈ 0460"),
-    (
-        "Descuento ESPP por venta anticipada (si lo hay)",
-        "Rendimientos del trabajo — mediante Declaración Complementaria del año de compra",
-        "casillas de trabajo",
-    ),
-]
-
-
 class ReportRenderer:
     """Renders a processed :class:`TaxEngine` into reports and console output."""
 
     def __init__(self, engine: "TaxEngine") -> None:
         self.engine = engine
 
+    @staticmethod
+    def _max_complete_year() -> int:
+        """Last fully-elapsed tax year. The in-progress current year is excluded
+        from every report view (console and PDF) since it isn't declarable yet;
+        the FIFO engine still processes those transactions."""
+        return date.today().year - 1
+
     def print_ledger(self) -> None:
         """Print the full transaction ledger in a readable format."""
+        max_year = self._max_complete_year()
         print("\n" + "=" * 120)
         print("TRANSACTION LEDGER (Spanish FIFO)")
+        print(
+            f"(complete tax years only — through {max_year}; {max_year + 1} in progress, excluded)"
+        )
         print("=" * 120)
         print(
             f"{'Date':<12} {'Type':<6} {'Shares':>10} {'Price USD':>12} "
@@ -192,6 +141,8 @@ class ReportRenderer:
         print("-" * 120)
 
         for pe in self.engine.processed_events:
+            if pe.event.event_date.year > max_year:
+                continue
             e = pe.event
             shares_sign = "+" if e.event_type != EventType.SELL else "-"
             shares_str = f"{shares_sign}{self.engine.format_shares(e.shares)}"
@@ -228,8 +179,13 @@ class ReportRenderer:
         savings_income: dict[int, SavingsIncomeYear] | None = None,
     ) -> None:
         """Print the yearly tax summary."""
+        max_year = self._max_complete_year()
+        summaries = [s for s in self.engine.get_all_yearly_summaries() if s.year <= max_year]
         print("\n" + "=" * 95)
         print("YEARLY TAX SUMMARY (Spain)")
+        print(
+            f"(complete tax years only — through {max_year}; {max_year + 1} in progress, excluded)"
+        )
         print("=" * 95)
         print(
             f"{'Year':<8} {'Total Gains':>15} {'Total Losses':>15} {'Blocked Loss':>15} "
@@ -237,7 +193,7 @@ class ReportRenderer:
         )
         print("-" * 95)
 
-        for summary in self.engine.get_all_yearly_summaries():
+        for summary in summaries:
             print(
                 f"{summary.year:<8} €{summary.total_gains:>14,.2f} "
                 f"€{summary.total_losses:>14,.2f} €{summary.blocked_losses:>14,.2f} "
@@ -250,7 +206,7 @@ class ReportRenderer:
         print("-" * 95)
         print("Report these values under capital gains from stock transfers:")
         print()
-        for summary in self.engine.get_all_yearly_summaries():
+        for summary in summaries:
             print(f"  Year {summary.year}:")
             print(f"    Total Realized Gains:      €{summary.total_gains:>12,.2f}")
             print(f"    Total Realized Losses:     €{summary.total_losses:>12,.2f}")
@@ -264,7 +220,7 @@ class ReportRenderer:
             # Two-bucket savings base supersedes the single-bucket ledger to avoid
             # contradictory pending balances (cross-offset changes what carries forward).
             sledger = self.engine.compute_savings_ledger(
-                savings_income, opening_losses=opening_losses
+                savings_income, opening_losses=opening_losses, max_year=max_year
             )
             print("\nSAVINGS BASE — CAPITAL GAINS + DIVIDENDS/INTEREST (Art. 48 & 49 LIRPF)")
             print("-" * 95)
@@ -296,7 +252,7 @@ class ReportRenderer:
                 )
         else:
             # 4-Year Loss Carryforward Ledger (capital gains only)
-            ledger = self.engine.compute_carryforward(opening_losses)
+            ledger = self.engine.compute_carryforward(opening_losses, max_year=max_year)
             print("\nLOSS CARRYFORWARD LEDGER (Art. 49 LIRPF)")
             print("-" * 95)
             if opening_losses:
@@ -337,21 +293,38 @@ class ReportRenderer:
         print("  liability depends on total savings income and prior-year loss carryforward.")
         print("=" * 95 + "\n")
 
-    def _portfolio_context(self, securities: "list[SecurityResult]") -> dict[str, Any]:
-        """Per-security rollup view-model (gains / deductible losses / net / position)."""
+    def _portfolio_context(
+        self, securities: "list[SecurityResult]", max_year: int | None = None
+    ) -> dict[str, Any]:
+        """Per-security rollup view-model (gains / deductible losses / net / position).
+
+        ``max_year`` bounds the report to complete tax years: realized gains/losses
+        sum only years ``<= max_year`` and the share count is the position as of the
+        end of that year, so the in-progress current year is excluded everywhere.
+        """
         rows = []
         total_gains = total_losses = total_net = Decimal("0")
         for r in securities:
-            summaries = r.engine.get_all_yearly_summaries()
+            events = [
+                pe
+                for pe in r.engine.processed_events
+                if max_year is None or pe.event.event_date.year <= max_year
+            ]
+            summaries = [
+                s
+                for s in r.engine.get_all_yearly_summaries()
+                if max_year is None or s.year <= max_year
+            ]
             gains = sum((s.total_gains for s in summaries), Decimal("0"))
             losses = sum((s.deductible_losses for s in summaries), Decimal("0"))
-            net = r.net_gain_loss
+            net = gains + losses
+            # Open position as of the end of the last complete year (FIFO running
+            # balance after the last in-window event); falls back to 0 if none.
+            shares = events[-1].total_shares_after if events else Decimal("0")
             total_gains += gains
             total_losses += losses
             total_net += net
-            brokers = (
-                ", ".join(sorted({pe.event.broker for pe in r.engine.processed_events})) or "—"
-            )
+            brokers = ", ".join(sorted({pe.event.broker for pe in events})) or "—"
             rows.append(
                 {
                     "label": r.security.label,
@@ -360,7 +333,7 @@ class ReportRenderer:
                     "gains": gains,
                     "losses": losses,
                     "net": net,
-                    "shares": r.engine.state.total_shares,
+                    "shares": shares,
                 }
             )
         return {
@@ -368,12 +341,14 @@ class ReportRenderer:
             "portfolio_totals": {"gains": total_gains, "losses": total_losses, "net": total_net},
         }
 
-    def _broker_context(self) -> dict[str, Any]:
+    def _broker_context(self, max_year: int | None = None) -> dict[str, Any]:
         """Per-broker realized G/L view-model, attributed to the selling broker."""
         gains: dict[str, Decimal] = {}
         losses: dict[str, Decimal] = {}
         for pe in self.engine.processed_events:
             if pe.event.event_type != EventType.SELL:
+                continue
+            if max_year is not None and pe.event.event_date.year > max_year:
                 continue
             b = pe.event.broker
             if pe.realized_gain_loss > 0:
@@ -400,12 +375,14 @@ class ReportRenderer:
             },
         }
 
-    def _transmisiones_context(self) -> dict[str, Any]:
+    def _transmisiones_context(self, max_year: int | None = None) -> dict[str, Any]:
         """Per-disposal capital-gains rows (one row per FIFO lot consumed by a sale)."""
         sells = [
             pe
             for pe in self.engine.processed_events
-            if pe.event.event_type == EventType.SELL and pe.fifo_matches
+            if pe.event.event_type == EventType.SELL
+            and pe.fifo_matches
+            and (max_year is None or pe.event.event_date.year <= max_year)
         ]
         rows = []
         total_net = Decimal("0")
@@ -442,20 +419,106 @@ class ReportRenderer:
                 )
         return {"transm_rows": rows, "transm_total": total_net}
 
+    def _hacienda_summary_context(
+        self,
+        transm_rows: list[dict[str, Any]],
+        loss_ctx: dict[str, Any],
+        savings_income: dict[int, SavingsIncomeYear] | None,
+        espp_early_sale_discounts: dict[int, Decimal] | None,
+        max_year: int | None = None,
+    ) -> dict[str, Any]:
+        """Per-year "what to declare" view-model grouping the three IRPF buckets.
+
+        One row per relevant year, each bundling: (1) rendimientos del trabajo
+        (only ESPP early-sale discounts — ordinary vest/ESPP income is already on
+        the payroll and pre-filled by Hacienda, so it is shown as a note, not a
+        figure), (2) ganancias y pérdidas patrimoniales (valor de transmisión /
+        adquisición, fees, blocked 2-month losses, and the *deductible* net that
+        actually feeds the base), and (3) RCM (dividendos + intereses).
+
+        The capital-gains figures come from the engine's yearly summary, **not**
+        from the per-lot disposal rows: the disposal rows carry the *raw* realized
+        result (which still includes blocked wash-sale losses), whereas the saldo
+        that integrates into the savings base excludes them. Mixing the two is
+        what made the displayed G/P look smaller than the resulting base. The
+        valor de transmisión / adquisición totals still come from the disposal
+        rows (those are gross, pre-fee values). The "base del ahorro integrada"
+        reuses the loss-ledger result so cross-offset and 4-year carryforward stay
+        consistent with the tables below.
+        """
+        # Integrated savings base per year (after cross-offset / carryforward),
+        # taken from whichever loss ledger is active so figures never contradict.
+        base_by_year: dict[int, Decimal] = {}
+        if loss_ctx.get("use_savings"):
+            for row in loss_ctx["sledger"].rows:
+                base_by_year[row.year] = row.savings_base
+        else:
+            for row in loss_ctx["cf_ledger"].rows:
+                base_by_year[row.year] = row.taxable_after
+
+        # Deductible net / fees / blocked losses come from the engine summary so
+        # the saldo reconciles with the base (raw disposal nets include blocked
+        # losses that the base excludes).
+        summary_by_year = {s.year: s for s in self.engine.get_all_yearly_summaries()}
+
+        years: set[int] = {r["transm_date"].year for r in transm_rows}
+        years |= set(base_by_year)
+        years |= set(summary_by_year)
+        if savings_income:
+            years |= set(savings_income)
+        if espp_early_sale_discounts:
+            years |= set(espp_early_sale_discounts)
+        if max_year is not None:
+            years = {y for y in years if y <= max_year}
+
+        rows = []
+        for y in sorted(years):
+            sells = [r for r in transm_rows if r["transm_date"].year == y]
+            transm_value = sum((r["transm_value"] for r in sells), Decimal("0"))
+            acq_value = sum((r["acq_value"] for r in sells), Decimal("0"))
+            summary = summary_by_year.get(y)
+            fees = summary.total_fees_eur if summary else Decimal("0")
+            # blocked_losses is stored negative; show the add-back as positive.
+            blocked = -summary.blocked_losses if summary else Decimal("0")
+            saldo_neto = summary.net_gain_loss if summary else Decimal("0")
+            si = savings_income.get(y) if savings_income else None
+            rows.append(
+                {
+                    "year": y,
+                    "espp_early": (
+                        espp_early_sale_discounts.get(y) if espp_early_sale_discounts else None
+                    ),
+                    "has_disposals": bool(sells),
+                    "transm_value": transm_value,
+                    "acq_value": acq_value,
+                    "fees": fees,
+                    "blocked": blocked,
+                    "saldo_neto": saldo_neto,
+                    "dividends": si.dividends_eur if si else Decimal("0"),
+                    "interest": si.interest_eur if si else Decimal("0"),
+                    "rcm": si.rcm_net if si else Decimal("0"),
+                    "foreign_tax": si.foreign_tax_eur if si else Decimal("0"),
+                    "base_ahorro": base_by_year.get(y, max(saldo_neto, Decimal("0"))),
+                }
+            )
+        return {"hacienda_years": rows}
+
     def _loss_context(
         self,
         savings_income: dict[int, SavingsIncomeYear] | None,
         opening_losses: dict[int, Decimal] | None,
+        max_year: int | None = None,
     ) -> dict[str, Any]:
         """Either the two-bucket savings ledger or the single-bucket carryforward.
 
         The two-bucket savings base supersedes the single-bucket ledger when
         dividend/interest is supplied (the cross-offset changes what carries
-        forward, so showing both would contradict).
+        forward, so showing both would contradict). ``max_year`` bounds both
+        simulations to complete tax years.
         """
         if savings_income:
             sledger = self.engine.compute_savings_ledger(
-                savings_income, opening_losses=opening_losses
+                savings_income, opening_losses=opening_losses, max_year=max_year
             )
             over15: list[tuple[int, Decimal]] = []
             if sledger.total_foreign_tax > 0:
@@ -464,6 +527,7 @@ class ReportRenderer:
                     for yr, inc in sorted(savings_income.items())
                     if inc.dividends_eur > 0
                     and inc.foreign_tax_eur > inc.dividends_eur * Decimal("0.15")
+                    and (max_year is None or yr <= max_year)
                 ]
             return {
                 "use_savings": True,
@@ -473,7 +537,7 @@ class ReportRenderer:
                 ),
             }
 
-        cf = self.engine.compute_carryforward(opening_losses)
+        cf = self.engine.compute_carryforward(opening_losses, max_year=max_year)
         seed_str = (
             ", ".join(
                 f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items())
@@ -505,30 +569,41 @@ class ReportRenderer:
         is_es = lang.lower() == "es"
         engine = self.engine
 
-        # Distinct brokers across the processed transactions. Used to tag each
+        # The report only covers complete tax years: the in-progress current year
+        # is excluded everywhere (it isn't declarable yet). The FIFO engine still
+        # processes those transactions — only the report view is bounded — so a
+        # current-year sale correctly consumes prior-year lots in the calculation.
+        max_year = date.today().year - 1
+
+        def _in_window(events: "list[Any]") -> "list[Any]":
+            return [pe for pe in events if pe.event.event_date.year <= max_year]
+
+        # Distinct brokers across the in-window transactions. Used to tag each
         # ledger row and, when more than one broker is present (e.g. E*TRADE +
         # Revolut), to add a per-broker realized G/L breakdown.
-        brokers = sorted({pe.event.broker for pe in engine.processed_events})
+        brokers = sorted({pe.event.broker for pe in _in_window(engine.processed_events)})
         multi_broker = len(brokers) > 1
 
         ctx: dict[str, Any] = {
             "is_es": is_es,
             "today_str": (date.today().strftime("%d/%m/%Y") if is_es else date.today().isoformat()),
+            "max_year": max_year,
             "brokers": brokers,
             "brokers_joined": ", ".join(brokers),
             "multi_broker": multi_broker,
-            "summaries": engine.get_all_yearly_summaries(),
+            "summaries": [s for s in engine.get_all_yearly_summaries() if s.year <= max_year],
             "securities": securities,
-            "modelo100_rows": _MODELO100_ROWS_ES if is_es else _MODELO100_ROWS_EN,
             "espp_discounts": espp_discounts,
             "espp_early_sale_discounts": espp_early_sale_discounts,
             "espp_early_sale_rows": (
-                sorted(espp_early_sale_discounts.items()) if espp_early_sale_discounts else []
+                sorted((y, a) for y, a in espp_early_sale_discounts.items() if y <= max_year)
+                if espp_early_sale_discounts
+                else []
             ),
         }
 
         if securities is not None:
-            ctx.update(self._portfolio_context(securities))
+            ctx.update(self._portfolio_context(securities, max_year=max_year))
             ctx["ledger_sections"] = [
                 {
                     "head": (
@@ -536,18 +611,29 @@ class ReportRenderer:
                         if r.security.isin
                         else r.security.label
                     ),
-                    "events": r.engine.processed_events,
+                    "events": _in_window(r.engine.processed_events),
                 }
                 for r in securities
             ]
         else:
-            ctx["single_events"] = engine.processed_events
+            ctx["single_events"] = _in_window(engine.processed_events)
 
         if multi_broker:
-            ctx.update(self._broker_context())
+            ctx.update(self._broker_context(max_year=max_year))
 
-        ctx.update(self._loss_context(savings_income, opening_losses))
-        ctx.update(self._transmisiones_context())
+        loss_ctx = self._loss_context(savings_income, opening_losses, max_year=max_year)
+        ctx.update(loss_ctx)
+        transm_ctx = self._transmisiones_context(max_year=max_year)
+        ctx.update(transm_ctx)
+        ctx.update(
+            self._hacienda_summary_context(
+                transm_ctx["transm_rows"],
+                loss_ctx,
+                savings_income,
+                espp_early_sale_discounts,
+                max_year=max_year,
+            )
+        )
 
         return _ENV.get_template("report.html.j2").render(**ctx)
 

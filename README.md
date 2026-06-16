@@ -152,7 +152,9 @@ The report also includes:
     **Auto-import from E\*TRADE (recommended):** menu **option 3 → "Auto-download"** (or `tax-download-dividends` then `tax-import-dividends`) scrapes your dividends-only cash transactions into `input/dividends/Cash_Transactions.xlsx` and merges them into `savings_income.json`. Interest lines are classified as `interest`, foreign-tax-withheld lines are captured as `foreign_tax_usd`, and re-running is idempotent (existing payments are de-duplicated by date + description + amount). The full **Download E\*TRADE Data** (option 2) also runs this step automatically.
     Or enter them by hand with the interactive helper (no JSON editing): `.venv/bin/python -m tax_engine.cli_savings_income` — or one-shot: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. A starter template: `cp docs/savings_income.example.json input/savings_income.json`.
   - **Alternative — EUR per year (manual conversion):** if you only have an annual total (e.g. off a **Form 1042-S** / 1099 in *Accounts → Documents → Tax Center*), you can instead supply pre-converted EUR amounts: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Note this can't apply per-payment exchange rates.
-- **Modelo 100 Filing Guide:** a crosswalk mapping each figure to its Modelo 100 *apartado* (casilla numbers are indicative — verify for your year).
+- **"What to declare" summary (*¿Qué declarar en Hacienda?*):** a prominent per-year section that gives the exact figures to enter, grouped by the three IRPF buckets — employment income (only ESPP sold before 3 years), capital gains (*valor de transmisión* / *adquisición* → deductible saldo) and the savings base (+ dividends/interest) — each with its indicative casilla.
+
+> **Complete years only:** the report covers finished tax years; the in-progress current year is excluded from every table (it isn't declarable yet), though its transactions still count in the FIFO calculation.
 
 > **CLI options:** `uv run main.py` accepts `--input-dir`, `--output-dir`, `--prior-losses`, and `--savings-income` (all optional).
 
@@ -388,7 +390,9 @@ El informe incluye además:
     **Importación automática desde E\*TRADE (recomendado):** la **opción 3 → "Auto-download"** del menú (o `tax-download-dividends` y luego `tax-import-dividends`) descarga tus transacciones de efectivo (solo dividendos) a `input/dividends/Cash_Transactions.xlsx` y las fusiona en `savings_income.json`. Las líneas de intereses se clasifican como `interest`, las retenciones en origen se capturan como `foreign_tax_usd` y reejecutar es idempotente (se eliminan duplicados por fecha + descripción + importe). La **Descarga de datos de E\*TRADE** completa (opción 2) también ejecuta este paso automáticamente.
     O introdúcelos a mano con el asistente interactivo (sin editar JSON): `.venv/bin/python -m tax_engine.cli_savings_income` — o directo: `... cli_savings_income --date 2024-03-15 --type dividend --amount-usd 80 --foreign-tax-usd 12`. Plantilla inicial: `cp docs/savings_income.example.json input/savings_income.json`.
   - **Alternativa — EUR por año (conversión manual):** si solo tienes un total anual (p. ej. de un **Formulario 1042-S** / 1099 en *Accounts → Documents → Tax Center*), puedes aportar importes ya convertidos a EUR: `{"2024": {"dividends_eur": 320, "interest_eur": 15, "foreign_tax_eur": 48}}`. Ten en cuenta que así no se aplican los tipos de cambio por pago.
-- **Guía de Cumplimentación del Modelo 100:** asigna cada dato a su *apartado* (las casillas son orientativas — verifícalas para tu ejercicio).
+- **Resumen *¿Qué declarar en Hacienda?*:** una sección destacada, por ejercicio, con las cifras exactas a introducir agrupadas por las tres categorías del IRPF — rendimientos del trabajo (solo ESPP vendido antes de 3 años), ganancias patrimoniales (*valor de transmisión* / *adquisición* → saldo deducible) y base del ahorro (+ dividendos/intereses), cada una con su casilla orientativa.
+
+> **Solo ejercicios completos:** el informe cubre los ejercicios ya finalizados; el año en curso se excluye de todas las tablas (aún no es declarable), aunque sus operaciones sí cuentan en el cálculo FIFO.
 
 > **Opciones de línea de comandos:** `uv run main.py` admite `--input-dir`, `--output-dir`, `--prior-losses` y `--savings-income` (todas opcionales).
 

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Report: "¿Qué declarar en Hacienda?" per-year summary.** A prominent section
+  near the top of the PDF/HTML report that gives the exact figures to enter in the
+  Renta (Modelo 100), grouped by the three IRPF buckets and one block per year:
+  (1) *rendimientos del trabajo* (only ESPP sold before the 3-year holding, since
+  ordinary RSU/ESPP income is already on the payroll and pre-filled — shown as a
+  note), (2) *base del ahorro → ganancias patrimoniales* (valor de transmisión /
+  adquisición, less fees, plus blocked 2-month losses added back, to the
+  **deductible** saldo that actually integrates into the base), and (3) *RCM*
+  (dividendos + intereses), with the integrated savings base and indicative
+  casillas inline. The capital-gains figures are sourced from the engine's yearly
+  summary (not the raw per-lot disposals) so the saldo reconciles with the base.
+
 - **Dashboard scope badges (portfolio mode).** Every card header now shows a
   colored pill stating its scope — 🌐 *Whole portfolio* (aggregate, ignores the
   selector) vs 🏷️ *`<TICKER>` only* (the security picked in the dropdown, re-labels
@@ -125,6 +137,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **Report covers complete tax years only.** The in-progress current year is now
+  excluded from every report view (PDF/HTML tables *and* the console ledger/summary)
+  because it isn't finished or declarable yet; a coverage note states this. The FIFO
+  engine is unaffected — current-year transactions are still processed, so a
+  current-year sale correctly consumes prior-year lots in the calculation. Open
+  positions are shown as of the end of the last complete year.
+  `compute_savings_ledger` / `compute_carryforward` gained an optional `max_year`
+  bound for this.
+- **Report: replaced the abstract "Modelo 100 filing guide" crosswalk** (concept →
+  apartado → casilla, no amounts) with the new per-year *"¿Qué declarar en Hacienda?"*
+  summary that carries the actual euro figures and the casillas inline.
 - Internal: split report rendering out of `tax_engine.py` into a new
   `report.py` (`ReportRenderer`); `tax_engine.py` is now calculation-only and its
   reporting methods delegate to it. No change to output or the public API.
@@ -162,6 +185,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Spanish report: the transaction ledger **Tipo** column left several English terms
+  untranslated (`Restricted Stock`, `Wash Sale Blocked Loss`, `Stock Option`,
+  `Options Exercise`/`Same-Day Sale`, `strike`, `Unknown`). They are now localized.
 - Transaction fees were converted to EUR by **dividing** by the FX rate instead of
   multiplying (the price uses multiplication). Fees are now deducted at the same
   rate as the price. Small magnitude (fees are a few dollars) but a correctness fix.

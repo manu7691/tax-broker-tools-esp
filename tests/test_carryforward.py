@@ -83,3 +83,16 @@ class TestCarryforwardLedger:
         assert all(r.prior_losses_applied == Decimal("0") for r in ledger.rows)
         assert ledger.expired == []
         assert ledger.pending_end == []
+
+    def test_max_year_excludes_in_progress_year(self):
+        engine = _engine_with(
+            {
+                2024: ("1000", "0"),
+                2025: ("500", "0"),  # in-progress year, must be dropped
+            }
+        )
+        ledger = engine.compute_carryforward(max_year=2024)
+
+        assert [r.year for r in ledger.rows] == [2024]
+        # The 2025 gain is not simulated at all (no row, untouched pools).
+        assert all(r.year != 2025 for r in ledger.rows)

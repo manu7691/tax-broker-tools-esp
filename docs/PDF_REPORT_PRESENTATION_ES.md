@@ -99,22 +99,24 @@ Todos los eventos pasan por **un único motor** que aplica, en este orden:
 ## Qué contiene el PDF (sección por sección)
 
 1. **Metodología** — explica FIFO y las reglas aplicadas.
-2. **Resumen de cartera por valor** — acciones que quedan y coste medio.
-3. **Resumen Fiscal Anual** — ganancia/pérdida por año (Base del Ahorro, Modelo 100).
-4. **Ganancias/pérdidas por bróker** — desglose E\*TRADE vs Revolut.
-5. **Base del Ahorro** — ganancias + dividendos/intereses (Art. 49).
-6. **Libro de compensación de pérdidas** — arrastre a 4 años.
+2. **¿Qué declarar en Hacienda?** — resumen por ejercicio con las cifras exactas y las casillas (trabajo · ganancias patrimoniales · base del ahorro).
+3. **Resumen de cartera por valor** — acciones que quedan y coste medio.
+4. **Resumen Fiscal Anual** — ganancia/pérdida por año (Base del Ahorro, Modelo 100).
+5. **Ganancias/pérdidas por bróker** — desglose E\*TRADE vs Revolut.
+6. **Base del Ahorro** — ganancias + dividendos/intereses (Art. 49).
 
 ---
 
 ## Qué contiene el PDF (continuación)
 
-7. **Detalle de transmisiones** — cada venta, lista para el Modelo 100.
-8. **Guía de cumplimentación del Modelo 100** — qué casilla rellenar con qué cifra.
+7. **Libro de compensación de pérdidas** — arrastre a 4 años.
+8. **Detalle de transmisiones** — cada venta, lista para el Modelo 100.
 9. **Análisis ESPP a 3 años** — exento vs tributable (Art. 42.3.f).
 10. **Libro de transacciones detallado** — cada operación con su cálculo FIFO paso a paso.
 
-> Las secciones 7 y 8 son las pensadas **directamente para la declaración**.
+> La sección **¿Qué declarar en Hacienda?** (2) junto con el **Detalle de transmisiones** (8) son las pensadas **directamente para la declaración**.
+>
+> El informe cubre solo **ejercicios completos**: el año en curso se excluye (todavía no es declarable), aunque sus operaciones sí cuentan en el cálculo FIFO.
 
 ---
 
@@ -236,4 +238,4 @@ Todos los importes en EUR, con el **tipo del BCE de cada fecha**.
 - Cada cifra es **rastreable** y convertida a EUR con el **tipo del BCE** por fecha.
 - El PDF separa lo que va a **ganancias patrimoniales**, **rendimientos del trabajo** (ESPP vendido antes de 3 años) y **base del ahorro** (dividendos/intereses).
 
-**¿Qué necesita de usted?** Revisar las secciones de *Transmisiones* y la *Guía del Modelo 100* y confirmar que el enfoque le encaja.
+**¿Qué necesita de usted?** Revisar la sección *¿Qué declarar en Hacienda?* y el *Detalle de transmisiones* y confirmar que el enfoque le encaja.

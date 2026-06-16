@@ -99,22 +99,24 @@ Every event passes through **a single engine** that applies, in this order:
 ## What the PDF contains (section by section)
 
 1. **Methodology** — explains FIFO and the rules applied.
-2. **Portfolio summary by security** — remaining shares and average cost.
-3. **Yearly Tax Summary** — gain/loss per year (Savings Base, Modelo 100).
-4. **Gains/losses by broker** — E\*TRADE vs Revolut breakdown.
-5. **Savings Base** — gains + dividends/interest (Art. 49).
-6. **Loss carryforward ledger** — 4-year carryover.
+2. **What to declare ("¿Qué declarar en Hacienda?")** — per-year summary with the exact figures and casillas (employment income · capital gains · savings base).
+3. **Portfolio summary by security** — remaining shares and average cost.
+4. **Yearly Tax Summary** — gain/loss per year (Savings Base, Modelo 100).
+5. **Gains/losses by broker** — E\*TRADE vs Revolut breakdown.
+6. **Savings Base** — gains + dividends/interest (Art. 49).
 
 ---
 
 ## What the PDF contains (continued)
 
-7. **Disposals detail** — each sale, ready for the Modelo 100.
-8. **Modelo 100 filing guide** — which box to fill with which figure.
+7. **Loss carryforward ledger** — 4-year carryover.
+8. **Disposals detail** — each sale, ready for the Modelo 100.
 9. **ESPP 3-year analysis** — exempt vs taxable (Art. 42.3.f).
 10. **Detailed transaction ledger** — each operation with its step-by-step FIFO calculation.
 
-> Sections 7 and 8 are the ones designed **directly for the tax return**.
+> The **What to declare** summary (2) together with the **Disposals detail** (8) are the ones designed **directly for the tax return**.
+>
+> The report covers **complete tax years only**: the in-progress current year is excluded (not declarable yet), though its transactions still count in the FIFO calculation.
 
 ---
 
@@ -236,4 +238,4 @@ All amounts in EUR, using the **ECB rate for each date**.
 - Every figure is **traceable** and converted to EUR using the **ECB rate** by date.
 - The PDF separates what goes to **capital gains**, **employment income** (ESPP sold before 3 years) and **savings base** (dividends/interest).
 
-**What it needs from you?** Review the *Disposals* and *Modelo 100 guide* sections and confirm the approach works for you.
+**What it needs from you?** Review the *What to declare* summary and the *Disposals detail* section and confirm the approach works for you.

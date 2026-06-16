@@ -95,3 +95,12 @@ class TestSavingsLedger:
         # 2021 RCM loss usable through 2025 -> offsets 200 of 2024 dividends.
         assert ledger.rows[0].rcm_prior_applied == Decimal("200")
         assert ledger.rows[0].rcm_taxable == Decimal("300")
+
+    def test_max_year_excludes_in_progress_year(self):
+        # The in-progress year is bounded out from both the stock summaries and the
+        # savings-income side, so neither produces a row.
+        engine = _engine_with({2024: ("1000", "0"), 2025: ("2000", "0")})
+        income = {2024: _income(2024, dividends="100"), 2025: _income(2025, dividends="999")}
+        ledger = engine.compute_savings_ledger(income, max_year=2024)
+
+        assert [r.year for r in ledger.rows] == [2024]
