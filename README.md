@@ -230,9 +230,10 @@ When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (
 | 3 | Add Dividend/Interest Income | *Optional.* Auto-download dividends from E\*TRADE, or record dividend/interest payments by hand (USD + date) for the savings base. |
 | 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Runs the engine and generates the English + Spanish PDF reports (integrates Revolut CSV if present). |
 | 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Builds the interactive `charts_dashboard.html` (auto-detects ticker; fetches a live price; includes Revolut if present). |
-| 6 | Run Demo: Calculate Tax & PDF Reports | Runs on sample data so you can see the output reports without your own data. |
-| 7 | Run Demo: Generate Charts & Tax Dashboard | Builds the interactive `charts_dashboard_demo.html` using simulated offline test data. |
-| 8 | Exit | Quit. |
+| 6 | Calculate Crypto / Combined Report (Pionex/Binance) | Runs the crypto FIFO report from `input/crypto/`; asks whether to combine it with your stocks into one savings base. |
+| 7 | Run Demo: Calculate Tax & PDF Reports | Runs on sample data so you can see the output reports without your own data. |
+| 8 | Run Demo: Generate Charts & Tax Dashboard | Builds the interactive `charts_dashboard_demo.html` using simulated offline test data. |
+| 9 | Exit | Quit. |
 
 ## 📂 Input Files
 
@@ -518,9 +519,10 @@ Al ejecutar `run_tax_engine.command` (macOS/Linux) o `run_tax_engine.bat` (Windo
 | 3 | Add Dividend/Interest Income | *Opcional.* Descarga los dividendos de E\*TRADE automáticamente, o registra los pagos de dividendos/intereses a mano (USD + fecha) para la base del ahorro. |
 | 4 | Calculate Tax & PDF Reports (optional: incl. Revolut) | Ejecuta el motor y genera los informes PDF en inglés y español (integra el CSV de Revolut si está presente). |
 | 5 | Generate Charts & Tax Dashboard (optional: incl. Revolut) | Crea el `charts_dashboard.html` interactivo (detecta el ticker; obtiene el precio en vivo; incluye Revolut si está presente). |
-| 6 | Run Demo: Calculate Tax & PDF Reports | Ejecuta con datos de ejemplo para generar los informes PDF de prueba. |
-| 7 | Run Demo: Generate Charts & Tax Dashboard | Crea el `charts_dashboard_demo.html` interactivo utilizando datos simulados sin conexión. |
-| 8 | Exit | Salir. |
+| 6 | Calculate Crypto / Combined Report (Pionex/Binance) | Ejecuta el informe FIFO de cripto desde `input/crypto/`; pregunta si combinarlo con tus acciones en una única base del ahorro. |
+| 7 | Run Demo: Calculate Tax & PDF Reports | Ejecuta con datos de ejemplo para generar los informes PDF de prueba. |
+| 8 | Run Demo: Generate Charts & Tax Dashboard | Crea el `charts_dashboard_demo.html` interactivo utilizando datos simulados sin conexión. |
+| 9 | Exit | Salir. |
 
 ## 📂 Archivos de Entrada
 
