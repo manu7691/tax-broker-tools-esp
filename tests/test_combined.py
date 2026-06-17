@@ -19,9 +19,7 @@ from tax_engine.tax_engine import TaxEngine
 
 def _summary(year, gains="0", losses="0"):
     return {
-        year: YearlyTaxSummary(
-            year=year, total_gains=Decimal(gains), total_losses=Decimal(losses)
-        )
+        year: YearlyTaxSummary(year=year, total_gains=Decimal(gains), total_losses=Decimal(losses))
     }
 
 
@@ -60,7 +58,10 @@ class TestCombinedSavingsBase:
         # Pre-window losses seed the pool and offset the merged gain.
         engine, merged = _merged_engine(_summary(2024, gains="200"), _summary(2024, gains="300"))
         assert merged[2024].net_gain_loss == Decimal("500")
-        rows = {r.year: r for r in engine.compute_carryforward(opening_losses={2021: Decimal("400")}).rows}
+        rows = {
+            r.year: r
+            for r in engine.compute_carryforward(opening_losses={2021: Decimal("400")}).rows
+        }
         assert rows[2024].prior_losses_applied == Decimal("400")
         assert rows[2024].taxable_after == Decimal("100")
 
