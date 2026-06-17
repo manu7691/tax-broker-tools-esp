@@ -108,10 +108,20 @@ class TestCryptoInFlagshipReport:
         current = date.today().year
         prior, buy = current - 1, current - 2
         events = [
-            StockEvent(date(buy, 1, 10), EventType.BUY, Decimal("100"), Decimal("10"),
-                       fx_rate=Decimal("1.0")),
-            StockEvent(date(prior, 6, 1), EventType.SELL, Decimal("40"), Decimal("20"),
-                       fx_rate=Decimal("1.0")),
+            StockEvent(
+                date(buy, 1, 10),
+                EventType.BUY,
+                Decimal("100"),
+                Decimal("10"),
+                fx_rate=Decimal("1.0"),
+            ),
+            StockEvent(
+                date(prior, 6, 1),
+                EventType.SELL,
+                Decimal("40"),
+                Decimal("20"),
+                fx_rate=Decimal("1.0"),
+            ),
         ]
         engine = TaxEngine()
         engine.process_all(events)

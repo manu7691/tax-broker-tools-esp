@@ -34,7 +34,9 @@ class TestParsingHelpers:
 class TestBinanceUtcOffset:
     """The Binance offset shifts a near-midnight trade across the day/year line."""
 
-    _CSV = "Time,Pair,Side,Executed,Amount,Fee\n25-01-01 00:30:00,BTCUSDT,BUY,1BTC,40000USDT,0USDT\n"
+    _CSV = (
+        "Time,Pair,Side,Executed,Amount,Fee\n25-01-01 00:30:00,BTCUSDT,BUY,1BTC,40000USDT,0USDT\n"
+    )
 
     def _load(self, tmp_path, offset):
         from tax_engine.crypto_parser import load_crypto_trades

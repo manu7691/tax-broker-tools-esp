@@ -186,9 +186,7 @@ def load_crypto_trades(input_dir: Path, binance_utc_offset_hours: int = 2) -> li
     return trades
 
 
-def _fee_in_quote(
-    trade: CryptoTrade, ignored_fees: list[CryptoTrade] | None = None
-) -> Decimal:
+def _fee_in_quote(trade: CryptoTrade, ignored_fees: list[CryptoTrade] | None = None) -> Decimal:
     """Express a trade's fee in the quote (≈ USD) asset, best-effort.
 
     - fee paid in the quote asset (USDT/USDC) -> taken at face value;
@@ -253,9 +251,7 @@ def trades_to_events_by_coin(
 
         event_type = EventType.BUY if t.side == "BUY" else EventType.SELL
         # Fees are deducted from the gain by the engine on SELL events only.
-        fees_usd = (
-            _fee_in_quote(t, ignored_fees) if event_type == EventType.SELL else Decimal("0")
-        )
+        fees_usd = _fee_in_quote(t, ignored_fees) if event_type == EventType.SELL else Decimal("0")
 
         event = StockEvent(
             event_date=t.dt.date(),
