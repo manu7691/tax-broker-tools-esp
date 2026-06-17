@@ -88,10 +88,12 @@ def _manual_engine(events_by_coin):
 
 class TestFifoGains:
     def test_simple_gain_in_eur(self):
-        by_coin = trades_to_events_by_coin([
-            _trade("2025-03-01T00:00:00", "BTC", "BUY", "1", "100"),
-            _trade("2025-06-01T00:00:00", "BTC", "SELL", "1", "150"),
-        ])
+        by_coin = trades_to_events_by_coin(
+            [
+                _trade("2025-03-01T00:00:00", "BTC", "BUY", "1", "100"),
+                _trade("2025-06-01T00:00:00", "BTC", "SELL", "1", "150"),
+            ]
+        )
         engine = _manual_engine(by_coin)
         summaries = engine.combined_summaries()
         assert summaries[2025].total_gains == Decimal("50")
@@ -101,11 +103,13 @@ class TestFifoGains:
 
     def test_cross_exchange_merge_uses_cheapest_first(self):
         # Buy cheap on Binance, expensive on Pionex; FIFO sells the cheap lot.
-        by_coin = trades_to_events_by_coin([
-            _trade("2025-01-01T00:00:00", "TAO", "BUY", "1", "100", source="Binance"),
-            _trade("2025-01-02T00:00:00", "TAO", "BUY", "1", "300", source="Pionex"),
-            _trade("2025-02-01T00:00:00", "TAO", "SELL", "1", "200"),
-        ])
+        by_coin = trades_to_events_by_coin(
+            [
+                _trade("2025-01-01T00:00:00", "TAO", "BUY", "1", "100", source="Binance"),
+                _trade("2025-01-02T00:00:00", "TAO", "BUY", "1", "300", source="Pionex"),
+                _trade("2025-02-01T00:00:00", "TAO", "SELL", "1", "200"),
+            ]
+        )
         engine = _manual_engine(by_coin)
         summaries = engine.combined_summaries()
         # Sold 1 @200 against the 100 lot => +100 gain; one 300 lot remains.
@@ -115,10 +119,12 @@ class TestFifoGains:
 
     def test_short_sale_guard_adds_synthetic_lot(self):
         # Sell more than ever bought -> a synthetic neutral lot covers it.
-        by_coin = trades_to_events_by_coin([
-            _trade("2025-01-01T00:00:00", "SEI", "BUY", "1", "10"),
-            _trade("2025-02-01T00:00:00", "SEI", "SELL", "3", "30"),
-        ])
+        by_coin = trades_to_events_by_coin(
+            [
+                _trade("2025-01-01T00:00:00", "SEI", "BUY", "1", "10"),
+                _trade("2025-02-01T00:00:00", "SEI", "SELL", "3", "30"),
+            ]
+        )
         engine = _manual_engine(by_coin)
         assert engine.synthetic_notes  # a gap was reported
         # Net is not negative inventory; result stays finite.

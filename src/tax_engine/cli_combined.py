@@ -48,12 +48,14 @@ def _load_stock_engine(input_dir: Path) -> TaxEngine | None:
     rsu_dir = input_dir / "rsu"
     options_dir = input_dir / "options"
 
-    has_data = any([
-        espp_path.exists(),
-        orders_path.exists(),
-        (rsu_dir.exists() and any(rsu_dir.iterdir())),
-        (options_dir.exists() and any(options_dir.glob("*.pdf"))),
-    ])
+    has_data = any(
+        [
+            espp_path.exists(),
+            orders_path.exists(),
+            (rsu_dir.exists() and any(rsu_dir.iterdir())),
+            (options_dir.exists() and any(options_dir.glob("*.pdf"))),
+        ]
+    )
     if not has_data:
         return None
 
@@ -95,19 +97,27 @@ def main() -> None:
         description="Combined stocks + crypto Spanish savings-base report."
     )
     parser.add_argument(
-        "--input-dir", type=Path, default=Path("input"),
+        "--input-dir",
+        type=Path,
+        default=Path("input"),
         help="E-Trade stock data directory (default: input).",
     )
     parser.add_argument(
-        "--crypto-dir", type=Path, default=None,
+        "--crypto-dir",
+        type=Path,
+        default=None,
         help="Crypto exchange exports directory (default: <input-dir>/crypto).",
     )
     parser.add_argument(
-        "--output-dir", type=Path, default=Path("."),
+        "--output-dir",
+        type=Path,
+        default=Path("."),
         help="Output directory for HTML reports (default: current dir).",
     )
     parser.add_argument(
-        "--lang", choices=["es", "en", "both"], default="both",
+        "--lang",
+        choices=["es", "en", "both"],
+        default="both",
         help="Report language(s): es, en, or both (default: both).",
     )
     args = parser.parse_args()
@@ -132,8 +142,7 @@ def main() -> None:
         return
 
     stock_summaries: dict[int, YearlyTaxSummary] = (
-        {s.year: s for s in stock_engine.get_all_yearly_summaries()}
-        if stock_engine else {}
+        {s.year: s for s in stock_engine.get_all_yearly_summaries()} if stock_engine else {}
     )
     crypto_summaries: dict[int, YearlyTaxSummary] = (
         crypto_engine.combined_summaries() if crypto_engine else {}

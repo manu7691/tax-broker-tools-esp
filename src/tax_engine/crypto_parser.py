@@ -28,16 +28,12 @@ from .models import EventType, StockEvent
 
 # Quote/settlement assets we treat as "USD cash". Their EUR value comes from the
 # ECB USD/EUR rate, not from a separate FIFO queue.
-STABLECOINS = frozenset(
-    {"USDT", "USDC", "USD", "DAI", "BUSD", "FDUSD", "TUSD", "USDP", "USDD"}
-)
+STABLECOINS = frozenset({"USDT", "USDC", "USD", "DAI", "BUSD", "FDUSD", "TUSD", "USDP", "USDD"})
 
 # Candidate quote assets for splitting a concatenated Binance pair like
 # "SEIUSDC" -> ("SEI", "USDC"). Ordered longest-first so e.g. "FDUSD" is matched
 # before "USD".
-_QUOTE_ASSETS = sorted(
-    STABLECOINS | {"BTC", "ETH", "BNB", "EUR"}, key=len, reverse=True
-)
+_QUOTE_ASSETS = sorted(STABLECOINS | {"BTC", "ETH", "BNB", "EUR"}, key=len, reverse=True)
 
 # Binance exports the amount and fee as a number glued to a ticker, e.g.
 # "692.7SEI" or "0.6927SEI". This splits them apart.
@@ -133,7 +129,9 @@ def parse_binance(history_csv: Path, utc_offset_hours: int = 2) -> list[CryptoTr
                 base, quote = _split_pair(row["Pair"].strip())
                 qty, exec_coin = _split_amount(row["Executed"])
                 amount, _quote_coin = _split_amount(row["Amount"])
-                fee_qty, fee_coin = _split_amount(row["Fee"]) if row.get("Fee") else (Decimal("0"), "")
+                fee_qty, fee_coin = (
+                    _split_amount(row["Fee"]) if row.get("Fee") else (Decimal("0"), "")
+                )
             except (KeyError, ValueError, InvalidOperation) as e:
                 print(f"  Warning: skipping malformed Binance row {row!r}: {e}")
                 continue
