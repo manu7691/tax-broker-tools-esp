@@ -39,9 +39,11 @@ Either source is optional — provide whichever you have. Copy-paste-ready templ
 # Per-coin crypto report (console + CSV + bilingual HTML)
 uv run tax-crypto --input-dir input/crypto
 
-# Crypto merged with your stocks into one savings base (bilingual HTML)
+# Crypto merged with your stocks into one savings base (bilingual HTML + PDF)
 uv run tax-combined
 ```
+
+When stock data is present, `tax-combined` also writes the **flagship bilingual PDF** (the polished *¿Qué declarar en Hacienda?* report). There, crypto appears as a **distinct capital-gains line** — *otros elementos patrimoniales*, ≈ casillas 1624–1631 — kept separate from the shares line (*acciones*, ≈ 0328–0344), while the **integrated savings base** below reflects the combined stock + crypto total. Crypto-only runs (no stock data) keep using the dedicated `tax-crypto` HTML report.
 
 `tax-crypto` accepts `--input-dir`, `--output-dir`, `--wash-sale`, and `--binance-utc-offset`. `tax-combined` accepts `--input-dir` (stocks), `--crypto-dir` (defaults to `<input-dir>/crypto`), `--output-dir`, `--lang` (`es` / `en` / `both`), and `--binance-utc-offset`.
 

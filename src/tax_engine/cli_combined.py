@@ -214,6 +214,22 @@ def main() -> None:
         out_path.write_text(html, encoding="utf-8")
         print(f"Wrote {lang.upper()} combined report to: {out_path}")
 
+    # When stock data is present, also emit the flagship PDF (the polished
+    # "¿Qué declarar en Hacienda?" report), with crypto folded into the combined
+    # savings base and shown as a distinct capital-gains line. Crypto-only runs
+    # keep using the dedicated tax-crypto HTML report.
+    if stock_engine is not None:
+        for lang in langs:
+            pdf_path = output_dir / f"combined_tax_report_{lang.upper()}_{timestamp}.pdf"
+            stock_engine.generate_pdf_report(
+                str(pdf_path),
+                lang=lang,
+                savings_income=savings_income if savings_income else None,
+                opening_losses=prior_losses if prior_losses else None,
+                crypto_summaries=crypto_summaries if crypto_summaries else None,
+            )
+            print(f"Wrote {lang.upper()} combined PDF to: {pdf_path}")
+
     print("\nDone.")
 
 

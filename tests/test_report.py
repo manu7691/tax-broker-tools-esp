@@ -98,3 +98,39 @@ class TestCompleteYearsOnly:
 
         assert "Acciones Restringidas" in html
         assert "Restricted Stock" not in html
+
+
+class TestCryptoInFlagshipReport:
+    """Crypto folds into the combined savings base and gets its own GP line."""
+
+    def _stock_engine_with_prior_gain(self):
+        # Buy 100 @ 10 (two years ago), sell 40 @ 20 last year -> +400 stock gain.
+        current = date.today().year
+        prior, buy = current - 1, current - 2
+        events = [
+            StockEvent(date(buy, 1, 10), EventType.BUY, Decimal("100"), Decimal("10"),
+                       fx_rate=Decimal("1.0")),
+            StockEvent(date(prior, 6, 1), EventType.SELL, Decimal("40"), Decimal("20"),
+                       fx_rate=Decimal("1.0")),
+        ]
+        engine = TaxEngine()
+        engine.process_all(events)
+        return engine, prior
+
+    def test_crypto_line_and_combined_base(self):
+        from tax_engine.models import YearlyTaxSummary
+
+        engine, prior = self._stock_engine_with_prior_gain()
+        crypto = {prior: YearlyTaxSummary(year=prior, total_losses=Decimal("-100"))}
+        html = ReportRenderer(engine).generate_html_content(lang="en", crypto_summaries=crypto)
+
+        # The distinct crypto capital-gains line is rendered...
+        assert "otros elementos patrimoniales" in html
+        # ...and the integrated base reflects the merged total (400 - 100 = 300),
+        # not the stock-only 400.
+        assert "€300.00" in html
+
+    def test_stock_only_report_has_no_crypto_line(self):
+        engine, _prior = self._stock_engine_with_prior_gain()
+        html = ReportRenderer(engine).generate_html_content(lang="en")
+        assert "otros elementos patrimoniales" not in html
