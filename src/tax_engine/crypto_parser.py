@@ -201,6 +201,8 @@ def _fee_in_quote(trade: CryptoTrade) -> Decimal:
 
 def trades_to_events_by_coin(
     trades: list[CryptoTrade],
+    *,
+    unhandled_swaps: list[CryptoTrade] | None = None,
 ) -> dict[str, list[StockEvent]]:
     """Convert normalised trades into per-coin :class:`StockEvent` queues.
 
@@ -209,6 +211,12 @@ def trades_to_events_by_coin(
     USD/EUR rate to obtain ``price_eur`` — so the EUR cost basis already reflects
     the exchange rate on each trade's date, as required by the Agencia
     Tributaria. Events are returned in chronological order per coin.
+
+    Crypto-to-crypto swaps (a non-stablecoin quote) are **not handled** by this
+    MVP, yet Spain taxes them as a *permuta*. They are therefore not dropped
+    silently: if an ``unhandled_swaps`` list is supplied, each such trade is
+    appended to it so callers can report "declare these manually" rather than
+    understating the gain.
     """
     events_by_coin: dict[str, list[StockEvent]] = {}
 
@@ -217,12 +225,15 @@ def trades_to_events_by_coin(
         # treated as cash, no taxable position to track.
         if t.base in STABLECOINS:
             continue
-        # True crypto-to-crypto swaps (non-stable quote) are out of MVP scope.
+        # True crypto-to-crypto swaps (non-stable quote) are out of MVP scope,
+        # but taxable in Spain — collect them so they are surfaced, not lost.
         if t.quote not in STABLECOINS:
             print(
                 f"  Warning: crypto-to-crypto trade {t.base}/{t.quote} on "
-                f"{t.dt:%Y-%m-%d} skipped (non-stablecoin quote, out of scope)."
+                f"{t.dt:%Y-%m-%d} NOT handled (taxable permuta — declare manually)."
             )
+            if unhandled_swaps is not None:
+                unhandled_swaps.append(t)
             continue
 
         event_type = EventType.BUY if t.side == "BUY" else EventType.SELL

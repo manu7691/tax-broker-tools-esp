@@ -62,12 +62,14 @@ def main() -> None:
         return
     print(f"\nTotal trades loaded: {len(trades)}")
 
-    events_by_coin = trades_to_events_by_coin(trades)
-    if not events_by_coin:
+    unhandled_swaps: list = []
+    events_by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled_swaps)
+    if not events_by_coin and not unhandled_swaps:
         print("\nError: no taxable (non-stablecoin) positions found in the data.")
         return
 
     engine = CryptoTaxEngine(detect_wash_sale=args.wash_sale)
+    engine.unhandled_swaps = unhandled_swaps
     engine.process(events_by_coin)
     engine.print_console()
 

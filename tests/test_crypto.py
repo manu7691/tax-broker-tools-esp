@@ -55,6 +55,30 @@ class TestEventBuilding:
         trades = [_trade("2025-01-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC")]
         assert trades_to_events_by_coin(trades) == {}
 
+    def test_crypto_to_crypto_is_collected_when_requested(self):
+        # A permuta (ETH/BTC) is taxable in Spain — it must be surfaced, not lost.
+        trades = [
+            _trade("2025-01-01T00:00:00", "BTC", "BUY", "1", "100"),  # normal, handled
+            _trade("2025-02-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC"),  # permuta
+        ]
+        unhandled: list = []
+        by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled)
+        assert set(by_coin) == {"BTC"}  # only the stablecoin-quoted trade is handled
+        assert len(unhandled) == 1
+        assert (unhandled[0].base, unhandled[0].quote) == ("ETH", "BTC")
+
+    def test_unhandled_swaps_shown_in_console(self, capsys):
+        from tax_engine.crypto_engine import CryptoTaxEngine
+
+        trades = [_trade("2025-02-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC")]
+        unhandled: list = []
+        trades_to_events_by_coin(trades, unhandled_swaps=unhandled)
+        engine = CryptoTaxEngine()
+        engine.unhandled_swaps = unhandled
+        engine.print_console()
+        out = capsys.readouterr().out
+        assert "NOT handled" in out and "ETH" in out
+
     def test_events_grouped_per_coin_in_order(self):
         trades = [
             _trade("2025-01-02T00:00:00", "BTC", "SELL", "1", "120"),

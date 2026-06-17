@@ -83,10 +83,12 @@ def _load_crypto_engine(crypto_dir: Path) -> CryptoTaxEngine | None:
     trades = load_crypto_trades(crypto_dir)
     if not trades:
         return None
-    events_by_coin = trades_to_events_by_coin(trades)
-    if not events_by_coin:
+    unhandled_swaps: list = []
+    events_by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled_swaps)
+    if not events_by_coin and not unhandled_swaps:
         return None
     engine = CryptoTaxEngine()
+    engine.unhandled_swaps = unhandled_swaps
     engine.process(events_by_coin)
     print(f"  Crypto engine: {len(trades)} trades across {len(engine.coins)} coins.")
     return engine
@@ -172,6 +174,11 @@ def main() -> None:
     print("=" * 80)
     if savings_income:
         print("  (savings_income.json loaded — use full savings-ledger in the HTML report)")
+    if crypto_engine and crypto_engine.unhandled_swaps:
+        print(
+            f"\n⚠️  {len(crypto_engine.unhandled_swaps)} crypto-to-crypto swap(s) NOT handled "
+            "(taxable permutas — declare these manually)."
+        )
     print()
 
     output_dir.mkdir(parents=True, exist_ok=True)
