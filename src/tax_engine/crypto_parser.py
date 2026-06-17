@@ -153,11 +153,18 @@ def parse_binance(history_csv: Path, utc_offset_hours: int = 2) -> list[CryptoTr
     return trades
 
 
-def load_crypto_trades(input_dir: Path) -> list[CryptoTrade]:
+def load_crypto_trades(input_dir: Path, binance_utc_offset_hours: int = 2) -> list[CryptoTrade]:
     """Load and merge every supported export found under ``input_dir``.
 
     Looks for ``pionex/trading.csv`` and any Binance ``*Spot-Trade-History*.csv``
     file. Returns all trades sorted chronologically (UTC).
+
+    ``binance_utc_offset_hours`` is the timezone the Binance export's ``Time``
+    column is in (Binance exports in the account's local time, not UTC). It is
+    shifted back to UTC so trades merge correctly with Pionex's UTC timestamps —
+    and, importantly, so a trade near midnight lands on the right day, which
+    determines its ECB rate and tax year. Set it to your export's offset
+    (e.g. 0 for UTC, 1 for CET winter, 2 for CEST summer — the default).
     """
     trades: list[CryptoTrade] = []
 
@@ -171,7 +178,7 @@ def load_crypto_trades(input_dir: Path) -> list[CryptoTrade]:
     search_dirs = [binance_dir] if binance_dir.exists() else [input_dir]
     for d in search_dirs:
         for csv_path in sorted(d.glob("*Spot-Trade-History*.csv")):
-            found = parse_binance(csv_path)
+            found = parse_binance(csv_path, utc_offset_hours=binance_utc_offset_hours)
             print(f"  Loaded {len(found)} Binance trade(s) from {csv_path.name}.")
             trades.extend(found)
 

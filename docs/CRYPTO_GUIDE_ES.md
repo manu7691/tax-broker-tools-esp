@@ -43,7 +43,9 @@ uv run tax-crypto --input-dir input/crypto
 uv run tax-combined
 ```
 
-`tax-crypto` admite `--input-dir`, `--output-dir` y `--wash-sale`. `tax-combined` admite `--input-dir` (acciones), `--crypto-dir` (por defecto `<input-dir>/crypto`), `--output-dir` y `--lang` (`es` / `en` / `both`).
+`tax-crypto` admite `--input-dir`, `--output-dir`, `--wash-sale` y `--binance-utc-offset`. `tax-combined` admite `--input-dir` (acciones), `--crypto-dir` (por defecto `<input-dir>/crypto`), `--output-dir`, `--lang` (`es` / `en` / `both`) y `--binance-utc-offset`.
+
+> **Zona horaria de Binance:** Binance exporta la columna `Time` en la **hora local** de tu cuenta, no en UTC. La herramienta la convierte a UTC (por defecto **2 h = CEST**) para que cada operación caiga en el día correcto — lo que importa porque el día fija el tipo del BCE y, para operaciones cerca de medianoche del 31 dic / 1 ene, el **ejercicio fiscal**. Si tu export no está en CEST, usa `--binance-utc-offset` (p. ej. `0` para UTC, `1` para CET en invierno).
 
 ## Qué obtienes
 

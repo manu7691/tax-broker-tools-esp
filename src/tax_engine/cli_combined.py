@@ -34,7 +34,7 @@ from tax_engine.cli_main import (
     load_savings_income,
 )
 from tax_engine.crypto_engine import CryptoTaxEngine, generate_combined_html
-from tax_engine.crypto_parser import load_crypto_trades, trades_to_events_by_coin
+from tax_engine.crypto_parser import CryptoTrade, load_crypto_trades, trades_to_events_by_coin
 from tax_engine.ecb_rates import prefetch_ecb_rates
 from tax_engine.models import YearlyTaxSummary
 from tax_engine.rsu_parser import load_rsu_events
@@ -78,12 +78,14 @@ def _load_stock_engine(input_dir: Path) -> TaxEngine | None:
     return engine
 
 
-def _load_crypto_engine(crypto_dir: Path) -> CryptoTaxEngine | None:
+def _load_crypto_engine(
+    crypto_dir: Path, binance_utc_offset_hours: int = 2
+) -> CryptoTaxEngine | None:
     """Return a processed CryptoTaxEngine, or None if no data found."""
-    trades = load_crypto_trades(crypto_dir)
+    trades = load_crypto_trades(crypto_dir, binance_utc_offset_hours=binance_utc_offset_hours)
     if not trades:
         return None
-    unhandled_swaps: list = []
+    unhandled_swaps: list[CryptoTrade] = []
     events_by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled_swaps)
     if not events_by_coin and not unhandled_swaps:
         return None
@@ -122,6 +124,15 @@ def main() -> None:
         default="both",
         help="Report language(s): es, en, or both (default: both).",
     )
+    parser.add_argument(
+        "--binance-utc-offset",
+        type=int,
+        default=2,
+        metavar="HOURS",
+        help="Timezone offset (in hours) of the Binance export's Time column, "
+        "shifted back to UTC so dates land on the correct day/tax year "
+        "(default: 2 = CEST). Use 0 for UTC, 1 for CET.",
+    )
     args = parser.parse_args()
 
     input_dir: Path = args.input_dir
@@ -133,7 +144,9 @@ def main() -> None:
     print(f"  Crypto data: {crypto_dir}\n")
 
     stock_engine = _load_stock_engine(input_dir)
-    crypto_engine = _load_crypto_engine(crypto_dir)
+    crypto_engine = _load_crypto_engine(
+        crypto_dir, binance_utc_offset_hours=args.binance_utc_offset
+    )
 
     if stock_engine is None and crypto_engine is None:
         print(
