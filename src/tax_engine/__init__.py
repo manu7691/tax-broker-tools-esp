@@ -34,6 +34,7 @@ from .portfolio import (
 from .revolut_parser import load_revolut_events
 from .rsu_parser import load_rsu_events
 from .sample_data import (
+    create_sample_crypto_events,
     create_sample_dividends_by_symbol,
     create_sample_espp_map,
     create_sample_events_with_ecb_rates,
@@ -72,6 +73,7 @@ __all__ = [
     "create_sample_events_with_ecb_rates",
     "create_sample_multi_security_events",
     "create_sample_savings_income",
+    "create_sample_crypto_events",
     "create_sample_espp_map",
     "create_sample_dividends_by_symbol",
     "load_rsu_events",

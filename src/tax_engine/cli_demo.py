@@ -5,32 +5,106 @@ By default it runs the single-security demo (employer stock only). With
 ``--all-securities`` it runs the multi-security **portfolio** demo (DT + TSLA +
 NVDA + a GBP-priced Shell position) so you can see per-security reporting and the
 multi-currency path without supplying real data.
+
+``--crypto`` runs the crypto FIFO demo (BTC + ETH + SOL across two exchanges) and
+``--combined`` merges the stock portfolio and crypto demos into one savings-base
+report. All modes use manual FX rates, so the demo never touches the network.
 """
 
 import argparse
 import datetime
 
 from tax_engine import (
+    CryptoTaxEngine,
     TaxEngine,
+    create_sample_crypto_events,
     create_sample_espp_map,
     create_sample_events_with_ecb_rates,
     create_sample_multi_security_events,
     create_sample_savings_income,
+    generate_combined_html,
     prefetch_ecb_rates,
     run_portfolio,
 )
 
 
+def _run_crypto_demo() -> None:
+    """Crypto FIFO demo: per-coin sample trades, console summary + HTML reports."""
+    print("Spanish Crypto Tax Engine — FIFO per coin")
+    print("\n** DEMO MODE: Using sample crypto data (BTC + ETH + SOL) **\n")
+
+    events_by_coin = create_sample_crypto_events()
+    engine = CryptoTaxEngine()
+    engine.process(events_by_coin)
+    engine.print_console()
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    for lang in ("en", "es"):
+        html_path = f"crypto_tax_report_demo_{lang.upper()}_{timestamp}.html"
+        with open(html_path, "w", encoding="utf-8") as fh:
+            fh.write(engine.generate_html(lang=lang))
+        print(f"Wrote {lang.upper()} HTML report to: {html_path}")
+    print("\nDone.")
+
+
+def _run_combined_demo() -> None:
+    """Combined demo: stock portfolio + crypto merged into one savings base."""
+    print("Spanish Tax Engine — Combined Stocks + Crypto Report")
+    print("\n** DEMO MODE: Using sample stock portfolio + crypto data **\n")
+
+    stock_portfolio = run_portfolio(create_sample_multi_security_events())
+    stock_summaries = {s.year: s for s in stock_portfolio.aggregate.get_all_yearly_summaries()}
+
+    crypto_engine = CryptoTaxEngine()
+    crypto_engine.process(create_sample_crypto_events())
+    crypto_summaries = crypto_engine.combined_summaries()
+    savings_income = create_sample_savings_income()
+
+    timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+    for lang in ("en", "es"):
+        html = generate_combined_html(
+            stock_summaries=stock_summaries,
+            crypto_summaries=crypto_summaries,
+            savings_income=savings_income,
+            lang=lang,
+        )
+        out_path = f"combined_tax_report_demo_{lang.upper()}_{timestamp}.html"
+        with open(out_path, "w", encoding="utf-8") as fh:
+            fh.write(html)
+        print(f"Wrote {lang.upper()} combined report to: {out_path}")
+    print("\nDone.")
+
+
 def main() -> None:
     """Run the tax engine with sample data (single-security or portfolio)."""
     parser = argparse.ArgumentParser(description="Spanish Tax Engine demo with sample data.")
-    parser.add_argument(
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument(
         "--all-securities",
         action="store_true",
         help="Portfolio demo: several securities (incl. a GBP one), each with its "
         "own ISIN-keyed FIFO queue, rolled up into one savings base.",
     )
+    mode_group.add_argument(
+        "--crypto",
+        action="store_true",
+        help="Crypto demo: per-coin FIFO over sample BTC/ETH/SOL trades, with "
+        "bilingual HTML reports.",
+    )
+    mode_group.add_argument(
+        "--combined",
+        action="store_true",
+        help="Combined demo: stock portfolio + crypto merged into one savings-base "
+        "report (bilingual HTML).",
+    )
     args = parser.parse_args()
+
+    if args.crypto:
+        _run_crypto_demo()
+        return
+    if args.combined:
+        _run_combined_demo()
+        return
 
     print("Spanish Tax Engine for E-Trade RSUs and ESPP")
     print("Using FIFO Cost Basis (First In, First Out) & Progressive Savings Rate Scale")
