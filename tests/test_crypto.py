@@ -104,6 +104,45 @@ class TestEventBuilding:
         out = capsys.readouterr().out
         assert "NOT handled" in out and "ETH" in out
 
+    def test_fee_in_unsupported_coin_is_collected(self):
+        # A SELL whose fee is paid in BNB (neither base nor quote) can't be valued.
+        sell = CryptoTrade(
+            dt=datetime.fromisoformat("2025-03-01T00:00:00"),
+            base="BTC",
+            quote="USDT",
+            side="SELL",
+            qty=Decimal("1"),
+            quote_amount=Decimal("100"),
+            fee_qty=Decimal("0.1"),
+            fee_coin="BNB",
+            source="Binance",
+        )
+        ignored: list = []
+        trades_to_events_by_coin([sell], ignored_fees=ignored)
+        assert len(ignored) == 1
+        assert ignored[0].fee_coin == "BNB"
+
+    def test_ignored_fees_shown_in_console(self, capsys):
+        from tax_engine.crypto_engine import CryptoTaxEngine
+
+        engine = CryptoTaxEngine()
+        engine.ignored_fees = [
+            CryptoTrade(
+                dt=datetime.fromisoformat("2025-03-01T00:00:00"),
+                base="BTC",
+                quote="USDT",
+                side="SELL",
+                qty=Decimal("1"),
+                quote_amount=Decimal("100"),
+                fee_qty=Decimal("0.1"),
+                fee_coin="BNB",
+                source="Binance",
+            )
+        ]
+        engine.print_console()
+        out = capsys.readouterr().out
+        assert "not valued" in out and "BNB" in out
+
     def test_events_grouped_per_coin_in_order(self):
         trades = [
             _trade("2025-01-02T00:00:00", "BTC", "SELL", "1", "120"),

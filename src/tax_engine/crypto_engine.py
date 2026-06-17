@@ -93,6 +93,9 @@ class CryptoTaxEngine:
         # Crypto-to-crypto swaps the parser could not handle (taxable permutas
         # the user must declare manually). Populated by the CLI after parsing.
         self.unhandled_swaps: list[CryptoTrade] = []
+        # Fees paid in an unsupported coin (e.g. BNB) that could not be valued —
+        # they slightly overstate the gain. Populated by the CLI after parsing.
+        self.ignored_fees: list[CryptoTrade] = []
 
     def process(self, events_by_coin: dict[str, list[StockEvent]]) -> None:
         """Run a FIFO engine per coin, in true chronological order."""
@@ -295,6 +298,12 @@ class CryptoTaxEngine:
             )
             for t in self.unhandled_swaps:
                 print(f"   - {t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} for {t.quote}")
+        if self.ignored_fees:
+            coins = sorted({t.fee_coin for t in self.ignored_fees})
+            print(
+                f"\n⚠️  {len(self.ignored_fees)} fee(s) paid in an unsupported coin "
+                f"({', '.join(coins)}) were not valued — gains are slightly overstated."
+            )
         print()
 
     # ----- CSV export ----------------------------------------------------
@@ -584,6 +593,13 @@ a{{color:var(--blue);}}
                     f"{t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} → {t.quote}</li>\n"
                 )
             h.append("</ul>\n")
+        if self.ignored_fees:
+            coins = sorted({t.fee_coin for t in self.ignored_fees})
+            h.append(
+                f"<p class='warn'>⚠ {len(self.ignored_fees)} fee(s) paid in an unsupported "
+                f"coin ({', '.join(coins)}) were not valued — gains are slightly "
+                "overstated.</p>\n"
+            )
         return h
 
     def _tab_charts(

@@ -86,11 +86,15 @@ def _load_crypto_engine(
     if not trades:
         return None
     unhandled_swaps: list[CryptoTrade] = []
-    events_by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled_swaps)
+    ignored_fees: list[CryptoTrade] = []
+    events_by_coin = trades_to_events_by_coin(
+        trades, unhandled_swaps=unhandled_swaps, ignored_fees=ignored_fees
+    )
     if not events_by_coin and not unhandled_swaps:
         return None
     engine = CryptoTaxEngine()
     engine.unhandled_swaps = unhandled_swaps
+    engine.ignored_fees = ignored_fees
     engine.process(events_by_coin)
     print(f"  Crypto engine: {len(trades)} trades across {len(engine.coins)} coins.")
     return engine
