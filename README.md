@@ -279,7 +279,7 @@ If you trade crypto on **Pionex** or **Binance**, drop their spot-trade exports 
 - **Combined with stocks:** `uv run tax-combined` merges the per-year stock and crypto gains/losses into one Art. 49 LIRPF savings base (bilingual HTML).
 - **Try it offline:** `uv run tax-demo --crypto` (or `--combined`) runs on sample BTC/ETH/SOL data with no network call.
 
-> The optional `--wash-sale` flag applies the 2-month homogeneous-asset rule per coin; it is **off by default** because its applicability to crypto is unsettled at AEAT.
+> The optional `--wash-sale` flag applies the 2-month homogeneous-asset rule per coin; it is **off by default** because, per DGT criteria, crypto-assets are not *valores homogéneos* and the rule does not apply. Enable it only as an explicit advisor-directed override.
 
 Full walkthrough: [CRYPTO_GUIDE_EN.md](docs/CRYPTO_GUIDE_EN.md) · [🇪🇸 ES](docs/CRYPTO_GUIDE_ES.md).
 
@@ -568,7 +568,7 @@ Si operas con cripto en **Pionex** o **Binance**, coloca sus exports de operacio
 - **Combinado con acciones:** `uv run tax-combined` fusiona las ganancias/pérdidas anuales de acciones y cripto en una única base del ahorro (Art. 49 LIRPF) en HTML bilingüe.
 - **Pruébalo sin conexión:** `uv run tax-demo --crypto` (o `--combined`) usa datos de ejemplo BTC/ETH/SOL sin ninguna llamada de red.
 
-> La opción `--wash-sale` aplica la regla de los 2 meses para activos homogéneos por moneda; está **desactivada por defecto** porque su aplicabilidad a la cripto no está resuelta en la AEAT.
+> La opción `--wash-sale` aplica la regla de los 2 meses para activos homogéneos por moneda; está **desactivada por defecto** porque, según el criterio de la DGT, los criptoactivos no son *valores homogéneos* y la regla no aplica. Actívala solo como anulación expresa indicada por tu asesor.
 
 Guía completa: [CRYPTO_GUIDE_ES.md](docs/CRYPTO_GUIDE_ES.md) · [🇺🇸 EN](docs/CRYPTO_GUIDE_EN.md).
 

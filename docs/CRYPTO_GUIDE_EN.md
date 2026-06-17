@@ -57,7 +57,7 @@ uv run tax-combined
 - **Crypto-to-crypto swaps** quoted in a non-stablecoin (e.g. ETH/BTC) are **out of scope for this MVP** and are skipped with a warning — even though Spain *does* treat a *permuta* as taxable. Handle those manually for now.
 - **Fees** are deducted from the gain on SELL events, valued in the quote asset (a fee paid in the base coin is valued at the trade's unit price; an unsupported fee coin such as BNB is ignored with a warning).
 - **Missing acquisition history:** if your data sells more of a coin than it ever shows you buying, a **synthetic opening lot** is inserted (priced at the first sell) so the queue never goes negative, and a warning is printed. Provide the complete history to avoid this.
-- **Wash-sale (2-month rule):** off by default. `--wash-sale` applies the homogeneous-asset rule per coin, but its applicability to crypto is **unsettled at AEAT** — leave it off unless your advisor says otherwise.
+- **Wash-sale (2-month rule):** off by default. Per DGT criteria, crypto-assets are **not *valores homogéneos***, so the anti-loss-washing rule (Art. 33.5 LIRPF) **does not apply**. `--wash-sale` exists only as an explicit advisor-directed override — leave it off unless your advisor specifically tells you otherwise.
 - **The tax estimate is isolated** — it ignores your stock gains, dividends/interest, and prior-year loss carryforward. Use `tax-combined` for the real savings base.
 
 ## Try it with demo data (no real data needed)

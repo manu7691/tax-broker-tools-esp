@@ -12,8 +12,10 @@ Design choices:
   the EUR value of each leg comes from the ECB USD/EUR rate of the trade date.
 * **True chronological order** — trades are fed to the engine in timestamp order
   so intraday buy/sell sequences and cross-exchange merges are matched correctly.
-* **No 2-month wash-sale rule by default** — its applicability to crypto is
-  unsettled at AEAT; enable explicitly if your advisor wants it.
+* **No 2-month wash-sale rule** — per DGT criteria crypto-assets are not
+  «valores homogéneos», so the anti-loss-washing rule (Art. 33.5 LIRPF) does
+  not apply. It is off by default; the flag exists only as an explicit
+  advisor-directed override.
 """
 
 from __future__ import annotations
