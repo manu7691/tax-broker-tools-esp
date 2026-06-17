@@ -710,6 +710,7 @@ a{{color:var(--blue);}}
             "⚠ Box numbers change every year. Verify them against the form for your filing year.",
             "⚠ Crypto is NOT subject to the 2-month wash-sale rule (Art. 33.5 LIRPF) — the DGT does not consider them «valores homogéneos» for anti-loss-washing purposes.",
             "⚠ Stablecoins (USDT/USDC) are treated as USD cash in this report. Strictly each conversion may be a swap — consult your advisor.",
+            "⚠ Income-type events (staking, airdrops, hard forks, lending interest) are NOT handled — they are income (RCM / rendimientos), not capital gains, and are absent from spot-trade exports. Declare them separately.",
             "🔗 DGT V1149-18, V1816-20, V1374-21 · Ley 11/2021 (Ley de Medidas de Prevención del Fraude Fiscal)",
         ]
         h.append("<div class='disclaimer'>" + "<br>".join(notes) + "</div>\n")
@@ -1054,6 +1055,7 @@ th{{background:var(--bg2);color:var(--txt2);font-weight:600;}}
     notes = [
         "⚠ Box numbers change every year — verify against the form for your filing year.",
         "⚠ Crypto is NOT subject to the 2-month wash-sale rule (DGT does not consider them homogeneous securities).",
+        "⚠ Income-type events (staking, airdrops, hard forks, lending interest) are NOT handled — declare them separately as income (RCM / rendimientos).",
         "⚠ This report is informational — verify results with a qualified tax advisor (Asesor Fiscal).",
     ]
     h.append("<div class='disclaimer'>" + "<br>".join(notes) + "</div>\n")
