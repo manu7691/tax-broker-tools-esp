@@ -198,3 +198,46 @@ class TestMultiSecuritySample:
         agg = run_portfolio(create_sample_multi_security_events()).aggregate
         early, details = detect_espp_early_sales(agg.processed_events, espp_map)
         assert early  # at least one ESPP lot was sold before the 3-year mark
+
+
+class TestCryptoSample:
+    """The crypto demo dataset: per-coin FIFO, fully offline (manual FX)."""
+
+    def test_layout_is_per_coin_and_offline(self):
+        from tax_engine import create_sample_crypto_events
+
+        by_coin = create_sample_crypto_events()
+        assert set(by_coin) == {"BTC", "ETH", "SOL"}
+        # Every event pins a manual fx_rate, so processing never hits the ECB.
+        assert all(e.fx_rate is not None for evs in by_coin.values() for e in evs)
+
+    def test_engine_runs_and_merges_gains_and_losses(self):
+        from tax_engine import CryptoTaxEngine, create_sample_crypto_events
+
+        engine = CryptoTaxEngine()
+        engine.process(create_sample_crypto_events())
+        summaries = engine.combined_summaries()
+
+        # 2024: BTC partial sell at a gain (ETH/SOL still held or sold later).
+        assert summaries[2024].net_gain_loss == pytest.approx(
+            Decimal("4306.75"), abs=Decimal("0.01")
+        )
+        # 2025: BTC + SOL gains, offset by an ETH loss.
+        assert summaries[2025].total_gains == pytest.approx(
+            Decimal("12958.49"), abs=Decimal("0.01")
+        )
+        assert summaries[2025].total_losses == pytest.approx(
+            Decimal("-4456.80"), abs=Decimal("0.01")
+        )
+
+    def test_fifo_leaves_open_sol_position(self):
+        from tax_engine import CryptoTaxEngine, create_sample_crypto_events
+
+        engine = CryptoTaxEngine()
+        engine.process(create_sample_crypto_events())
+        positions = {p.coin: p for p in engine.open_positions()}
+        # 100 SOL bought across two exchanges, 60 sold → 40 from the dearer lot.
+        assert positions["SOL"].quantity == Decimal("40")
+        assert positions["SOL"].avg_cost_eur == pytest.approx(
+            Decimal("130.50"), abs=Decimal("0.01")
+        )
