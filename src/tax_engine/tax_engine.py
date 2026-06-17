@@ -334,7 +334,9 @@ class TaxEngine:
         return sorted(self.yearly_summaries.values(), key=lambda s: s.year)
 
     def compute_carryforward(
-        self, opening_losses: dict[int, Decimal] | None = None
+        self,
+        opening_losses: dict[int, Decimal] | None = None,
+        max_year: int | None = None,
     ) -> CarryforwardLedger:
         """
         Simulate the 4-year loss carryforward across the tracked years (Art. 49 LIRPF).
@@ -345,7 +347,9 @@ class TaxEngine:
 
         ``opening_losses`` optionally seeds the pool with pending net losses from
         years *before* the imported data window, as ``{origin_year: magnitude}``
-        where magnitude is a positive Decimal.
+        where magnitude is a positive Decimal. ``max_year`` caps the simulation at
+        a complete tax year, excluding the in-progress current year from the report
+        (the FIFO engine itself is unaffected — only this ledger view is bounded).
         """
         # Pool entries are mutable [origin_year, remaining_magnitude] (remaining > 0).
         pool: list[list[Any]] = []
@@ -357,7 +361,7 @@ class TaxEngine:
         summaries = {s.year: s for s in self.get_all_yearly_summaries()}
         ledger = CarryforwardLedger()
 
-        for year in sorted(summaries):
+        for year in sorted(y for y in summaries if max_year is None or y <= max_year):
             # Expire losses that can no longer be used this year (origin <= year-5).
             survivors: list[list[Any]] = []
             for origin_year, remaining in pool:
@@ -422,6 +426,7 @@ class TaxEngine:
         savings_income: dict[int, SavingsIncomeYear],
         opening_losses: dict[int, Decimal] | None = None,
         opening_rcm_losses: dict[int, Decimal] | None = None,
+        max_year: int | None = None,
     ) -> SavingsLedger:
         """
         Simulate the full savings base across two categories (Art. 48 & 49 LIRPF):
@@ -432,7 +437,10 @@ class TaxEngine:
         years and expire thereafter.
 
         ``opening_losses`` / ``opening_rcm_losses`` seed pending losses (positive
-        magnitudes keyed by origin year) from before the data window.
+        magnitudes keyed by origin year) from before the data window. ``max_year``
+        caps the simulation at the last complete tax year so the in-progress
+        current year is excluded from the report view (the FIFO engine itself is
+        unaffected).
         """
         gp_pool: list[list[Any]] = [
             [y, abs(Decimal(str(m)))]
@@ -446,7 +454,9 @@ class TaxEngine:
         ]
 
         summaries = {s.year: s for s in self.get_all_yearly_summaries()}
-        years = sorted(set(summaries) | set(savings_income))
+        years = sorted(
+            y for y in (set(summaries) | set(savings_income)) if max_year is None or y <= max_year
+        )
         ledger = SavingsLedger()
 
         def _expire(pool: list[list[Any]], bucket: str, year: int) -> list[list[Any]]:

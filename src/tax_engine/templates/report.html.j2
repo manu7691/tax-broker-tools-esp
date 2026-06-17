@@ -73,6 +73,13 @@
 <html><head><style>body { font-family: sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }* { box-sizing: border-box; }table { border-collapse: collapse; width: 100%; margin-bottom: 20px; font-size: 12px; }th, td { border: 1px solid #ddd; padding: 6px; text-align: left; }td.tipo, th.tipo { overflow-wrap: anywhere; word-break: break-word; }.ledger { font-size: 9px; }.ledger td.tipo, .ledger th.tipo { width: 200px; }.ledger td, .ledger th { padding: 4px; }th { background-color: #f2f2f2; }h1, h2, h3 { color: #333; }.gain { color: green; }.loss { color: red; }code { background-color: #f4f4f4; padding: 2px 4px; border-radius: 4px; }h2 { page-break-before: always; }h2:first-of-type { page-break-before: avoid; }h2, h3 { page-break-after: avoid; }table { page-break-inside: auto; }tr, li { page-break-inside: avoid; }</style></head><body>
 <h1>{{ 'Informe Fiscal de España (FIFO)' if is_es else 'Spanish Tax Report' }}</h1>
 <p>{{ 'Generado el' if is_es else 'Generated on' }}: {{ today_str }}</p>
+<p style='font-size: 11px; color: #555; background-color: #f4f4f4; padding: 8px; border-left: 4px solid #999;'>
+{%- if is_es %}
+<strong>Cobertura:</strong> este informe incluye únicamente ejercicios <strong>completos</strong> (hasta {{ max_year }}). El año en curso ({{ max_year + 1 }}) se excluye de todas las tablas por no haber finalizado y no ser aún declarable; sus operaciones sí se tienen en cuenta en el cálculo FIFO de los lotes.
+{%- else %}
+<strong>Coverage:</strong> this report includes <strong>complete</strong> tax years only (through {{ max_year }}). The in-progress year ({{ max_year + 1 }}) is excluded from all tables — it isn't finished or declarable yet — though its transactions are still honoured in the FIFO lot calculation.
+{%- endif %}
+</p>
 <h2>{{ 'Metodología' if is_es else 'Methodology' }}</h2>
 {%- if not is_es %}
 <p>This report calculates capital gains using the <strong>FIFO (First In First Out)</strong> method as required by Spanish tax law (Agencia Tributaria).</p>
@@ -109,6 +116,61 @@
 {%- endif %}
 </ul>
 {%- endif %}
+{# ---- "What to declare in Hacienda" consolidated summary ---- #}
+<h2>{{ '¿Qué declarar en Hacienda? — Resumen por Ejercicio' if is_es else 'What to Declare — Summary by Year' }}</h2>
+{%- if not is_es %}
+<p>The exact figures to enter in the Renta (Modelo 100), grouped by the three IRPF buckets. The <strong>integrated savings base</strong> already reflects the cross-category offset and 4-year loss carryforward simulated in the tables further below. Casilla numbers are indicative — <strong>confirm them against the form for your filing year</strong>.</p>
+{%- else %}
+<p>Las cifras exactas a introducir en la Renta (Modelo 100), agrupadas por las tres categorías del IRPF. La <strong>base del ahorro integrada</strong> ya refleja la compensación entre categorías y el arrastre de pérdidas a 4 años que se simulan en las tablas de más abajo. Los números de casilla son orientativos — <strong>confírmalos en el modelo de tu ejercicio</strong>.</p>
+{%- endif %}
+{%- for y in hacienda_years %}
+<h3>{{ 'Ejercicio' if is_es else 'Tax Year' }} {{ y.year }}</h3>
+<table>
+{%- if not is_es %}
+<tr><th>Concept</th><th>Amount (EUR)</th><th>Casilla (verify)</th></tr>
+<tr><th colspan='3' style='background-color:#eaf2ff;'>1) Rendimientos del trabajo (salary income)</th></tr>
+<tr><td colspan='3' style='font-size:11px; color:#555;'>RSU vesting and the ordinary ESPP discount are <strong>already on your payroll (nómina)</strong> and pre-filled by Hacienda — do <strong>not</strong> re-enter them from this report.</td></tr>
+{%- if y.espp_early %}
+<tr><td>ESPP sold before 3-year holding (Complementaria for {{ y.year }})</td><td><strong style='color:#cc0000;'>€{{ y.espp_early | num2 }}</strong></td><td>trabajo boxes</td></tr>
+{%- endif %}
+<tr><th colspan='3' style='background-color:#eaf2ff;'>2) Base del ahorro — savings base</th></tr>
+<tr><td><strong>a) Capital gains/losses on shares</strong></td><td></td><td>≈ 0328–0344</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Transmission value (valor de transmisión)</td><td>€{{ y.transm_value | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Acquisition value (valor de adquisición)</td><td>€{{ y.acq_value | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Less: transaction fees (gastos)</td><td>−€{{ y.fees | num2 }}</td><td></td></tr>
+{%- if y.blocked > 0 %}
+<tr><td>&nbsp;&nbsp;&nbsp;Add back: 2-month blocked losses (deferred, not deductible this year)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
+{%- endif %}
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Net saldo integrated into the base (deductible)</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td><strong>b) Dividends + interest (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
+<tr><td><strong>Integrated savings base (after offsets/carryforward)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
+{%- if y.foreign_tax > 0 %}
+<tr><td>Foreign tax withheld (deducción doble imposición)</td><td>€{{ y.foreign_tax | num2 }}</td><td>≈ 0588/0589</td></tr>
+{%- endif %}
+{%- else %}
+<tr><th>Concepto</th><th>Importe (EUR)</th><th>Casilla (verificar)</th></tr>
+<tr><th colspan='3' style='background-color:#eaf2ff;'>1) Rendimientos del trabajo</th></tr>
+<tr><td colspan='3' style='font-size:11px; color:#555;'>La concesión de RSU y el descuento ESPP ordinario <strong>ya constan en tu nómina</strong> y vienen en los datos fiscales de Hacienda — <strong>no</strong> los vuelvas a introducir desde este informe.</td></tr>
+{%- if y.espp_early %}
+<tr><td>ESPP vendido antes de 3 años (Complementaria del {{ y.year }})</td><td><strong style='color:#cc0000;'>€{{ y.espp_early | num2 }}</strong></td><td>casillas de trabajo</td></tr>
+{%- endif %}
+<tr><th colspan='3' style='background-color:#eaf2ff;'>2) Base del ahorro</th></tr>
+<tr><td><strong>a) Ganancias/pérdidas patrimoniales (acciones)</strong></td><td></td><td>≈ 0328–0344</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Valor de transmisión</td><td>€{{ y.transm_value | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Valor de adquisición</td><td>€{{ y.acq_value | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Menos: gastos (comisiones)</td><td>−€{{ y.fees | num2 }}</td><td></td></tr>
+{%- if y.blocked > 0 %}
+<tr><td>&nbsp;&nbsp;&nbsp;Se suma: pérdidas bloqueadas regla 2 meses (diferidas, no deducibles este año)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
+{%- endif %}
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Saldo neto a integrar en la base (deducible)</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td><strong>b) Dividendos + intereses (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
+<tr><td><strong>Base del ahorro integrada (tras compensaciones/arrastre)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
+{%- if y.foreign_tax > 0 %}
+<tr><td>Retención en origen (deducción doble imposición)</td><td>€{{ y.foreign_tax | num2 }}</td><td>≈ 0588/0589</td></tr>
+{%- endif %}
+{%- endif %}
+</table>
+{%- endfor %}
 {%- if securities is not none %}
 {# ---- Portfolio Summary by Security ---- #}
 <h2>{{ 'Resumen de Cartera por Valor' if is_es else 'Portfolio Summary by Security' }}</h2>
@@ -297,21 +359,6 @@
 <tr><td colspan='7'><strong>{{ 'G/P neta total' if is_es else 'Total net gain/loss' }}</strong></td><td class='{{ 'gain' if transm_total >= 0 else 'loss' }}'><strong>€{{ transm_total | num2 }}</strong></td></tr>
 </table>
 {%- endif %}
-{# ---- Modelo 100 Filing Guide ---- #}
-<h2>{{ 'Guía de Cumplimentación del Modelo 100 (IRPF)' if is_es else 'Modelo 100 Filing Guide (IRPF)' }}</h2>
-{%- if not is_es %}
-<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verify the casilla numbers.</strong> Modelo 100 box numbers change almost every year. The <em>section names</em> below are stable; the casilla numbers are indicative — confirm them against the form for your filing year.</p>
-<table>
-<tr><th>Figure from this report</th><th>Modelo 100 section (apartado)</th><th>Casilla (verify)</th></tr>
-{%- else %}
-<p style='font-size: 11px; color: #cc6600;'><strong>⚠️ Verifica los números de casilla.</strong> Las casillas del Modelo 100 cambian casi cada año. Los <em>nombres de apartado</em> de abajo son estables; los números de casilla son orientativos — confírmalos en el modelo de tu ejercicio.</p>
-<table>
-<tr><th>Dato de este informe</th><th>Apartado del Modelo 100</th><th>Casilla (verificar)</th></tr>
-{%- endif %}
-{%- for figure, apartado, casilla in modelo100_rows %}
-<tr><td>{{ figure }}</td><td>{{ apartado }}</td><td>{{ casilla }}</td></tr>
-{%- endfor %}
-</table>
 {%- if espp_early_sale_discounts or espp_discounts %}
 {# ---- ESPP 3-Year Holding Period Analysis ---- #}
 <h2>{{ 'Análisis del Período de Retención ESPP de 3 Años (Art. 42.3.f LIRPF)' if is_es else 'ESPP 3-Year Holding Period Analysis (Art. 42.3.f LIRPF)' }}</h2>
