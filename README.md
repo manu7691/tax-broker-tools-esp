@@ -129,6 +129,8 @@ uv run main.py
 ```
 It will generate a PDF file `tax_report_*.pdf`.
 
+**Crypto (optional).** If you also trade crypto, place your exchange exports under `input/crypto/` (see *Input Files* below) and run `uv run tax-crypto` for a per-coin FIFO report, or `uv run tax-combined` to merge stocks + crypto into one Spanish savings base. To preview either flow on offline sample data: `uv run tax-demo --crypto` or `uv run tax-demo --combined`.
+
 ---
 
 ## 📝 Filing Spanish Renta (Modelo 100)
@@ -244,6 +246,8 @@ Everything lives under `input/`. Menu options 1–2 create most of these automat
 | `input/ticker.json` | For Revolut | Primary/employer security, e.g. `{"ticker": "DT", "isin": "US..."}` — the ISIN drives the single-security Revolut filter |
 | `input/securities.json` | Optional | Multi-security config: turns on portfolio mode and maps tickers→ISINs (see *Multiple securities & brokers* below) |
 | `input/revolut/*.csv` | Optional | Revolut investment CSV — *Account statement* (preferred) or *Profit & Loss* (see below) |
+| `input/crypto/pionex/trading.csv` | Optional (crypto) | Pionex → trade/order history export (see *Crypto* below) |
+| `input/crypto/binance/*Spot-Trade-History*.csv` | Optional (crypto) | Binance → spot trade history export (see *Crypto* below) |
 
 ### Revolut (optional)
 
@@ -262,6 +266,16 @@ By default the tool tracks **one** security (your employer stock). If you also t
 - **Output:** the PDF adds a **Portfolio Summary by Security** table plus a separate ledger + FIFO section per security; the savings base, 4-year carryforward and 25% cross-offset run on the portfolio total, while the 2-month wash-sale rule stays per security. The dashboard adds a per-security breakdown chart, a security selector, and **scope badges** on every card (🌐 whole portfolio vs 🏷️ selected stock) so a non-finance reader always knows which numbers they're looking at.
 
 Full walkthrough: [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md) · [🇪🇸 ES](docs/MULTI_SECURITY_GUIDE_ES.md).
+
+### Crypto (optional)
+
+If you trade crypto on **Pionex** or **Binance**, drop their spot-trade exports into `input/crypto/pionex/` and `input/crypto/binance/` (Binance files match `*Spot-Trade-History*.csv`; any filename works). Each coin gets its **own FIFO queue**, and every disposal is valued in EUR at the **official ECB rate on the trade date**, exactly like stocks. Stablecoin-base trades and crypto-to-crypto swaps are skipped (out of scope), and fees are valued in the quote asset.
+
+- **Per-coin report:** `uv run tax-crypto --input-dir input/crypto` prints a per-coin console summary and writes a per-disposal CSV plus bilingual HTML reports.
+- **Combined with stocks:** `uv run tax-combined` merges the per-year stock and crypto gains/losses into one Art. 49 LIRPF savings base (bilingual HTML).
+- **Try it offline:** `uv run tax-demo --crypto` (or `--combined`) runs on sample BTC/ETH/SOL data with no network call.
+
+> The optional `--wash-sale` flag applies the 2-month homogeneous-asset rule per coin; it is **off by default** because its applicability to crypto is unsettled at AEAT.
 
 ## ❓ Troubleshooting
 
@@ -401,6 +415,8 @@ uv run main.py
 ```
 El motor generará el informe detallado en formato PDF (`tax_report_*.pdf`).
 
+**Cripto (opcional).** Si además operas con cripto, coloca los exports de tu exchange bajo `input/crypto/` (ver *Archivos de Entrada* abajo) y ejecuta `uv run tax-crypto` para un informe FIFO por moneda, o `uv run tax-combined` para fusionar acciones + cripto en una única base del ahorro española. Para probar cualquiera de los dos flujos con datos de ejemplo sin conexión: `uv run tax-demo --crypto` o `uv run tax-demo --combined`.
+
 ---
 
 ## 📝 Declarar en Renta (Modelo 100 España)
@@ -516,6 +532,8 @@ Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría autom
 | `input/ticker.json` | Para Revolut | Valor principal/de empresa, p. ej. `{"ticker": "DT", "isin": "US..."}` — el ISIN filtra el CSV de Revolut en modo de un solo valor |
 | `input/securities.json` | Opcional | Configuración multivalor: activa el modo cartera y asigna tickers→ISINs (ver *Varios valores y brókers* abajo) |
 | `input/revolut/*.csv` | Opcional | CSV de inversión de Revolut — *Extracto de cuenta* (preferido) o *Profit & Loss* (ver abajo) |
+| `input/crypto/pionex/trading.csv` | Opcional (cripto) | Pionex → export del historial de operaciones (ver *Cripto* abajo) |
+| `input/crypto/binance/*Spot-Trade-History*.csv` | Opcional (cripto) | Binance → export del historial de operaciones spot (ver *Cripto* abajo) |
 
 ### Revolut (opcional)
 
@@ -534,6 +552,16 @@ Por defecto la herramienta analiza **un** valor (las acciones de tu empresa). Si
 - **Resultado:** el PDF añade una tabla **Resumen de Cartera por Valor** y una sección de libro + FIFO por valor; la base del ahorro, la compensación a 4 años y el límite del 25% operan sobre el total de la cartera, mientras que la regla de los 2 meses se mantiene por valor. El panel añade un gráfico de desglose por valor, un selector de valores y **etiquetas de alcance** en cada tarjeta (🌐 toda la cartera vs 🏷️ valor seleccionado) para que un lector no financiero siempre sepa qué cifras está viendo.
 
 Guía completa: [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md) · [🇺🇸 EN](docs/MULTI_SECURITY_GUIDE_EN.md).
+
+### Cripto (opcional)
+
+Si operas con cripto en **Pionex** o **Binance**, coloca sus exports de operaciones spot en `input/crypto/pionex/` e `input/crypto/binance/` (los archivos de Binance coinciden con `*Spot-Trade-History*.csv`; cualquier nombre vale). Cada moneda tiene su **propia cola FIFO**, y cada transmisión se valora en EUR al **tipo oficial del BCE de la fecha de la operación**, igual que las acciones. Las operaciones cuya base es una stablecoin y los intercambios cripto-a-cripto se omiten (fuera de alcance), y las comisiones se valoran en el activo de cotización.
+
+- **Informe por moneda:** `uv run tax-crypto --input-dir input/crypto` imprime un resumen por moneda en consola y genera un CSV por transmisión más informes HTML bilingües.
+- **Combinado con acciones:** `uv run tax-combined` fusiona las ganancias/pérdidas anuales de acciones y cripto en una única base del ahorro (Art. 49 LIRPF) en HTML bilingüe.
+- **Pruébalo sin conexión:** `uv run tax-demo --crypto` (o `--combined`) usa datos de ejemplo BTC/ETH/SOL sin ninguna llamada de red.
+
+> La opción `--wash-sale` aplica la regla de los 2 meses para activos homogéneos por moneda; está **desactivada por defecto** porque su aplicabilidad a la cripto no está resuelta en la AEAT.
 
 ## ❓ Solución de Problemas
 
