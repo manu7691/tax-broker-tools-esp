@@ -66,6 +66,8 @@ When stock data is present, `tax-combined` also writes the **flagship bilingual 
 - **Income-type events are NOT handled:** staking rewards, airdrops, hard forks, lending/interest and similar are *not* capital gains — they are generally **income** (RCM or, for staking, *rendimientos*), taxed when received at their EUR market value, with a separate cost basis going forward. The Pionex/Binance spot-trade exports this tool reads don't contain those rows, so they are neither imported nor computed. **Declare them separately** with your advisor.
 - **The tax estimate is isolated** — it ignores your stock gains, dividends/interest, and prior-year loss carryforward. Use `tax-combined` for the real savings base.
 
+> These boundaries and the planned enhancements (dashboard crypto tab, more exchanges, crypto-only PDF, native *permuta*/income handling) are tracked in [planning/CRYPTO_ROADMAP.md](planning/CRYPTO_ROADMAP.md).
+
 ## Try it with demo data (no real data needed)
 
 ```bash

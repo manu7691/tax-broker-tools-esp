@@ -229,6 +229,14 @@ def main() -> None:
                 crypto_summaries=crypto_summaries if crypto_summaries else None,
             )
             print(f"Wrote {lang.upper()} combined PDF to: {pdf_path}")
+    elif crypto_engine is not None:
+        # Crypto-only: the flagship PDF is rendered from the stock engine, so it
+        # is skipped here. Use tax-crypto for the dedicated crypto HTML report.
+        # (A crypto-only flagship PDF is tracked in docs/planning/CRYPTO_ROADMAP.md.)
+        print(
+            "\nNote: no stock data, so the flagship PDF was not produced — "
+            "run `tax-crypto` for the dedicated crypto HTML report."
+        )
 
     print("\nDone.")
 

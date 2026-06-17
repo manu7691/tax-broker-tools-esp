@@ -66,6 +66,8 @@ Cuando hay datos de acciones, `tax-combined` también genera el **PDF insignia b
 - **Los eventos de tipo renta NO se gestionan:** las recompensas de *staking*, *airdrops*, *hard forks*, préstamos/intereses y similares *no* son ganancias patrimoniales — generalmente son **renta** (RCM o, en el caso del *staking*, *rendimientos*), tributan al recibirse por su valor de mercado en EUR y generan un valor de adquisición propio en adelante. Los exports de operaciones spot de Pionex/Binance que lee esta herramienta no contienen esas filas, por lo que no se importan ni se calculan. **Decláralos aparte** con tu asesor.
 - **El impuesto estimado es aislado** — ignora tus ganancias bursátiles, dividendos/intereses y la compensación de pérdidas de años anteriores. Usa `tax-combined` para la base del ahorro real.
 
+> Estos límites y las mejoras previstas (pestaña de cripto en el panel, más exchanges, PDF solo-cripto, gestión nativa de *permutas*/renta) se recogen en [planning/CRYPTO_ROADMAP.md](planning/CRYPTO_ROADMAP.md).
+
 ## Pruébalo con datos de ejemplo (sin datos reales)
 
 ```bash
