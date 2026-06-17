@@ -5,6 +5,12 @@ A tax calculation engine implementing the Spanish FIFO cost basis method
 for stocks acquired through RSU vesting and ESPP purchases.
 """
 
+from .crypto_engine import CryptoTaxEngine, generate_combined_html
+from .crypto_parser import (
+    CryptoTrade,
+    load_crypto_trades,
+    trades_to_events_by_coin,
+)
 from .ecb_rates import ECBRateFetcher, prefetch_ecb_rates
 from .models import (
     CarryforwardLedger,
@@ -82,4 +88,9 @@ __all__ = [
     "SecurityResult",
     "group_events_by_security",
     "run_portfolio",
+    "CryptoTaxEngine",
+    "generate_combined_html",
+    "CryptoTrade",
+    "load_crypto_trades",
+    "trades_to_events_by_coin",
 ]

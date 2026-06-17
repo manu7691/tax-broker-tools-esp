@@ -34,6 +34,8 @@ dev = [
 [project.scripts]
 # CLI entry points (installed as global commands)
 tax-engine = "tax_engine.cli_main:main"
+tax-crypto = "tax_engine.cli_crypto:main"
+tax-combined = "tax_engine.cli_combined:main"
 tax-demo = "tax_engine.cli_demo:main"
 tax-savings-income = "tax_engine.cli_savings_income:main"
 tax-login = "tax_engine.etrade_login:login"

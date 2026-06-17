@@ -20,6 +20,9 @@ input/*
 tax_report_*.md
 charts_dashboard.html
 charts_dashboard_demo.html
+crypto_tax_report_*.html
+crypto_disposals_*.csv
+combined_tax_report_*.html
 
 # ECB exchange-rate cache
 .ecb_rate_cache.json
