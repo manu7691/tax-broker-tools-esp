@@ -153,11 +153,18 @@ def parse_binance(history_csv: Path, utc_offset_hours: int = 2) -> list[CryptoTr
     return trades
 
 
-def load_crypto_trades(input_dir: Path) -> list[CryptoTrade]:
+def load_crypto_trades(input_dir: Path, binance_utc_offset_hours: int = 2) -> list[CryptoTrade]:
     """Load and merge every supported export found under ``input_dir``.
 
     Looks for ``pionex/trading.csv`` and any Binance ``*Spot-Trade-History*.csv``
     file. Returns all trades sorted chronologically (UTC).
+
+    ``binance_utc_offset_hours`` is the timezone the Binance export's ``Time``
+    column is in (Binance exports in the account's local time, not UTC). It is
+    shifted back to UTC so trades merge correctly with Pionex's UTC timestamps —
+    and, importantly, so a trade near midnight lands on the right day, which
+    determines its ECB rate and tax year. Set it to your export's offset
+    (e.g. 0 for UTC, 1 for CET winter, 2 for CEST summer — the default).
     """
     trades: list[CryptoTrade] = []
 
@@ -171,7 +178,7 @@ def load_crypto_trades(input_dir: Path) -> list[CryptoTrade]:
     search_dirs = [binance_dir] if binance_dir.exists() else [input_dir]
     for d in search_dirs:
         for csv_path in sorted(d.glob("*Spot-Trade-History*.csv")):
-            found = parse_binance(csv_path)
+            found = parse_binance(csv_path, utc_offset_hours=binance_utc_offset_hours)
             print(f"  Loaded {len(found)} Binance trade(s) from {csv_path.name}.")
             trades.extend(found)
 
@@ -179,12 +186,16 @@ def load_crypto_trades(input_dir: Path) -> list[CryptoTrade]:
     return trades
 
 
-def _fee_in_quote(trade: CryptoTrade) -> Decimal:
+def _fee_in_quote(
+    trade: CryptoTrade, ignored_fees: list[CryptoTrade] | None = None
+) -> Decimal:
     """Express a trade's fee in the quote (≈ USD) asset, best-effort.
 
     - fee paid in the quote asset (USDT/USDC) -> taken at face value;
     - fee paid in the base coin -> valued at the trade's unit price;
-    - anything else (e.g. BNB) is ignored with a warning.
+    - anything else (e.g. BNB) is ignored with a warning and, if an
+      ``ignored_fees`` list is supplied, appended to it so callers can report
+      how many fees went unvalued (these slightly overstate the gain).
     """
     if trade.fee_qty <= 0 or not trade.fee_coin:
         return Decimal("0")
@@ -196,11 +207,16 @@ def _fee_in_quote(trade: CryptoTrade) -> Decimal:
         f"  Warning: fee paid in {trade.fee_coin} on {trade.dt:%Y-%m-%d} "
         f"{trade.base}/{trade.quote} not valued (unsupported fee coin)."
     )
+    if ignored_fees is not None:
+        ignored_fees.append(trade)
     return Decimal("0")
 
 
 def trades_to_events_by_coin(
     trades: list[CryptoTrade],
+    *,
+    unhandled_swaps: list[CryptoTrade] | None = None,
+    ignored_fees: list[CryptoTrade] | None = None,
 ) -> dict[str, list[StockEvent]]:
     """Convert normalised trades into per-coin :class:`StockEvent` queues.
 
@@ -209,6 +225,13 @@ def trades_to_events_by_coin(
     USD/EUR rate to obtain ``price_eur`` — so the EUR cost basis already reflects
     the exchange rate on each trade's date, as required by the Agencia
     Tributaria. Events are returned in chronological order per coin.
+
+    Crypto-to-crypto swaps (a non-stablecoin quote) are **not handled** by this
+    MVP, yet Spain taxes them as a *permuta*. They are therefore not dropped
+    silently: if an ``unhandled_swaps`` list is supplied, each such trade is
+    appended to it so callers can report "declare these manually" rather than
+    understating the gain. Likewise, fees paid in an unsupported coin (e.g. BNB)
+    cannot be valued and are appended to ``ignored_fees`` when supplied.
     """
     events_by_coin: dict[str, list[StockEvent]] = {}
 
@@ -217,17 +240,22 @@ def trades_to_events_by_coin(
         # treated as cash, no taxable position to track.
         if t.base in STABLECOINS:
             continue
-        # True crypto-to-crypto swaps (non-stable quote) are out of MVP scope.
+        # True crypto-to-crypto swaps (non-stable quote) are out of MVP scope,
+        # but taxable in Spain — collect them so they are surfaced, not lost.
         if t.quote not in STABLECOINS:
             print(
                 f"  Warning: crypto-to-crypto trade {t.base}/{t.quote} on "
-                f"{t.dt:%Y-%m-%d} skipped (non-stablecoin quote, out of scope)."
+                f"{t.dt:%Y-%m-%d} NOT handled (taxable permuta — declare manually)."
             )
+            if unhandled_swaps is not None:
+                unhandled_swaps.append(t)
             continue
 
         event_type = EventType.BUY if t.side == "BUY" else EventType.SELL
         # Fees are deducted from the gain by the engine on SELL events only.
-        fees_usd = _fee_in_quote(t) if event_type == EventType.SELL else Decimal("0")
+        fees_usd = (
+            _fee_in_quote(t, ignored_fees) if event_type == EventType.SELL else Decimal("0")
+        )
 
         event = StockEvent(
             event_date=t.dt.date(),

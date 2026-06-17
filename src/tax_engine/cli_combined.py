@@ -34,7 +34,7 @@ from tax_engine.cli_main import (
     load_savings_income,
 )
 from tax_engine.crypto_engine import CryptoTaxEngine, generate_combined_html
-from tax_engine.crypto_parser import load_crypto_trades, trades_to_events_by_coin
+from tax_engine.crypto_parser import CryptoTrade, load_crypto_trades, trades_to_events_by_coin
 from tax_engine.ecb_rates import prefetch_ecb_rates
 from tax_engine.models import YearlyTaxSummary
 from tax_engine.rsu_parser import load_rsu_events
@@ -78,15 +78,23 @@ def _load_stock_engine(input_dir: Path) -> TaxEngine | None:
     return engine
 
 
-def _load_crypto_engine(crypto_dir: Path) -> CryptoTaxEngine | None:
+def _load_crypto_engine(
+    crypto_dir: Path, binance_utc_offset_hours: int = 2
+) -> CryptoTaxEngine | None:
     """Return a processed CryptoTaxEngine, or None if no data found."""
-    trades = load_crypto_trades(crypto_dir)
+    trades = load_crypto_trades(crypto_dir, binance_utc_offset_hours=binance_utc_offset_hours)
     if not trades:
         return None
-    events_by_coin = trades_to_events_by_coin(trades)
-    if not events_by_coin:
+    unhandled_swaps: list[CryptoTrade] = []
+    ignored_fees: list[CryptoTrade] = []
+    events_by_coin = trades_to_events_by_coin(
+        trades, unhandled_swaps=unhandled_swaps, ignored_fees=ignored_fees
+    )
+    if not events_by_coin and not unhandled_swaps:
         return None
     engine = CryptoTaxEngine()
+    engine.unhandled_swaps = unhandled_swaps
+    engine.ignored_fees = ignored_fees
     engine.process(events_by_coin)
     print(f"  Crypto engine: {len(trades)} trades across {len(engine.coins)} coins.")
     return engine
@@ -120,6 +128,15 @@ def main() -> None:
         default="both",
         help="Report language(s): es, en, or both (default: both).",
     )
+    parser.add_argument(
+        "--binance-utc-offset",
+        type=int,
+        default=2,
+        metavar="HOURS",
+        help="Timezone offset (in hours) of the Binance export's Time column, "
+        "shifted back to UTC so dates land on the correct day/tax year "
+        "(default: 2 = CEST). Use 0 for UTC, 1 for CET.",
+    )
     args = parser.parse_args()
 
     input_dir: Path = args.input_dir
@@ -131,7 +148,9 @@ def main() -> None:
     print(f"  Crypto data: {crypto_dir}\n")
 
     stock_engine = _load_stock_engine(input_dir)
-    crypto_engine = _load_crypto_engine(crypto_dir)
+    crypto_engine = _load_crypto_engine(
+        crypto_dir, binance_utc_offset_hours=args.binance_utc_offset
+    )
 
     if stock_engine is None and crypto_engine is None:
         print(
@@ -172,6 +191,11 @@ def main() -> None:
     print("=" * 80)
     if savings_income:
         print("  (savings_income.json loaded — use full savings-ledger in the HTML report)")
+    if crypto_engine and crypto_engine.unhandled_swaps:
+        print(
+            f"\n⚠️  {len(crypto_engine.unhandled_swaps)} crypto-to-crypto swap(s) NOT handled "
+            "(taxable permutas — declare these manually)."
+        )
     print()
 
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -189,6 +213,30 @@ def main() -> None:
         out_path = output_dir / f"combined_tax_report_{lang.upper()}_{timestamp}.html"
         out_path.write_text(html, encoding="utf-8")
         print(f"Wrote {lang.upper()} combined report to: {out_path}")
+
+    # When stock data is present, also emit the flagship PDF (the polished
+    # "¿Qué declarar en Hacienda?" report), with crypto folded into the combined
+    # savings base and shown as a distinct capital-gains line. Crypto-only runs
+    # keep using the dedicated tax-crypto HTML report.
+    if stock_engine is not None:
+        for lang in langs:
+            pdf_path = output_dir / f"combined_tax_report_{lang.upper()}_{timestamp}.pdf"
+            stock_engine.generate_pdf_report(
+                str(pdf_path),
+                lang=lang,
+                savings_income=savings_income if savings_income else None,
+                opening_losses=prior_losses if prior_losses else None,
+                crypto_summaries=crypto_summaries if crypto_summaries else None,
+            )
+            print(f"Wrote {lang.upper()} combined PDF to: {pdf_path}")
+    elif crypto_engine is not None:
+        # Crypto-only: the flagship PDF is rendered from the stock engine, so it
+        # is skipped here. Use tax-crypto for the dedicated crypto HTML report.
+        # (A crypto-only flagship PDF is tracked in docs/planning/CRYPTO_ROADMAP.md.)
+        print(
+            "\nNote: no stock data, so the flagship PDF was not produced — "
+            "run `tax-crypto` for the dedicated crypto HTML report."
+        )
 
     print("\nDone.")
 

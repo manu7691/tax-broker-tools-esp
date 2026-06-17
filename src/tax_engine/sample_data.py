@@ -429,3 +429,98 @@ def create_sample_events_with_ecb_rates() -> list[StockEvent]:
             date(2022, 6, 1), EventType.SELL, Decimal("205"), Decimal("39.15"), notes="Manual Sell"
         ),
     ]
+
+
+def create_sample_crypto_events() -> dict[str, list["StockEvent"]]:
+    """Sample crypto trades, one FIFO queue per coin (crypto demo).
+
+    Mirrors the per-coin layout produced by ``trades_to_events_by_coin``: each
+    ``StockEvent`` holds the unit price in the (stablecoin ≈ USD) quote asset via
+    ``price_usd`` and a manual ``fx_rate`` so the demo runs **fully offline** — no
+    ECB network call. The set exercises the engine's main paths:
+
+    * **BTC** — a buy, a partial sell at a gain, then the rest sold next year.
+    * **ETH** — bought high, sold the following year at a loss (so the combined
+      savings base shows offsetting against the gains).
+    * **SOL** — bought on two exchanges (Binance cheap, Pionex dearer); a partial
+      sell shows FIFO consuming the cheapest lot first and leaves an open lot.
+
+    ``notes`` follow the ``"<source> <SIDE> <BASE>/<QUOTE>"`` convention the real
+    parser emits, and SELL events carry a small fee in the quote asset.
+    """
+    return {
+        "BTC": [
+            StockEvent(
+                date(2024, 2, 12),
+                EventType.BUY,
+                Decimal("0.50"),
+                Decimal("48000"),
+                fx_rate=Decimal("0.93"),
+                notes="Binance BUY BTC/USDT",
+            ),
+            StockEvent(
+                date(2024, 11, 8),
+                EventType.SELL,
+                Decimal("0.20"),
+                Decimal("72000"),
+                fx_rate=Decimal("0.92"),
+                fees_usd=Decimal("14.40"),
+                notes="Binance SELL BTC/USDT",
+            ),
+            StockEvent(
+                date(2025, 3, 3),
+                EventType.SELL,
+                Decimal("0.30"),
+                Decimal("84000"),
+                fx_rate=Decimal("0.91"),
+                fees_usd=Decimal("25.20"),
+                notes="Binance SELL BTC/USDT",
+            ),
+        ],
+        "ETH": [
+            StockEvent(
+                date(2024, 3, 20),
+                EventType.BUY,
+                Decimal("4"),
+                Decimal("3600"),
+                fx_rate=Decimal("0.92"),
+                notes="Pionex BUY ETH/USDT",
+            ),
+            StockEvent(
+                date(2025, 6, 10),
+                EventType.SELL,
+                Decimal("4"),
+                Decimal("2500"),
+                fx_rate=Decimal("0.88"),
+                fees_usd=Decimal("10.00"),
+                notes="Pionex SELL ETH/USDT",
+            ),
+        ],
+        "SOL": [
+            StockEvent(
+                date(2024, 1, 15),
+                EventType.BUY,
+                Decimal("50"),
+                Decimal("95"),
+                fx_rate=Decimal("0.91"),
+                notes="Binance BUY SOL/USDC",
+            ),
+            StockEvent(
+                date(2024, 9, 1),
+                EventType.BUY,
+                Decimal("50"),
+                Decimal("145"),
+                fx_rate=Decimal("0.90"),
+                notes="Pionex BUY SOL/USDT",
+            ),
+            StockEvent(
+                date(2025, 4, 22),
+                EventType.SELL,
+                Decimal("60"),
+                Decimal("170"),
+                fx_rate=Decimal("0.89"),
+                fees_usd=Decimal("10.20"),
+                notes="Binance SELL SOL/USDT",
+            ),
+        ],
+    }

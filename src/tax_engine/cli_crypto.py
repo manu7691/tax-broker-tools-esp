@@ -22,7 +22,7 @@ from datetime import datetime
 from pathlib import Path
 
 from tax_engine.crypto_engine import CryptoTaxEngine
-from tax_engine.crypto_parser import load_crypto_trades, trades_to_events_by_coin
+from tax_engine.crypto_parser import CryptoTrade, load_crypto_trades, trades_to_events_by_coin
 
 
 def main() -> None:
@@ -42,8 +42,18 @@ def main() -> None:
     parser.add_argument(
         "--wash-sale",
         action="store_true",
-        help="Apply the 2-month homogeneous-asset rule per coin (off by default; "
-        "its applicability to crypto is unsettled at AEAT).",
+        help="Apply the 2-month homogeneous-asset rule per coin. Off by default: "
+        "per DGT criteria crypto is not «valores homogéneos», so the rule does "
+        "NOT apply — enable only as an explicit advisor-directed override.",
+    )
+    parser.add_argument(
+        "--binance-utc-offset",
+        type=int,
+        default=2,
+        metavar="HOURS",
+        help="Timezone offset (in hours) of the Binance export's Time column, "
+        "shifted back to UTC so dates land on the correct day/tax year "
+        "(default: 2 = CEST). Use 0 for UTC, 1 for CET.",
     )
     args = parser.parse_args()
     input_dir: Path = args.input_dir
@@ -52,7 +62,7 @@ def main() -> None:
     print("Spanish Crypto Tax Engine — FIFO per coin, ECB EUR valuation")
     print(f"Reading exports from: {input_dir}\n")
 
-    trades = load_crypto_trades(input_dir)
+    trades = load_crypto_trades(input_dir, binance_utc_offset_hours=args.binance_utc_offset)
     if not trades:
         print(
             f"\nError: no trades found under {input_dir}.\n"
@@ -61,12 +71,18 @@ def main() -> None:
         return
     print(f"\nTotal trades loaded: {len(trades)}")
 
-    events_by_coin = trades_to_events_by_coin(trades)
-    if not events_by_coin:
+    unhandled_swaps: list[CryptoTrade] = []
+    ignored_fees: list[CryptoTrade] = []
+    events_by_coin = trades_to_events_by_coin(
+        trades, unhandled_swaps=unhandled_swaps, ignored_fees=ignored_fees
+    )
+    if not events_by_coin and not unhandled_swaps:
         print("\nError: no taxable (non-stablecoin) positions found in the data.")
         return
 
     engine = CryptoTaxEngine(detect_wash_sale=args.wash_sale)
+    engine.unhandled_swaps = unhandled_swaps
+    engine.ignored_fees = ignored_fees
     engine.process(events_by_coin)
     engine.print_console()
 

@@ -71,14 +71,15 @@ echo 2. Download E-Trade Data (ESPP, Orders, RSU, Options, Dividends)
 echo 3. Add Dividend/Interest Income (optional)
 echo 4. Calculate Tax ^& PDF Reports (optional: incl. Revolut)
 echo 5. Generate Charts ^& Tax Dashboard (optional: incl. Revolut)
+echo 6. Calculate Crypto / Combined Report (Pionex/Binance)
 echo.
 echo --- Simulation ^& Demo Data ---
-echo 6. Run Demo: Calculate Tax ^& PDF Reports
-echo 7. Run Demo: Generate Charts ^& Tax Dashboard
+echo 7. Run Demo: Calculate Tax ^& PDF Reports
+echo 8. Run Demo: Generate Charts ^& Tax Dashboard
 echo.
-echo 8. Exit
+echo 9. Exit
 echo ==========================================
-set /p choice="Select an option (1-8): "
+set /p choice="Select an option (1-9): "
 
 if "%choice%"=="1" (
     echo Running Login...
@@ -100,11 +101,12 @@ REM variable expands correctly — %var% set with set /p inside a parenthesised
 REM block is parse-time expanded (empty), which would break the toggle.
 if "%choice%"=="4" goto calc_tax
 if "%choice%"=="5" goto gen_charts
-REM Demo options 6/7 use labels so the freshly-read prompt variable expands
-REM correctly (see the :calc_tax note below).
-if "%choice%"=="6" goto demo_tax
-if "%choice%"=="7" goto demo_charts
-if "%choice%"=="8" (
+REM Crypto and demo options use labels so the freshly-read prompt variable
+REM expands correctly (see the :calc_tax note below).
+if "%choice%"=="6" goto calc_crypto
+if "%choice%"=="7" goto demo_tax
+if "%choice%"=="8" goto demo_charts
+if "%choice%"=="9" (
     exit /b 0
 )
 
@@ -171,6 +173,23 @@ if defined ENGINE_ARGS (
     echo Single-security mode: the ticker in input\ticker.json ^(matching Revolut rows merge in^).
 )
 .venv\Scripts\tax-engine %ENGINE_ARGS%
+pause
+goto menu
+
+:calc_crypto
+echo ------------------------------------------
+echo Crypto Capital Gains (Spanish FIFO per coin)
+echo Drop exchange exports in input\crypto\pionex\trading.csv
+echo and/or input\crypto\binance\*Spot-Trade-History*.csv.
+echo ------------------------------------------
+set /p combine="Combine crypto with your stocks into one savings base? [y/N]: "
+if /i "%combine%"=="y" (
+    echo Combined report: merges stock + crypto gains/losses ^(bilingual HTML^).
+    .venv\Scripts\tax-combined
+) else (
+    echo Crypto-only report: per-coin console summary, CSV, and bilingual HTML.
+    .venv\Scripts\tax-crypto --input-dir input/crypto
+)
 pause
 goto menu
 

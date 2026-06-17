@@ -602,6 +602,7 @@ class TaxEngine:
         opening_losses: dict[int, Decimal] | None = None,
         savings_income: dict[int, SavingsIncomeYear] | None = None,
         securities: "list[SecurityResult] | None" = None,
+        crypto_summaries: "dict[int, YearlyTaxSummary] | None" = None,
     ) -> None:
         """Generate a PDF tax report (supports lang='en' or lang='es')."""
         from .report import ReportRenderer
@@ -614,4 +615,5 @@ class TaxEngine:
             opening_losses=opening_losses,
             savings_income=savings_income,
             securities=securities,
+            crypto_summaries=crypto_summaries,
         )

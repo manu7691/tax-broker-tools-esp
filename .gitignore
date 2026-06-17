@@ -34,3 +34,5 @@ combined_tax_report_*.html
 .coverage
 coverage.xml
 htmlcov/
+
+package-lock.json

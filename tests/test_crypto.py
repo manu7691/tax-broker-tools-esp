@@ -31,6 +31,31 @@ class TestParsingHelpers:
         assert _split_pair("ETHFDUSD") == ("ETH", "FDUSD")
 
 
+class TestBinanceUtcOffset:
+    """The Binance offset shifts a near-midnight trade across the day/year line."""
+
+    _CSV = "Time,Pair,Side,Executed,Amount,Fee\n25-01-01 00:30:00,BTCUSDT,BUY,1BTC,40000USDT,0USDT\n"
+
+    def _load(self, tmp_path, offset):
+        from tax_engine.crypto_parser import load_crypto_trades
+
+        (tmp_path / "binance").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "binance" / "Spot-Trade-History.csv").write_text(self._CSV)
+        return load_crypto_trades(tmp_path, binance_utc_offset_hours=offset)
+
+    def test_offset_zero_keeps_local_date(self, tmp_path):
+        # UTC export: 2025-01-01 stays in tax year 2025.
+        trades = self._load(tmp_path, 0)
+        assert trades[0].dt.year == 2025
+        assert trades[0].dt.date().isoformat() == "2025-01-01"
+
+    def test_offset_two_shifts_into_prior_year(self, tmp_path):
+        # CEST export: 00:30 local -> 22:30 UTC the day before -> tax year 2024.
+        trades = self._load(tmp_path, 2)
+        assert trades[0].dt.year == 2024
+        assert trades[0].dt.date().isoformat() == "2024-12-31"
+
+
 def _trade(dt, base, side, qty, amount, quote="USDT", source="Pionex"):
     return CryptoTrade(
         dt=datetime.fromisoformat(dt),
@@ -54,6 +79,69 @@ class TestEventBuilding:
     def test_crypto_to_crypto_is_skipped(self):
         trades = [_trade("2025-01-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC")]
         assert trades_to_events_by_coin(trades) == {}
+
+    def test_crypto_to_crypto_is_collected_when_requested(self):
+        # A permuta (ETH/BTC) is taxable in Spain — it must be surfaced, not lost.
+        trades = [
+            _trade("2025-01-01T00:00:00", "BTC", "BUY", "1", "100"),  # normal, handled
+            _trade("2025-02-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC"),  # permuta
+        ]
+        unhandled: list = []
+        by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled)
+        assert set(by_coin) == {"BTC"}  # only the stablecoin-quoted trade is handled
+        assert len(unhandled) == 1
+        assert (unhandled[0].base, unhandled[0].quote) == ("ETH", "BTC")
+
+    def test_unhandled_swaps_shown_in_console(self, capsys):
+        from tax_engine.crypto_engine import CryptoTaxEngine
+
+        trades = [_trade("2025-02-01T00:00:00", "ETH", "BUY", "1", "20", quote="BTC")]
+        unhandled: list = []
+        trades_to_events_by_coin(trades, unhandled_swaps=unhandled)
+        engine = CryptoTaxEngine()
+        engine.unhandled_swaps = unhandled
+        engine.print_console()
+        out = capsys.readouterr().out
+        assert "NOT handled" in out and "ETH" in out
+
+    def test_fee_in_unsupported_coin_is_collected(self):
+        # A SELL whose fee is paid in BNB (neither base nor quote) can't be valued.
+        sell = CryptoTrade(
+            dt=datetime.fromisoformat("2025-03-01T00:00:00"),
+            base="BTC",
+            quote="USDT",
+            side="SELL",
+            qty=Decimal("1"),
+            quote_amount=Decimal("100"),
+            fee_qty=Decimal("0.1"),
+            fee_coin="BNB",
+            source="Binance",
+        )
+        ignored: list = []
+        trades_to_events_by_coin([sell], ignored_fees=ignored)
+        assert len(ignored) == 1
+        assert ignored[0].fee_coin == "BNB"
+
+    def test_ignored_fees_shown_in_console(self, capsys):
+        from tax_engine.crypto_engine import CryptoTaxEngine
+
+        engine = CryptoTaxEngine()
+        engine.ignored_fees = [
+            CryptoTrade(
+                dt=datetime.fromisoformat("2025-03-01T00:00:00"),
+                base="BTC",
+                quote="USDT",
+                side="SELL",
+                qty=Decimal("1"),
+                quote_amount=Decimal("100"),
+                fee_qty=Decimal("0.1"),
+                fee_coin="BNB",
+                source="Binance",
+            )
+        ]
+        engine.print_console()
+        out = capsys.readouterr().out
+        assert "not valued" in out and "BNB" in out
 
     def test_events_grouped_per_coin_in_order(self):
         trades = [

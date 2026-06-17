@@ -77,14 +77,15 @@ while true; do
     echo "3. Add Dividend/Interest Income (optional)"
     echo "4. Calculate Tax & PDF Reports (optional: incl. Revolut)"
     echo "5. Generate Charts & Tax Dashboard (optional: incl. Revolut)"
+    echo "6. Calculate Crypto / Combined Report (Pionex/Binance)"
     echo ""
     echo "--- Simulation & Demo Data ---"
-    echo "6. Run Demo: Calculate Tax & PDF Reports"
-    echo "7. Run Demo: Generate Charts & Tax Dashboard"
+    echo "7. Run Demo: Calculate Tax & PDF Reports"
+    echo "8. Run Demo: Generate Charts & Tax Dashboard"
     echo ""
-    echo "8. Exit"
+    echo "9. Exit"
     echo "=========================================="
-    read -p "Select an option (1-8): " choice
+    read -p "Select an option (1-9): " choice
 
     case $choice in
         1)
@@ -185,6 +186,26 @@ while true; do
             ;;
         6)
             echo "------------------------------------------"
+            echo "Crypto Capital Gains (Spanish FIFO per coin)"
+            echo "Drop exchange exports in input/crypto/pionex/trading.csv"
+            echo "and/or input/crypto/binance/*Spot-Trade-History*.csv."
+            echo "------------------------------------------"
+            read -p "Combine crypto with your stocks into one savings base? [y/N]: " combine
+            case "$combine" in
+                [Yy]*)
+                    echo "Combined report: merges stock + crypto gains/losses (bilingual HTML)."
+                    .venv/bin/tax-combined
+                    ;;
+                *)
+                    echo "Crypto-only report: per-coin console summary, CSV, and bilingual HTML."
+                    .venv/bin/tax-crypto --input-dir input/crypto
+                    ;;
+            esac
+            echo ""
+            read -p "Press Enter to return to menu..."
+            ;;
+        7)
+            echo "------------------------------------------"
             echo "Calculating Tax & PDF Report - demo data..."
             echo "------------------------------------------"
             read -p "Multi-symbol portfolio demo (several securities + a GBP one)? [y/N]: " demo_multi
@@ -195,7 +216,7 @@ while true; do
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
-        7)
+        8)
             echo "------------------------------------------"
             echo "Generate Charts & Tax Dashboard - demo data"
             echo "------------------------------------------"
@@ -207,7 +228,7 @@ while true; do
             echo ""
             read -p "Press Enter to return to menu..."
             ;;
-        8)
+        9)
             echo "Exiting..."
             exit 0
             ;;

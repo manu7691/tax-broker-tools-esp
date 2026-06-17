@@ -12,8 +12,10 @@ Design choices:
   the EUR value of each leg comes from the ECB USD/EUR rate of the trade date.
 * **True chronological order** — trades are fed to the engine in timestamp order
   so intraday buy/sell sequences and cross-exchange merges are matched correctly.
-* **No 2-month wash-sale rule by default** — its applicability to crypto is
-  unsettled at AEAT; enable explicitly if your advisor wants it.
+* **No 2-month wash-sale rule** — per DGT criteria crypto-assets are not
+  «valores homogéneos», so the anti-loss-washing rule (Art. 33.5 LIRPF) does
+  not apply. It is off by default; the flag exists only as an explicit
+  advisor-directed override.
 """
 
 from __future__ import annotations
@@ -24,6 +26,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
+from .crypto_parser import CryptoTrade
 from .ecb_rates import prefetch_ecb_rates
 from .models import (
     CarryforwardLedger,
@@ -87,6 +90,12 @@ class CryptoTaxEngine:
         self.detect_wash_sale = detect_wash_sale
         self.engines: dict[str, TaxEngine] = {}
         self.synthetic_notes: list[str] = []
+        # Crypto-to-crypto swaps the parser could not handle (taxable permutas
+        # the user must declare manually). Populated by the CLI after parsing.
+        self.unhandled_swaps: list[CryptoTrade] = []
+        # Fees paid in an unsupported coin (e.g. BNB) that could not be valued —
+        # they slightly overstate the gain. Populated by the CLI after parsing.
+        self.ignored_fees: list[CryptoTrade] = []
 
     def process(self, events_by_coin: dict[str, list[StockEvent]]) -> None:
         """Run a FIFO engine per coin, in true chronological order."""
@@ -282,6 +291,19 @@ class CryptoTaxEngine:
             print("\n⚠️  Data gaps (synthetic opening lots added):")
             for note in self.synthetic_notes:
                 print(f"   - {note}")
+        if self.unhandled_swaps:
+            print(
+                f"\n⚠️  {len(self.unhandled_swaps)} crypto-to-crypto swap(s) NOT handled "
+                "(taxable permutas — declare these manually):"
+            )
+            for t in self.unhandled_swaps:
+                print(f"   - {t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} for {t.quote}")
+        if self.ignored_fees:
+            coins = sorted({t.fee_coin for t in self.ignored_fees})
+            print(
+                f"\n⚠️  {len(self.ignored_fees)} fee(s) paid in an unsupported coin "
+                f"({', '.join(coins)}) were not valued — gains are slightly overstated."
+            )
         print()
 
     # ----- CSV export ----------------------------------------------------
@@ -559,6 +581,25 @@ a{{color:var(--blue);}}
             for note in self.synthetic_notes:
                 h.append(f"<li style='font-size:11px;color:#94a3b8;'>{note}</li>\n")
             h.append("</ul>\n")
+        if self.unhandled_swaps:
+            h.append(
+                f"<p class='warn'>⚠ {len(self.unhandled_swaps)} crypto-to-crypto swap(s) "
+                "NOT handled (taxable permutas — declare manually):</p>\n"
+                "<ul style='margin:4px 0 12px 20px'>\n"
+            )
+            for t in self.unhandled_swaps:
+                h.append(
+                    "<li style='font-size:11px;color:#94a3b8;'>"
+                    f"{t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} → {t.quote}</li>\n"
+                )
+            h.append("</ul>\n")
+        if self.ignored_fees:
+            coins = sorted({t.fee_coin for t in self.ignored_fees})
+            h.append(
+                f"<p class='warn'>⚠ {len(self.ignored_fees)} fee(s) paid in an unsupported "
+                f"coin ({', '.join(coins)}) were not valued — gains are slightly "
+                "overstated.</p>\n"
+            )
         return h
 
     def _tab_charts(
@@ -669,6 +710,7 @@ a{{color:var(--blue);}}
             "⚠ Box numbers change every year. Verify them against the form for your filing year.",
             "⚠ Crypto is NOT subject to the 2-month wash-sale rule (Art. 33.5 LIRPF) — the DGT does not consider them «valores homogéneos» for anti-loss-washing purposes.",
             "⚠ Stablecoins (USDT/USDC) are treated as USD cash in this report. Strictly each conversion may be a swap — consult your advisor.",
+            "⚠ Income-type events (staking, airdrops, hard forks, lending interest) are NOT handled — they are income (RCM / rendimientos), not capital gains, and are absent from spot-trade exports. Declare them separately.",
             "🔗 DGT V1149-18, V1816-20, V1374-21 · Ley 11/2021 (Ley de Medidas de Prevención del Fraude Fiscal)",
         ]
         h.append("<div class='disclaimer'>" + "<br>".join(notes) + "</div>\n")
@@ -1013,6 +1055,7 @@ th{{background:var(--bg2);color:var(--txt2);font-weight:600;}}
     notes = [
         "⚠ Box numbers change every year — verify against the form for your filing year.",
         "⚠ Crypto is NOT subject to the 2-month wash-sale rule (DGT does not consider them homogeneous securities).",
+        "⚠ Income-type events (staking, airdrops, hard forks, lending interest) are NOT handled — declare them separately as income (RCM / rendimientos).",
         "⚠ This report is informational — verify results with a qualified tax advisor (Asesor Fiscal).",
     ]
     h.append("<div class='disclaimer'>" + "<br>".join(notes) + "</div>\n")
