@@ -39,9 +39,11 @@ Cualquiera de las dos fuentes es opcional — aporta la que tengas. Plantillas l
 # Informe de cripto por moneda (consola + CSV + HTML bilingüe)
 uv run tax-crypto --input-dir input/crypto
 
-# Cripto fusionada con tus acciones en una única base del ahorro (HTML bilingüe)
+# Cripto fusionada con tus acciones en una única base del ahorro (HTML + PDF bilingüe)
 uv run tax-combined
 ```
+
+Cuando hay datos de acciones, `tax-combined` también genera el **PDF insignia bilingüe** (el informe pulido *¿Qué declarar en Hacienda?*). Ahí la cripto aparece como una **línea de ganancias patrimoniales distinta** — *otros elementos patrimoniales*, ≈ casillas 1624–1631 — separada de la línea de acciones (≈ 0328–0344), mientras que la **base del ahorro integrada** de abajo refleja el total combinado de acciones + cripto. Las ejecuciones solo de cripto (sin acciones) siguen usando el informe HTML de `tax-crypto`.
 
 `tax-crypto` admite `--input-dir`, `--output-dir`, `--wash-sale` y `--binance-utc-offset`. `tax-combined` admite `--input-dir` (acciones), `--crypto-dir` (por defecto `<input-dir>/crypto`), `--output-dir`, `--lang` (`es` / `en` / `both`) y `--binance-utc-offset`.
 

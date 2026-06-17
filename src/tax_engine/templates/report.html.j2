@@ -141,7 +141,10 @@
 {%- if y.blocked > 0 %}
 <tr><td>&nbsp;&nbsp;&nbsp;Add back: 2-month blocked losses (deferred, not deductible this year)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
 {%- endif %}
-<tr><td>&nbsp;&nbsp;&nbsp;<strong>Net saldo integrated into the base (deductible)</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Net saldo integrated into the base (deductible){{ ' — shares' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+{%- if y.crypto_saldo is not none %}
+<tr><td><strong>a-bis) Crypto capital gains/losses (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>€{{ y.crypto_saldo | num2 }}</strong></td><td>≈ 1624–1631</td></tr>
+{%- endif %}
 <tr><td><strong>b) Dividends + interest (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
 <tr><td><strong>Integrated savings base (after offsets/carryforward)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
 {%- if y.foreign_tax > 0 %}
@@ -162,7 +165,10 @@
 {%- if y.blocked > 0 %}
 <tr><td>&nbsp;&nbsp;&nbsp;Se suma: pérdidas bloqueadas regla 2 meses (diferidas, no deducibles este año)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
 {%- endif %}
-<tr><td>&nbsp;&nbsp;&nbsp;<strong>Saldo neto a integrar en la base (deducible)</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Saldo neto a integrar en la base (deducible){{ ' — acciones' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+{%- if y.crypto_saldo is not none %}
+<tr><td><strong>a-bis) Ganancias/pérdidas de cripto (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>€{{ y.crypto_saldo | num2 }}</strong></td><td>≈ 1624–1631</td></tr>
+{%- endif %}
 <tr><td><strong>b) Dividendos + intereses (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
 <tr><td><strong>Base del ahorro integrada (tras compensaciones/arrastre)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
 {%- if y.foreign_tax > 0 %}

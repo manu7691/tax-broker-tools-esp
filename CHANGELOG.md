@@ -24,6 +24,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   gains/losses into one Art. 49 LIRPF savings base). The `tax-demo` command gains
   `--crypto` and `--combined` flags that run both flows on offline sample data
   (BTC + ETH + SOL across two exchanges, manual FX so no network call).
+  When stock data is present, **`tax-combined` also emits the flagship bilingual
+  PDF**: its "¿Qué declarar en Hacienda?" summary shows crypto as a distinct
+  capital-gains line (*otros elementos patrimoniales*, ≈ casillas 1624–1631) while
+  the integrated savings base reflects the combined stock + crypto total. The
+  console and reports now also **surface, rather than silently drop**, taxable
+  crypto-to-crypto *permutas* and fees paid in an unvalued coin, and a
+  `--binance-utc-offset` flag fixes the day/tax-year of near-midnight trades.
 
 - **Report: "¿Qué declarar en Hacienda?" per-year summary.** A prominent section
   near the top of the PDF/HTML report that gives the exact figures to enter in the

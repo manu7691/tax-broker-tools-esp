@@ -22,11 +22,32 @@ from jinja2 import Environment, FileSystemLoader
 from .models import (
     EventType,
     SavingsIncomeYear,
+    YearlyTaxSummary,
 )
 
 if TYPE_CHECKING:
     from .portfolio import SecurityResult
     from .tax_engine import TaxEngine
+
+
+def _merge_summaries(
+    *summary_dicts: "dict[int, YearlyTaxSummary] | None",
+) -> dict[int, YearlyTaxSummary]:
+    """Sum several per-year summary dicts into one (stocks + crypto combined).
+
+    Kept local to avoid importing the crypto engine here; mirrors
+    ``CryptoTaxEngine.merge_yearly_summaries`` so the combined savings base
+    reconciles with the crypto report.
+    """
+    merged: dict[int, YearlyTaxSummary] = {}
+    for d in summary_dicts:
+        for year, s in (d or {}).items():
+            agg = merged.setdefault(year, YearlyTaxSummary(year=year))
+            agg.total_gains += s.total_gains
+            agg.total_losses += s.total_losses
+            agg.blocked_losses += s.blocked_losses
+            agg.total_fees_eur += s.total_fees_eur
+    return merged
 
 
 # --- Jinja environment + formatting filters -------------------------------
@@ -426,6 +447,7 @@ class ReportRenderer:
         savings_income: dict[int, SavingsIncomeYear] | None,
         espp_early_sale_discounts: dict[int, Decimal] | None,
         max_year: int | None = None,
+        crypto_summaries: dict[int, YearlyTaxSummary] | None = None,
     ) -> dict[str, Any]:
         """Per-year "what to declare" view-model grouping the three IRPF buckets.
 
@@ -468,6 +490,8 @@ class ReportRenderer:
             years |= set(savings_income)
         if espp_early_sale_discounts:
             years |= set(espp_early_sale_discounts)
+        if crypto_summaries:
+            years |= set(crypto_summaries)
         if max_year is not None:
             years = {y for y in years if y <= max_year}
 
@@ -481,6 +505,7 @@ class ReportRenderer:
             # blocked_losses is stored negative; show the add-back as positive.
             blocked = -summary.blocked_losses if summary else Decimal("0")
             saldo_neto = summary.net_gain_loss if summary else Decimal("0")
+            cs = crypto_summaries.get(y) if crypto_summaries else None
             si = savings_income.get(y) if savings_income else None
             rows.append(
                 {
@@ -494,6 +519,9 @@ class ReportRenderer:
                     "fees": fees,
                     "blocked": blocked,
                     "saldo_neto": saldo_neto,
+                    # Crypto net G/L for the year (distinct casilla — "otros
+                    # elementos patrimoniales"); None when no crypto is supplied.
+                    "crypto_saldo": cs.net_gain_loss if cs else None,
                     "dividends": si.dividends_eur if si else Decimal("0"),
                     "interest": si.interest_eur if si else Decimal("0"),
                     "rcm": si.rcm_net if si else Decimal("0"),
@@ -508,6 +536,7 @@ class ReportRenderer:
         savings_income: dict[int, SavingsIncomeYear] | None,
         opening_losses: dict[int, Decimal] | None,
         max_year: int | None = None,
+        base_engine: "TaxEngine | None" = None,
     ) -> dict[str, Any]:
         """Either the two-bucket savings ledger or the single-bucket carryforward.
 
@@ -515,9 +544,15 @@ class ReportRenderer:
         dividend/interest is supplied (the cross-offset changes what carries
         forward, so showing both would contradict). ``max_year`` bounds both
         simulations to complete tax years.
+
+        ``base_engine`` lets the caller run the ledger on a *combined* set of
+        yearly summaries (e.g. stocks + crypto merged) so the savings base and
+        carryforward reflect the whole base del ahorro; it defaults to the
+        stock engine, leaving single-asset reports byte-identical.
         """
+        eng = base_engine if base_engine is not None else self.engine
         if savings_income:
-            sledger = self.engine.compute_savings_ledger(
+            sledger = eng.compute_savings_ledger(
                 savings_income, opening_losses=opening_losses, max_year=max_year
             )
             over15: list[tuple[int, Decimal]] = []
@@ -537,7 +572,7 @@ class ReportRenderer:
                 ),
             }
 
-        cf = self.engine.compute_carryforward(opening_losses, max_year=max_year)
+        cf = eng.compute_carryforward(opening_losses, max_year=max_year)
         seed_str = (
             ", ".join(
                 f"{y}: €{abs(Decimal(str(a))):,.2f}" for y, a in sorted(opening_losses.items())
@@ -564,8 +599,15 @@ class ReportRenderer:
         opening_losses: dict[int, Decimal] | None = None,
         savings_income: dict[int, SavingsIncomeYear] | None = None,
         securities: "list[SecurityResult] | None" = None,
+        crypto_summaries: dict[int, YearlyTaxSummary] | None = None,
     ) -> str:
-        """Generate HTML content for the tax report (supports 'en' and 'es')."""
+        """Generate HTML content for the tax report (supports 'en' and 'es').
+
+        ``crypto_summaries`` (per-year crypto net G/L) folds crypto into the
+        combined savings base and adds a distinct crypto capital-gains line to
+        the "what to declare" summary. When omitted, the stock-only report is
+        unchanged.
+        """
         is_es = lang.lower() == "es"
         engine = self.engine
 
@@ -621,8 +663,24 @@ class ReportRenderer:
         if multi_broker:
             ctx.update(self._broker_context(max_year=max_year))
 
-        loss_ctx = self._loss_context(savings_income, opening_losses, max_year=max_year)
+        # When crypto is supplied, run the savings-base/carryforward ledger on the
+        # merged stock + crypto totals so the integrated base reflects the whole
+        # base del ahorro (cross-asset compensation). The stock-specific tables
+        # still use self.engine, so single-asset reports stay byte-identical.
+        from .tax_engine import TaxEngine
+
+        base_engine: TaxEngine | None = None
+        if crypto_summaries:
+            base_engine = TaxEngine()
+            base_engine.yearly_summaries = _merge_summaries(
+                {s.year: s for s in engine.get_all_yearly_summaries()}, crypto_summaries
+            )
+
+        loss_ctx = self._loss_context(
+            savings_income, opening_losses, max_year=max_year, base_engine=base_engine
+        )
         ctx.update(loss_ctx)
+        ctx["has_crypto"] = bool(crypto_summaries)
         transm_ctx = self._transmisiones_context(max_year=max_year)
         ctx.update(transm_ctx)
         ctx.update(
@@ -632,6 +690,7 @@ class ReportRenderer:
                 savings_income,
                 espp_early_sale_discounts,
                 max_year=max_year,
+                crypto_summaries=crypto_summaries,
             )
         )
 
@@ -646,6 +705,7 @@ class ReportRenderer:
         opening_losses: dict[int, Decimal] | None = None,
         savings_income: dict[int, SavingsIncomeYear] | None = None,
         securities: "list[SecurityResult] | None" = None,
+        crypto_summaries: dict[int, YearlyTaxSummary] | None = None,
     ) -> None:
         """Generate a PDF tax report using Playwright (supports lang='en' or lang='es')."""
         try:
@@ -662,6 +722,7 @@ class ReportRenderer:
             opening_losses=opening_losses,
             savings_income=savings_income,
             securities=securities,
+            crypto_summaries=crypto_summaries,
         )
 
         try:
