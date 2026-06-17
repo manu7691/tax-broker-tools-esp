@@ -26,6 +26,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 
+from .crypto_parser import CryptoTrade
 from .ecb_rates import prefetch_ecb_rates
 from .models import (
     CarryforwardLedger,
@@ -89,6 +90,9 @@ class CryptoTaxEngine:
         self.detect_wash_sale = detect_wash_sale
         self.engines: dict[str, TaxEngine] = {}
         self.synthetic_notes: list[str] = []
+        # Crypto-to-crypto swaps the parser could not handle (taxable permutas
+        # the user must declare manually). Populated by the CLI after parsing.
+        self.unhandled_swaps: list[CryptoTrade] = []
 
     def process(self, events_by_coin: dict[str, list[StockEvent]]) -> None:
         """Run a FIFO engine per coin, in true chronological order."""
@@ -284,6 +288,13 @@ class CryptoTaxEngine:
             print("\n⚠️  Data gaps (synthetic opening lots added):")
             for note in self.synthetic_notes:
                 print(f"   - {note}")
+        if self.unhandled_swaps:
+            print(
+                f"\n⚠️  {len(self.unhandled_swaps)} crypto-to-crypto swap(s) NOT handled "
+                "(taxable permutas — declare these manually):"
+            )
+            for t in self.unhandled_swaps:
+                print(f"   - {t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} for {t.quote}")
         print()
 
     # ----- CSV export ----------------------------------------------------
@@ -560,6 +571,18 @@ a{{color:var(--blue);}}
             )
             for note in self.synthetic_notes:
                 h.append(f"<li style='font-size:11px;color:#94a3b8;'>{note}</li>\n")
+            h.append("</ul>\n")
+        if self.unhandled_swaps:
+            h.append(
+                f"<p class='warn'>⚠ {len(self.unhandled_swaps)} crypto-to-crypto swap(s) "
+                "NOT handled (taxable permutas — declare manually):</p>\n"
+                "<ul style='margin:4px 0 12px 20px'>\n"
+            )
+            for t in self.unhandled_swaps:
+                h.append(
+                    "<li style='font-size:11px;color:#94a3b8;'>"
+                    f"{t.dt:%Y-%m-%d} {t.side} {t.qty:f} {t.base} → {t.quote}</li>\n"
+                )
             h.append("</ul>\n")
         return h
 
