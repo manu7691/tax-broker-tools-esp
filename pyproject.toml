@@ -12,12 +12,15 @@ requires-python = ">=3.10"
 keywords = ["tax", "spain", "espp", "rsu", "capital-gains", "fifo", "renta", "modelo-100"]
 dependencies = [
     "certifi>=2024.0.0",
+    "fastapi>=0.115.0",
     "jinja2>=3.1.0",
     "openpyxl>=3.1.5",
     "pandas>=2.3.3",
     "pdfplumber>=0.11.8",
     "playwright>=1.40.0",
+    "python-multipart>=0.0.9",
     "requests>=2.32.5",
+    "uvicorn[standard]>=0.30.0",
 ]
 
 [project.optional-dependencies]
@@ -45,6 +48,7 @@ tax-download-orders = "tax_engine.etrade_download_orders:download_orders"
 tax-download-rsu = "tax_engine.etrade_download_rsu:download_rsu_confirmations"
 tax-download-dividends = "tax_engine.etrade_download_dividends:download_dividends"
 tax-import-dividends = "tax_engine.dividends_parser:import_dividends"
+tax-web = "tax_engine.cli_web:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}
@@ -55,7 +59,7 @@ where = ["src"]
 [tool.setuptools.package-data]
 # Ship non-Python package data in built wheels: the typing marker and the HTML
 # templates rendered at runtime (the PDF-report Jinja template and the dashboard).
-tax_engine = ["py.typed", "templates/*.html", "templates/*.j2"]
+tax_engine = ["py.typed", "templates/*.html", "templates/*.j2", "web_app/templates/*.html"]
 
 [tool.ruff]
 target-version = "py310"
@@ -99,6 +103,10 @@ module = [
     "openpyxl.*",
     "playwright.*",
 ]
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = ["fastapi.*", "uvicorn.*", "multipart.*"]
 ignore_missing_imports = true
 
 [[tool.mypy.overrides]]

@@ -180,6 +180,40 @@ It writes `charts_dashboard.html` (gitignored) — open it in any browser. Full 
 
 ---
 
+## 🌐 Web Interface
+
+For an interactive browser-based view of all your tax data, launch the local web server. It runs the existing engines on-demand and shows a five-tab dashboard where you can also enter salary and real estate income manually and compare everything against your AEAT declaration.
+
+**First time only** — build the frontend (requires Node.js):
+```bash
+cd src/tax_engine/web_app/frontend
+npm install
+npm run build
+cd -
+```
+
+Then start the server:
+```bash
+uv run tax-web                             # uses input/ by default, opens on port 8080
+uv run tax-web --input-dir input --port 9090
+```
+
+Open `http://localhost:8080` in your browser, then click **Run Engine** to load your data.
+
+> **Developers:** to iterate on the frontend, run two terminals — `uv run tax-web --port 8080` (backend) and `npm run dev` inside `frontend/` (Vite dev server at `http://localhost:5173`, proxies `/api` to `:8080`).
+
+| Tab | What it shows |
+|-----|---------------|
+| **Stocks** | Capital gains/losses/tax by year, open positions, links to full HTML reports (EN/ES) |
+| **Crypto** | Same for crypto (reads from `input/crypto/`) |
+| **Work Income** | Computed ESPP early-sale discounts + manual salary entry per year |
+| **Real Estate** | Manual rental income and property sale gains per year |
+| **Hacienda** | Upload your AEAT Renta Web XML → preview extracted casillas → import → side-by-side comparison table (Computed vs Filed vs Difference) |
+
+Manual entries (salary, real estate, imported AEAT casillas) are saved to `input/manual_data.json` and persist across runs.
+
+---
+
 ## 📋 Menu Options
 
 When you launch `run_tax_engine.command` (macOS/Linux) or `run_tax_engine.bat` (Windows), you get this menu:
@@ -415,6 +449,40 @@ uv run generate_charts.py --current-price 45.50   # o fija un precio en USD
 Crea `charts_dashboard.html` (en `.gitignore`) — ábrelo en cualquier navegador. Guía completa: 🇺🇸 [DASHBOARD_GUIDE_EN.md](docs/DASHBOARD_GUIDE_EN.md) · 🇪🇸 [DASHBOARD_GUIDE_ES.md](docs/DASHBOARD_GUIDE_ES.md).
 
 > ⚠️ El panel es solo informativo y obtiene un **precio de mercado en vivo de Yahoo Finance**. Ningún dato personal sale de tu equipo en el propio archivo.
+
+---
+
+## 🌐 Interfaz Web
+
+Para una vista interactiva en el navegador de todos tus datos fiscales, lanza el servidor web local. Ejecuta los motores de cálculo a demanda y muestra un panel con cinco pestañas donde también puedes introducir rendimientos del trabajo e ingresos inmobiliarios manualmente y compararlo todo con tu declaración en la AEAT.
+
+**Solo la primera vez** — compila el frontend (requiere Node.js):
+```bash
+cd src/tax_engine/web_app/frontend
+npm install
+npm run build
+cd -
+```
+
+Luego arranca el servidor:
+```bash
+uv run tax-web                             # usa la carpeta input/ por defecto, puerto 8080
+uv run tax-web --input-dir input --port 9090
+```
+
+Abre `http://localhost:8080` en tu navegador y haz clic en **Run Engine** para cargar los datos.
+
+> **Desarrolladores:** para iterar sobre el frontend, usa dos terminales — `uv run tax-web --port 8080` (backend) y `npm run dev` dentro de `frontend/` (servidor Vite en `http://localhost:5173`, redirige `/api` al puerto `:8080`).
+
+| Pestaña | Qué muestra |
+|---------|-------------|
+| **Stocks** | Ganancias/pérdidas/impuesto anual, posiciones abiertas, enlaces a informes HTML completos (EN/ES) |
+| **Crypto** | Lo mismo para criptomonedas (lee de `input/crypto/`) |
+| **Work Income** | Descuentos ESPP por venta anticipada (calculados) + campos para introducir el salario anual |
+| **Real Estate** | Rendimientos de alquiler y ganancias por venta de inmuebles por año |
+| **Hacienda** | Sube tu XML de Renta Web → previsualiza las casillas extraídas → importa → tabla comparativa (Calculado vs Declarado vs Diferencia) |
+
+Las entradas manuales (salario, inmuebles, casillas AEAT importadas) se guardan en `input/manual_data.json` y persisten entre ejecuciones.
 
 ---
 
