@@ -31,6 +31,31 @@ class TestParsingHelpers:
         assert _split_pair("ETHFDUSD") == ("ETH", "FDUSD")
 
 
+class TestBinanceUtcOffset:
+    """The Binance offset shifts a near-midnight trade across the day/year line."""
+
+    _CSV = "Time,Pair,Side,Executed,Amount,Fee\n25-01-01 00:30:00,BTCUSDT,BUY,1BTC,40000USDT,0USDT\n"
+
+    def _load(self, tmp_path, offset):
+        from tax_engine.crypto_parser import load_crypto_trades
+
+        (tmp_path / "binance").mkdir(parents=True, exist_ok=True)
+        (tmp_path / "binance" / "Spot-Trade-History.csv").write_text(self._CSV)
+        return load_crypto_trades(tmp_path, binance_utc_offset_hours=offset)
+
+    def test_offset_zero_keeps_local_date(self, tmp_path):
+        # UTC export: 2025-01-01 stays in tax year 2025.
+        trades = self._load(tmp_path, 0)
+        assert trades[0].dt.year == 2025
+        assert trades[0].dt.date().isoformat() == "2025-01-01"
+
+    def test_offset_two_shifts_into_prior_year(self, tmp_path):
+        # CEST export: 00:30 local -> 22:30 UTC the day before -> tax year 2024.
+        trades = self._load(tmp_path, 2)
+        assert trades[0].dt.year == 2024
+        assert trades[0].dt.date().isoformat() == "2024-12-31"
+
+
 def _trade(dt, base, side, qty, amount, quote="USDT", source="Pionex"):
     return CryptoTrade(
         dt=datetime.fromisoformat(dt),
