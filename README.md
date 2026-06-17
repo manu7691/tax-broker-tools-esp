@@ -35,6 +35,9 @@ To share this repository with your teammates or show it to your tax advisor, the
 *   **Multiple Securities & Brokers (Portfolio Mode) Guide:**
     *   🇺🇸 [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md)
     *   🇪🇸 [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md)
+*   **Crypto Capital Gains (Pionex & Binance) Guide:**
+    *   🇺🇸 [CRYPTO_GUIDE_EN.md](docs/CRYPTO_GUIDE_EN.md)
+    *   🇪🇸 [CRYPTO_GUIDE_ES.md](docs/CRYPTO_GUIDE_ES.md)
 *   **How the PDF Report Is Generated (slide deck for your tax advisor):**
     *   🇺🇸 [PDF_REPORT_PRESENTATION_EN.md](docs/PDF_REPORT_PRESENTATION_EN.md) · [PDF](docs/PDF_REPORT_PRESENTATION_EN.pdf)
     *   🇪🇸 [PDF_REPORT_PRESENTATION_ES.md](docs/PDF_REPORT_PRESENTATION_ES.md) · [PDF](docs/PDF_REPORT_PRESENTATION_ES.pdf)
@@ -242,6 +245,8 @@ If you trade crypto on **Pionex** or **Binance**, drop their spot-trade exports 
 - **Try it offline:** `uv run tax-demo --crypto` (or `--combined`) runs on sample BTC/ETH/SOL data with no network call.
 
 > The optional `--wash-sale` flag applies the 2-month homogeneous-asset rule per coin; it is **off by default** because its applicability to crypto is unsettled at AEAT.
+
+Full walkthrough: [CRYPTO_GUIDE_EN.md](docs/CRYPTO_GUIDE_EN.md) · [🇪🇸 ES](docs/CRYPTO_GUIDE_ES.md).
 
 ## ❓ Troubleshooting
 
@@ -494,6 +499,8 @@ Si operas con cripto en **Pionex** o **Binance**, coloca sus exports de operacio
 - **Pruébalo sin conexión:** `uv run tax-demo --crypto` (o `--combined`) usa datos de ejemplo BTC/ETH/SOL sin ninguna llamada de red.
 
 > La opción `--wash-sale` aplica la regla de los 2 meses para activos homogéneos por moneda; está **desactivada por defecto** porque su aplicabilidad a la cripto no está resuelta en la AEAT.
+
+Guía completa: [CRYPTO_GUIDE_ES.md](docs/CRYPTO_GUIDE_ES.md) · [🇺🇸 EN](docs/CRYPTO_GUIDE_EN.md).
 
 ## ❓ Solución de Problemas
 
