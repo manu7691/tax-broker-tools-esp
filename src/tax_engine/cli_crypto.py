@@ -72,13 +72,17 @@ def main() -> None:
     print(f"\nTotal trades loaded: {len(trades)}")
 
     unhandled_swaps: list[CryptoTrade] = []
-    events_by_coin = trades_to_events_by_coin(trades, unhandled_swaps=unhandled_swaps)
+    ignored_fees: list[CryptoTrade] = []
+    events_by_coin = trades_to_events_by_coin(
+        trades, unhandled_swaps=unhandled_swaps, ignored_fees=ignored_fees
+    )
     if not events_by_coin and not unhandled_swaps:
         print("\nError: no taxable (non-stablecoin) positions found in the data.")
         return
 
     engine = CryptoTaxEngine(detect_wash_sale=args.wash_sale)
     engine.unhandled_swaps = unhandled_swaps
+    engine.ignored_fees = ignored_fees
     engine.process(events_by_coin)
     engine.print_console()
 

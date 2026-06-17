@@ -186,12 +186,16 @@ def load_crypto_trades(input_dir: Path, binance_utc_offset_hours: int = 2) -> li
     return trades
 
 
-def _fee_in_quote(trade: CryptoTrade) -> Decimal:
+def _fee_in_quote(
+    trade: CryptoTrade, ignored_fees: list[CryptoTrade] | None = None
+) -> Decimal:
     """Express a trade's fee in the quote (≈ USD) asset, best-effort.
 
     - fee paid in the quote asset (USDT/USDC) -> taken at face value;
     - fee paid in the base coin -> valued at the trade's unit price;
-    - anything else (e.g. BNB) is ignored with a warning.
+    - anything else (e.g. BNB) is ignored with a warning and, if an
+      ``ignored_fees`` list is supplied, appended to it so callers can report
+      how many fees went unvalued (these slightly overstate the gain).
     """
     if trade.fee_qty <= 0 or not trade.fee_coin:
         return Decimal("0")
@@ -203,6 +207,8 @@ def _fee_in_quote(trade: CryptoTrade) -> Decimal:
         f"  Warning: fee paid in {trade.fee_coin} on {trade.dt:%Y-%m-%d} "
         f"{trade.base}/{trade.quote} not valued (unsupported fee coin)."
     )
+    if ignored_fees is not None:
+        ignored_fees.append(trade)
     return Decimal("0")
 
 
@@ -210,6 +216,7 @@ def trades_to_events_by_coin(
     trades: list[CryptoTrade],
     *,
     unhandled_swaps: list[CryptoTrade] | None = None,
+    ignored_fees: list[CryptoTrade] | None = None,
 ) -> dict[str, list[StockEvent]]:
     """Convert normalised trades into per-coin :class:`StockEvent` queues.
 
@@ -223,7 +230,8 @@ def trades_to_events_by_coin(
     MVP, yet Spain taxes them as a *permuta*. They are therefore not dropped
     silently: if an ``unhandled_swaps`` list is supplied, each such trade is
     appended to it so callers can report "declare these manually" rather than
-    understating the gain.
+    understating the gain. Likewise, fees paid in an unsupported coin (e.g. BNB)
+    cannot be valued and are appended to ``ignored_fees`` when supplied.
     """
     events_by_coin: dict[str, list[StockEvent]] = {}
 
@@ -245,7 +253,9 @@ def trades_to_events_by_coin(
 
         event_type = EventType.BUY if t.side == "BUY" else EventType.SELL
         # Fees are deducted from the gain by the engine on SELL events only.
-        fees_usd = _fee_in_quote(t) if event_type == EventType.SELL else Decimal("0")
+        fees_usd = (
+            _fee_in_quote(t, ignored_fees) if event_type == EventType.SELL else Decimal("0")
+        )
 
         event = StockEvent(
             event_date=t.dt.date(),
