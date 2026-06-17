@@ -42,8 +42,9 @@ def main() -> None:
     parser.add_argument(
         "--wash-sale",
         action="store_true",
-        help="Apply the 2-month homogeneous-asset rule per coin (off by default; "
-        "its applicability to crypto is unsettled at AEAT).",
+        help="Apply the 2-month homogeneous-asset rule per coin. Off by default: "
+        "per DGT criteria crypto is not «valores homogéneos», so the rule does "
+        "NOT apply — enable only as an explicit advisor-directed override.",
     )
     args = parser.parse_args()
     input_dir: Path = args.input_dir

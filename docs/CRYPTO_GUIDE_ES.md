@@ -57,7 +57,7 @@ uv run tax-combined
 - **Permutas cripto-a-cripto** cotizadas en una no-stablecoin (p. ej. ETH/BTC) están **fuera del alcance de este MVP** y se omiten con un aviso — aunque España *sí* trata la permuta como tributable. Por ahora gestiónalas a mano.
 - **Las comisiones** se descuentan de la ganancia en las ventas, valoradas en el activo de cotización (una comisión pagada en la moneda base se valora al precio unitario de la operación; una moneda de comisión no soportada como BNB se ignora con un aviso).
 - **Historial de adquisición incompleto:** si tus datos venden más de una moneda de la que muestran haber comprado, se inserta un **lote de apertura sintético** (al precio de la primera venta) para que la cola nunca quede en negativo, y se imprime un aviso. Aporta el historial completo para evitarlo.
-- **Wash-sale (regla de los 2 meses):** desactivada por defecto. `--wash-sale` aplica la regla de activos homogéneos por moneda, pero su aplicabilidad a la cripto **no está resuelta en la AEAT** — déjala desactivada salvo que tu asesor indique lo contrario.
+- **Wash-sale (regla de los 2 meses):** desactivada por defecto. Según el criterio de la DGT, los criptoactivos **no son *valores homogéneos***, por lo que la regla anti-lavado de pérdidas (Art. 33.5 LIRPF) **no aplica**. `--wash-sale` existe solo como anulación expresa indicada por tu asesor — déjala desactivada salvo que tu asesor te indique expresamente lo contrario.
 - **El impuesto estimado es aislado** — ignora tus ganancias bursátiles, dividendos/intereses y la compensación de pérdidas de años anteriores. Usa `tax-combined` para la base del ahorro real.
 
 ## Pruébalo con datos de ejemplo (sin datos reales)
