@@ -16,6 +16,7 @@ if TYPE_CHECKING:
 from .models import (
     CarryforwardLedger,
     CarryforwardYear,
+    DeferredWashSaleLoss,
     EventType,
     FifoMatch,
     ProcessedEvent,
@@ -48,6 +49,11 @@ class TaxEngine:
     def __init__(self) -> None:
         self.state = TaxEngineState()
         self.processed_events: list[ProcessedEvent] = []
+        # Every lot ever acquired, in chronological order. ``state.lots`` is the
+        # live portfolio and gets emptied on a full liquidation; this ledger is
+        # the durable record the wash-sale rule needs, because a lot that has
+        # been sold is exactly the one that releases a deferred loss.
+        self.lot_ledger: list[ShareLot] = []
         self.yearly_summaries: dict[int, YearlyTaxSummary] = defaultdict(
             lambda: YearlyTaxSummary(year=0)
         )
@@ -56,6 +62,7 @@ class TaxEngine:
         """Reset the engine to initial state."""
         self.state = TaxEngineState()
         self.processed_events = []
+        self.lot_ledger = []
         self.yearly_summaries = defaultdict(lambda: YearlyTaxSummary(year=0))
 
     def _sort_events(self, events: list[StockEvent]) -> list[StockEvent]:
@@ -101,6 +108,7 @@ class TaxEngine:
             isin=event.isin,
         )
         self.state.lots.append(new_lot)
+        self.lot_ledger.append(new_lot)
 
         # Update running aggregates
         self.state.total_shares += shares
@@ -153,6 +161,9 @@ class TaxEngine:
             shares_from_lot = min(lot.remaining_shares, remaining_to_match)
             lot.remaining_shares -= shares_from_lot
             remaining_to_match -= shares_from_lot
+            # The lot remembers when it was consumed. This is the trigger that
+            # later releases any wash-sale loss deferred onto it.
+            lot.disposals.append((event.event_date, shares_from_lot))
 
             match_gain_loss = ((sell_price_eur - lot.price_eur) * shares_from_lot).quantize(
                 Decimal("0.0001"), ROUND_HALF_UP
@@ -205,43 +216,55 @@ class TaxEngine:
             fifo_matches=fifo_matches,
         )
 
+    def _summary_for(self, year: int) -> YearlyTaxSummary:
+        """Get (creating if needed) the summary for ``year``.
+
+        ``yearly_summaries`` is a defaultdict whose factory cannot know the key,
+        so a freshly created entry carries ``year=0``; stamp the real year on it.
+        """
+        summary = self.yearly_summaries[year]
+        if summary.year != year:
+            summary.year = year
+        return summary
+
     def detect_blocked_losses_spain(self) -> None:
         """
-        Detect and compute blocked losses under the Spanish 2-month wash sale rule.
+        Apply the Spanish 2-month wash sale rule (Art. 33.5.f LIRPF), lot by lot.
 
-        Under Art. 33.5.f LIRPF, a loss from selling shares is blocked (deferred) if
-        the taxpayer still holds homogeneous shares that were acquired within 2 months
-        before or after the sale date.
+        Runs three separate phases, in order:
 
-        The key distinction: lots that were fully consumed by the sell itself are NOT
-        counted as triggering acquisitions — only shares that remain in the portfolio
-        (i.e., "replacement" shares) trigger the blocking rule.
+        1. ``_defer_losses_onto_replacement_lots`` — a loss sale that leaves the
+           taxpayer holding homogeneous shares bought within 2 months parks the
+           deferred loss ON THOSE LOTS.
+        2. ``_release_deferred_losses`` — when FIFO later consumes such a lot, the
+           loss parked on it is freed, dated to that disposal.
+        3. ``_apply_wash_sale_to_summaries`` — yearly figures are *derived* by
+           reading the lots. No year is ever mutated from another year's data.
+
+        Deferral must be a pass of its own because Art. 33.5.f also counts
+        repurchases in the two months AFTER the sale: at the instant of the loss
+        sale, the blocking purchase may not have happened yet. What the pass never
+        does is look into the future beyond that window — each deferral is fixed
+        from the sale date and the replacement lot's own acquisition, both past
+        events, so a closed year cannot be rewritten by anything that follows.
         """
+        self._defer_losses_onto_replacement_lots()
+        self._release_deferred_losses()
+        self._apply_wash_sale_to_summaries()
+
+    @staticmethod
+    def _add_months(d: date, months: int) -> date:
+        """Shift a date by whole months, clamping to the end of short months."""
         import calendar
 
-        def _add_months(d: date, months: int) -> date:
-            month = d.month - 1 + months
-            year = d.year + month // 12
-            month = month % 12 + 1
-            day = min(d.day, calendar.monthrange(year, month)[1])
-            return date(year, month, day)
+        month = d.month - 1 + months
+        year = d.year + month // 12
+        month = month % 12 + 1
+        day = min(d.day, calendar.monthrange(year, month)[1])
+        return date(year, month, day)
 
-        # Build a consumable pool of "replacement" shares: lots that still hold
-        # shares after all processing is complete (self.state.lots reflects the
-        # final state). Each surviving share can block at most ONE sold share —
-        # so the pool is decremented as it is claimed. Without this, a single
-        # replacement lot sitting in the 2-month window of several loss sales
-        # would block each of them independently, over-deferring the losses.
-        replacement_pool: dict[tuple[date, Decimal], Decimal] = {}
-        for lot in self.state.lots:
-            if lot.remaining_shares > 0:
-                key = (lot.acquisition_date, lot.price_eur)
-                replacement_pool[key] = (
-                    replacement_pool.get(key, Decimal("0")) + lot.remaining_shares
-                )
-
-        # Process loss-making sells chronologically so earlier sales claim
-        # replacement shares first (a deterministic allocation when windows overlap).
+    def _defer_losses_onto_replacement_lots(self) -> None:
+        """Phase 1 — park each blocked loss on the replacement lot that caused it."""
         loss_sells = sorted(
             (
                 pe
@@ -253,35 +276,140 @@ class TaxEngine:
 
         for pe in loss_sells:
             sale_date = pe.event.event_date
-            start_window = _add_months(sale_date, -2)
-            end_window = _add_months(sale_date, 2)
+            start_window = self._add_months(sale_date, -2)
+            end_window = self._add_months(sale_date, 2)
 
-            # Claim replacement shares acquired within the 2-month window, consuming
-            # them from the pool so they cannot block another sale's loss as well.
+            targets: list[tuple[ShareLot, date, Decimal]] = []
             blocked_shares = Decimal("0")
             remaining_to_block = pe.event.shares
-            for key in sorted(replacement_pool.keys()):
+
+            for lot in self.lot_ledger:  # chronological
                 if remaining_to_block <= 0:
                     break
-                acq_date, _acq_price = key
-                if not (start_window <= acq_date <= end_window):
+                if not (start_window <= lot.acquisition_date <= end_window):
                     continue
-                available = replacement_pool[key]
+                # The deferral attaches the moment both facts coexist: the loss
+                # sale and the replacement holding. Measuring at the later of the
+                # two dates keeps the figure built only from past events — the
+                # end of the window lies in the future and would let a later sale
+                # rewrite a year already reported.
+                anchor = max(lot.acquisition_date, sale_date)
+                # Shares of this lot that survive the sale itself, minus those
+                # already pledged to an earlier loss sale: one replacement share
+                # can neutralize at most one sold share, in total.
+                pledged = sum((c.shares for c in lot.deferred_claims), Decimal("0"))
+                available = lot.shares_held_at(anchor) - pledged
                 if available <= 0:
                     continue
                 used = min(available, remaining_to_block)
-                replacement_pool[key] -= used
+                targets.append((lot, anchor, used))
                 blocked_shares += used
                 remaining_to_block -= used
 
-            if blocked_shares > 0:
-                blocked_loss = (pe.realized_gain_loss / pe.event.shares * blocked_shares).quantize(
-                    Decimal("0.0001"), ROUND_HALF_UP
+            if blocked_shares <= 0:
+                continue
+
+            blocked_loss = (pe.realized_gain_loss / pe.event.shares * blocked_shares).quantize(
+                Decimal("0.0001"), ROUND_HALF_UP
+            )
+            pe.event.notes += f" [Wash Sale Blocked Loss: €{abs(blocked_loss):,.2f}]"
+
+            unassigned = blocked_loss
+            for position, (lot, anchor, shares) in enumerate(targets):
+                if position == len(targets) - 1:
+                    amount = unassigned  # last lot absorbs the rounding residual
+                else:
+                    amount = (blocked_loss * shares / blocked_shares).quantize(
+                        Decimal("0.0001"), ROUND_HALF_UP
+                    )
+                unassigned -= amount
+                lot.deferred_claims.append(
+                    DeferredWashSaleLoss(
+                        origin_year=sale_date.year,
+                        anchor_date=anchor,
+                        shares=shares,
+                        amount=amount,
+                    )
                 )
 
-                pe.event.notes += f" [Wash Sale Blocked Loss: €{abs(blocked_loss):,.2f}]"
-                year = sale_date.year
-                self.yearly_summaries[year].blocked_losses += blocked_loss
+    def _release_deferred_losses(self) -> None:
+        """Phase 2 — selling a lot frees the loss deferred onto it, on that date."""
+        for lot in self.lot_ledger:
+            if not lot.deferred_claims:
+                continue
+
+            index = 0
+            used_from_current = Decimal("0")
+
+            # Claims were appended in sale order, so their anchors ascend.
+            for claim in lot.deferred_claims:
+                # Disposals up to the anchor never acted as replacement shares
+                # (``shares_held_at`` already netted them out), so they release
+                # nothing — and, anchors ascending, never will for later claims.
+                while index < len(lot.disposals) and lot.disposals[index][0] <= claim.anchor_date:
+                    index += 1
+                    used_from_current = Decimal("0")
+
+                shares_left = claim.shares
+                amount_left = claim.amount
+
+                while shares_left > 0 and index < len(lot.disposals):
+                    sell_date, disposed = lot.disposals[index]
+                    take = min(disposed - used_from_current, shares_left)
+                    if take <= 0:
+                        index += 1
+                        used_from_current = Decimal("0")
+                        continue
+
+                    used_from_current += take
+                    shares_left -= take
+                    if shares_left <= 0:
+                        portion = amount_left  # last slice absorbs the residual
+                    else:
+                        portion = (claim.amount * take / claim.shares).quantize(
+                            Decimal("0.0001"), ROUND_HALF_UP
+                        )
+                    amount_left -= portion
+                    claim.released += portion
+                    claim.releases.append((sell_date, portion))
+
+                    if used_from_current >= disposed:
+                        index += 1
+                        used_from_current = Decimal("0")
+
+    def _apply_wash_sale_to_summaries(self) -> None:
+        """Phase 3 — derive the yearly figures by reading the lots, lot by lot.
+
+        Nothing here consults another year's totals, so no year can be rewritten
+        from a later one. Each year gets exactly two things:
+
+        * ``blocked_losses`` — deferrals originated that year and STILL pending at
+          31 December. A deferral released within its own year never had a pending
+          balance, so it is plain deductible loss and shows up nowhere here. This
+          is what guarantees a fully liquidated position reports €0.00 blocked.
+        * ``unlocked_historical_losses`` — deferrals from EARLIER years released
+          during this one.
+        """
+        for lot in self.lot_ledger:
+            for claim in lot.deferred_claims:
+                origin = claim.origin_year
+
+                released_same_year = sum(
+                    (amount for when, amount in claim.releases if when.year == origin),
+                    Decimal("0"),
+                )
+                pending_at_year_end = claim.amount - released_same_year
+                if pending_at_year_end:
+                    self._summary_for(origin).blocked_losses += pending_at_year_end
+
+                for when, amount in claim.releases:
+                    if when.year == origin:
+                        continue  # already netted out of the origin year above
+                    summary = self._summary_for(when.year)
+                    summary.unlocked_historical_losses += amount
+                    summary.unlocked_losses_by_origin[origin] = (
+                        summary.unlocked_losses_by_origin.get(origin, Decimal("0")) + amount
+                    )
 
     def process_event(self, event: StockEvent) -> ProcessedEvent:
         """Process a single stock event."""

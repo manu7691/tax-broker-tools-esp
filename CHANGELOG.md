@@ -225,6 +225,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   multiplying (the price uses multiplication). Fees are now deducted at the same
   rate as the price. Small magnitude (fees are a few dollars) but a correctness fix.
 - Prevent wash-sale over-blocking across overlapping loss sales.
+- **Wash-sale deferred losses were imputed to the wrong tax year.** The 2-month
+  rule (Art. 33.5.f LIRPF) decided which shares were "replacements" by looking at
+  the portfolio *as it stood at the end of all processing*. A replacement lot sold
+  in a later year had therefore vanished from that view, so the block silently
+  disappeared and the loss was deducted in its year of origin — exactly what DGT
+  V1547-16 and V1035-18 forbid. Deferred losses are now tracked **per lot**: each
+  `ShareLot` carries a `deferred_wash_sale_loss` balance, FIFO consuming that lot
+  is what releases it, and the released amount is credited to the year of *that*
+  disposal via a new `unlocked_historical_losses` (broken down by origin year).
+  The year of origin is never rewritten. Verified over 8,000 randomized scenarios:
+  no closed year is altered by later events.
+- **"Blocked Losses" now reports the balance pending at 31 December**, not the
+  gross amount ever deferred. A loss deferred and released within the same year
+  leaves nothing pending, so it is simply reported as deductible. This makes the
+  figure €0.00 for a year in which the position is fully liquidated, which
+  previously showed a phantom blocked balance despite no replacement shares
+  existing. Deductible losses, the savings base and the tax due are unchanged by
+  this presentation fix.
 - Documentation: corrected the orders input path (`input/orders/orders.xlsx`)
   and added the required `input/espp/BenefitHistory.xlsx` to the input diagrams.
 - Fixed formatting of stock share counts to correctly display fractional shares (up to 6 decimal places) in CLI output and HTML reports instead of rounding/truncating them to 0.

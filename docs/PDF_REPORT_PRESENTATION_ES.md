@@ -191,7 +191,7 @@ Se integran ganancias, dividendos e intereses, y se compensan pérdidas:
 | Venta con pérdida de −300 € | 10/05/2024 | Pérdida... |
 | Recompra del **mismo valor** | 02/06/2024 (< 2 meses) | 🚫 Pérdida **bloqueada** |
 
-➡️ La pérdida de −300 € **no se puede computar ahora**: queda «aparcada» y se incorporará al coste de las nuevas acciones (se aprovechará cuando las vendas definitivamente).
+➡️ La pérdida de −300 € **no se puede computar ahora**: queda diferida y «aparcada» sobre las acciones de sustitución. España **no** la incorpora a su coste de adquisición (ese es el mecanismo estadounidense): la pérdida se conserva íntegra y pasa a ser deducible **en el ejercicio en que vendas esas acciones de sustitución**, sin rectificar la declaración de 2024.
 
 > El informe marca estas pérdidas como bloqueadas para que no se declaren por error.
 

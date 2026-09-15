@@ -20,6 +20,32 @@ class EventType(Enum):
 
 
 @dataclass
+class DeferredWashSaleLoss:
+    """A loss deferred by Art. 33.5.f, parked on the replacement lot that caused it.
+
+    This is the unit of traceability the Spanish rule actually needs: the deferral
+    belongs to the *replacement shares*, not to a calendar year. It is released
+    when those shares are transferred, and only then does it become deductible.
+
+    ``anchor_date`` is the moment the deferral attached — the later of the lot's
+    acquisition and the loss sale. Both are past dates, so a deferral, once
+    recorded, can never be altered by anything that happens later.
+    """
+
+    origin_year: int  # year of the loss sale whose loss is deferred
+    anchor_date: date
+    shares: Decimal  # replacement shares of the lot holding this deferral
+    amount: Decimal  # total deferred loss (negative)
+    released: Decimal = Decimal("0")  # part already freed (negative)
+    releases: list[tuple[date, Decimal]] = field(default_factory=list)
+
+    @property
+    def outstanding(self) -> Decimal:
+        """Deferred loss still locked up (negative; zero once fully released)."""
+        return self.amount - self.released
+
+
+@dataclass
 class ShareLot:
     """Represents a lot of acquired shares for FIFO tracking (Spain)."""
 
@@ -33,6 +59,24 @@ class ShareLot:
     # single-security/E*TRADE callers working unchanged.
     broker: str = "E*TRADE"
     isin: str | None = None
+    # Wash-sale state carried BY THE LOT. ``deferred_claims`` holds the losses this
+    # lot blocked (a lot can block more than one sale, and from more than one year);
+    # ``disposals`` is the (date, shares) schedule of how FIFO consumed the lot,
+    # which is what releases those deferrals.
+    deferred_claims: list[DeferredWashSaleLoss] = field(default_factory=list)
+    disposals: list[tuple[date, Decimal]] = field(default_factory=list)
+
+    @property
+    def deferred_wash_sale_loss(self) -> Decimal:
+        """Deferred loss still parked on this lot (negative; 0 when fully released)."""
+        return sum((claim.outstanding for claim in self.deferred_claims), Decimal("0"))
+
+    def shares_held_at(self, on: date) -> Decimal:
+        """Shares of this lot still in the portfolio at the close of ``on``."""
+        if self.acquisition_date > on:
+            return Decimal("0")
+        disposed = sum((sh for when, sh in self.disposals if when <= on), Decimal("0"))
+        return self.shares - disposed
 
 
 @dataclass
@@ -165,13 +209,31 @@ class YearlyTaxSummary:
     year: int
     total_gains: Decimal = Decimal("0")
     total_losses: Decimal = Decimal("0")
+    # Losses realized THIS year that Art. 33.5.f still defers AT 31 DECEMBER
+    # (negative) — the balance actually pending, not the gross amount ever
+    # deferred. A loss deferred and released within the same year never had a
+    # pending balance at year end, so it does not appear here; it is simply
+    # deductible. Once written this figure is final: DGT V1547-16 and V1035-18
+    # forbid going back to the year of origin when the block later breaks.
     blocked_losses: Decimal = Decimal("0")
+    # Losses deferred in EARLIER years whose block broke during THIS year, because
+    # the replacement shares were finally disposed of (negative). This is where the
+    # deferred loss becomes deductible. Same-year releases are not counted here:
+    # they are already netted out of that year's ``blocked_losses``.
+    unlocked_historical_losses: Decimal = Decimal("0")
+    # Breakdown of ``unlocked_historical_losses`` as {origin_year: amount}, kept so
+    # the report can state which year each released loss came from.
+    unlocked_losses_by_origin: dict[int, Decimal] = field(default_factory=dict)
     total_fees_eur: Decimal = Decimal("0")  # Total transaction fees deducted (EUR)
 
     @property
     def deductible_losses(self) -> Decimal:
-        """Deductible losses for Spain (after excluding blocked losses)."""
-        return self.total_losses - self.blocked_losses
+        """Losses usable against this year's base.
+
+        This year's losses minus the part Art. 33.5.f blocks, plus the losses
+        deferred from previous years that this year unblocked.
+        """
+        return self.total_losses - self.blocked_losses + self.unlocked_historical_losses
 
     @property
     def net_gain_loss(self) -> Decimal:

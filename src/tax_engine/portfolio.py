@@ -104,7 +104,8 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
     """Fold per-security engines into one combined engine for the savings base.
 
     Sums each security's yearly summaries (gains, losses, already-computed blocked
-    losses, fees) and concatenates their processed events and surviving lots, so
+    losses, losses unblocked this year, fees) and concatenates their processed
+    events and surviving lots, so
     the carryforward/savings-ledger and all reporting run on the portfolio total.
     The wash-sale detection is deliberately **not** re-run — doing so across
     securities would be wrong, and each per-security summary already carries it.
@@ -120,6 +121,11 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
             tgt.total_gains += s.total_gains
             tgt.total_losses += s.total_losses
             tgt.blocked_losses += s.blocked_losses
+            tgt.unlocked_historical_losses += s.unlocked_historical_losses
+            for origin_year, amount in s.unlocked_losses_by_origin.items():
+                tgt.unlocked_losses_by_origin[origin_year] = (
+                    tgt.unlocked_losses_by_origin.get(origin_year, Decimal("0")) + amount
+                )
             tgt.total_fees_eur += s.total_fees_eur
         processed.extend(eng.processed_events)
         aggregate.state.total_shares += eng.state.total_shares

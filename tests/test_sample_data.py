@@ -94,10 +94,18 @@ def test_sample_data_with_ecb_rates():
     summary_2021 = tax_summary[2021]
     assert summary_2021.total_gains == pytest.approx(Decimal("572.59"), abs=Decimal("0.01"))
     assert summary_2021.total_losses == pytest.approx(Decimal("-39.05"), abs=Decimal("0.01"))
-    assert summary_2021.blocked_losses == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
-    assert summary_2021.net_gain_loss == pytest.approx(Decimal("533.54"), abs=Decimal("0.01"))
-    assert summary_2021.taxable_gain == pytest.approx(Decimal("533.54"), abs=Decimal("0.01"))
-    assert summary_2021.tax_due == pytest.approx(Decimal("101.37"), abs=Decimal("0.01"))
+    # The 2021-05-17 loss sales are followed by the 2021-05-28 ESPP buy and the
+    # 2021-06-15 purchase, both inside the 2-month window, so the whole -39.05 is
+    # deferred onto those lots (Art. 33.5.f). Part of them is sold again on
+    # 2021-08-16 and 2021-11-16, releasing -15.32 within the same year, so what
+    # is still pending at 31/12/2021 — and only that — is reported as blocked.
+    assert summary_2021.blocked_losses == pytest.approx(Decimal("-23.73"), abs=Decimal("0.01"))
+    # Same-year releases are netted above, not reported as unblocked prior losses.
+    assert summary_2021.unlocked_historical_losses == Decimal("0")
+    assert summary_2021.deductible_losses == pytest.approx(Decimal("-15.32"), abs=Decimal("0.01"))
+    assert summary_2021.net_gain_loss == pytest.approx(Decimal("557.27"), abs=Decimal("0.01"))
+    assert summary_2021.taxable_gain == pytest.approx(Decimal("557.27"), abs=Decimal("0.01"))
+    assert summary_2021.tax_due == pytest.approx(Decimal("105.88"), abs=Decimal("0.01"))
 
     # 2022: Net loss
     assert 2022 in tax_summary
@@ -105,7 +113,13 @@ def test_sample_data_with_ecb_rates():
     assert summary_2022.total_gains == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2022.total_losses == pytest.approx(Decimal("-2941.27"), abs=Decimal("0.01"))
     assert summary_2022.blocked_losses == pytest.approx(Decimal("-1018.23"), abs=Decimal("0.01"))
-    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1923.04"), abs=Decimal("0.01"))
+    # Remainder of the 2021 block, released in 2022 when the last replacement
+    # shares are sold. 2021 itself keeps its own figures untouched.
+    assert summary_2022.unlocked_historical_losses == pytest.approx(
+        Decimal("-23.73"), abs=Decimal("0.01")
+    )
+    assert summary_2022.unlocked_losses_by_origin.keys() == {2021}
+    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1946.77"), abs=Decimal("0.01"))
     assert summary_2022.taxable_gain == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2022.tax_due == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
 
