@@ -208,6 +208,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **E\*TRADE login: stale sessions and risk-engine stalls.** A saved
+  `input/etrade_session.json` was replayed unconditionally, so an expired
+  SiteMinder `SMSESSION` cookie sent the browser into a redirect loop instead of
+  showing the login form. Sessions older than 12h, unreadable, or with no live
+  auth cookie are now discarded. The scraper also drives the **installed Google
+  Chrome** when available (Playwright's bundled build reports
+  `sec-ch-ua: "Chromium"`, enough on its own for E\*TRADE to stall the
+  post-login page) and no longer spoofs the user agent or patches
+  `navigator`, both of which contradicted the real client hints and were more
+  detectable than leaving them untouched.
 - Spanish report: the transaction ledger **Tipo** column left several English terms
   untranslated (`Restricted Stock`, `Wash Sale Blocked Loss`, `Stock Option`,
   `Options Exercise`/`Same-Day Sale`, `strike`, `Unknown`). They are now localized.
