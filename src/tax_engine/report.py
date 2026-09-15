@@ -231,7 +231,18 @@ class ReportRenderer:
             print(f"  Year {summary.year}:")
             print(f"    Total Realized Gains:      €{summary.total_gains:>12,.2f}")
             print(f"    Total Realized Losses:     €{summary.total_losses:>12,.2f}")
-            print(f"    Blocked Losses (2-month):  €{summary.blocked_losses:>12,.2f}")
+            # Pending balance at 31/12, not the gross amount ever deferred: a
+            # deferral released within its own year leaves nothing pending.
+            print(f"    Blocked Losses (pend. 31/12): €{summary.blocked_losses:>12,.2f}")
+            if summary.unlocked_historical_losses:
+                origins = ", ".join(
+                    f"{origin_year}: €{amount:,.2f}"
+                    for origin_year, amount in sorted(summary.unlocked_losses_by_origin.items())
+                )
+                print(
+                    f"    Unblocked Prior Losses:    "
+                    f"€{summary.unlocked_historical_losses:>12,.2f}  (from {origins})"
+                )
             print(f"    Total Fees Deducted:       €{summary.total_fees_eur:>12,.2f}")
             print(f"    Net Taxable Capital Gains: €{summary.taxable_gain:>12,.2f}")
             print(f"    Estimated Tax Due:         €{summary.tax_due:>12,.2f}")

@@ -191,7 +191,7 @@ Gains, dividends and interest are integrated, and losses are offset:
 | Sale at a −€300 loss | 10/05/2024 | Loss... |
 | Rebuy of the **same security** | 02/06/2024 (< 2 months) | 🚫 Loss **blocked** |
 
-➡️ The −€300 loss **cannot be claimed now**: it is "parked" and added to the cost of the new shares (you will use it when you sell those for good).
+➡️ The −€300 loss **cannot be claimed now**: it is deferred and parked on the replacement shares. Spain does **not** add it to their cost basis (that is the US mechanic) — the loss stays intact and becomes deductible **in the tax year you sell those replacement shares**, with no amendment to the 2024 return.
 
 > The report flags these losses as blocked so they are not declared by mistake.
 

@@ -142,8 +142,9 @@ The tax report output provides a **Yearly Tax Summary (Modelo 100 - Savings Base
 
 For each tax year, it lists:
 - **Total Gains / Total Losses:** Sums of realized capital gains and losses.
-- **Blocked Losses:** Losses deferred due to the 2-month wash sale rule.
-- **Deductible Losses:** Losses usable this year after removing blocked ones.
+- **Blocked Losses:** Losses deferred by the 2-month wash sale rule and **still pending at 31 December**. A loss deferred and released in the same year leaves no pending balance, so it does not appear here; liquidate a position in full and this is €0.00.
+- **Unblocked Prior Losses:** Losses deferred in *earlier* years that became deductible this year, because the replacement shares were finally sold. They are claimed in this year's return — the year of origin is never amended (DGT V1547-16, V1035-18).
+- **Deductible Losses:** Losses usable this year — this year's losses minus what is still blocked, plus any prior-year losses unblocked now.
 - **Net Taxable Savings Base:** The final net amount after applying allowed losses against gains.
 - **Estimated Tax (Isolated):** Tax on *these stock gains alone* using the savings scale (19–28%). ⚠️ This is **not** your final liability — it ignores your total savings income (dividends, interest) and prior-year loss carryforward. Treat it as a guide.
 
@@ -397,8 +398,9 @@ El informe PDF contiene una sección **Resumen Fiscal Anual (Modelo 100 - Base I
 
 Para cada ejercicio fiscal calcula:
 - **Ganancias / Pérdidas Totales:** Sumas de las plusvalías y minusvalías realizadas.
-- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses.
-- **Pérdidas Deducibles:** Pérdidas utilizables en el ejercicio tras descontar las bloqueadas.
+- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses y **aún pendientes a 31 de diciembre**. Una pérdida diferida y liberada en el mismo ejercicio no deja saldo pendiente y no aparece aquí; si liquidas la posición al 100%, esta cifra es 0,00 €.
+- **Pérdidas Históricas Liberadas:** Pérdidas diferidas en ejercicios *anteriores* que pasan a ser deducibles este año, al venderse por fin las acciones de sustitución. Se integran en la declaración de este ejercicio: el año de origen no se rectifica nunca (DGT V1547-16 y V1035-18).
+- **Pérdidas Deducibles:** Pérdidas utilizables en el ejercicio: las del año menos las que siguen bloqueadas, más las de años anteriores liberadas ahora.
 - **Base Imponible del Ahorro:** Importe neto a declarar tras compensar las pérdidas correspondientes.
 - **Impuesto Estimado (Aislado):** Impuesto sobre *estas ganancias bursátiles de forma aislada* según los tramos del ahorro (19%–28%). ⚠️ **No** es tu cuota definitiva: ignora el resto de tu base del ahorro (dividendos, intereses) y la compensación de pérdidas de años anteriores. Úsalo como orientación.
 

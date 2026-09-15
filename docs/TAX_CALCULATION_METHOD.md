@@ -80,9 +80,12 @@ All values are converted from USD to EUR:
 ### The 2-Month Wash Sale Rule (*Norma de los Dos Meses*)
 Under **Art. 33.5.f LIRPF**, you cannot declare capital losses from a sale if you acquired homogeneous shares within **2 months before or after** that sale. 
 * **Proportional Blocking:** The blocked loss is limited to the number of replacement shares.
-  $$\text{Blocked Shares} = \min(\text{Sold Shares}, \text{Replacement Shares Remaining in Portfolio})$$
-* **Correct Application:** The engine only blocks losses against replacement shares that *remain in your portfolio* (shares consumed by the sell itself do not trigger a wash sale).
-* **Filing Treatment:** Blocked losses are deferred and cannot offset gains in the current tax year. They are carried forward as "blocked" until the replacement shares are sold.
+  $$\text{Blocked Shares} = \min(\text{Sold Shares}, \text{Replacement Shares Held When the Loss Sale Happens})$$
+* **Correct Application:** The engine blocks a loss only against replacement shares the taxpayer actually held at the moment of the loss sale (shares consumed by the sell itself do not trigger a wash sale). Availability is measured then — not against whatever is left in the portfolio today — so a figure already reported cannot be altered by a later sale.
+* **Lot-level tracking:** The deferred loss is parked **on the replacement lot** that caused it, not on a calendar year. Each `ShareLot` carries a `deferred_wash_sale_loss` balance, and FIFO consuming that lot is what releases it.
+* **Filing Treatment — which year:** The deferred loss becomes deductible **in the tax year the replacement shares are sold**, never by amending the year of origin (DGT V1547-16, V1035-18). A loss deferred in 2025 and released in 2026 stays blocked in the 2025 return and is claimed in the 2026 one.
+* **What "Blocked Losses" reports:** the balance **still pending at 31 December**, not the gross amount ever deferred. A loss deferred and released within the same year leaves nothing pending and is simply deductible that year. Liquidate a position in full and the blocked figure for that year is necessarily €0.00.
+* **Year-end is not the cut-off:** because the rule also counts repurchases in the two months *after* the sale, a December loss is still exposed to a January or February purchase. That year's figure is final only once the window closes.
 
 ### Transaction & Transfer Fee Deductions (*Gastos Inherentes*)
 According to **Art. 35.1 and 35.2 LIRPF**, commissions and fees directly related to the acquisition or transmission of shares are deductible.
@@ -133,7 +136,7 @@ The engine's **Yearly Tax Summary** reports each year's gains and losses indepen
 Provide the following information to your gestor when submitting your report:
 * "This report uses a strict **FIFO cost basis matching** and applies official **ECB daily exchange rates** on transaction dates."
 * "Transaction fees (Commissions, SEC, and Brokerage Assist) have been deducted as *gastos inherentes* (Art. 35 LIRPF)."
-* "The **2-month wash sale rule** (Art. 33.5.f LIRPF) has been applied to defer losses where replacement shares remain in the portfolio."
+* "The **2-month wash sale rule** (Art. 33.5.f LIRPF) has been applied to defer losses against the replacement shares held at the time of each sale. Deferred losses are integrated in the year those replacement shares are transferred, without amending the year of origin (DGT V1547-16, V1035-18)."
 * "The engine scans for **ESPP early sales** (< 3 years) and separates the discount amount to be declared as *Rendimiento del Trabajo* via a *Declaración Complementaria* for the purchase year."
 
 ### For Hacienda

@@ -80,9 +80,12 @@ Todas las operaciones se convierten de USD a EUR:
 ### La Regla de los 2 Meses (*Norma Anti-Aplicación*)
 De acuerdo con el **Art. 33.5.f de la LIRPF**, no se pueden integrar las pérdidas patrimoniales derivadas de la venta de acciones si se han adquirido valores homogéneos dentro del plazo de **2 meses anteriores o posteriores** a dicha venta.
 * **Bloqueo Proporcional:** El importe de la pérdida bloqueada se limita al número de acciones de sustitución adquiridas.
-  $$\text{Acciones Bloqueadas} = \min(\text{Acciones Vendidas con Pérdida}, \text{Acciones de Sustitución en Cartera})$$
-* **Criterio de Permanencia:** El programa solo bloquea la pérdida de aquellas acciones de sustitución que *permanecen* en cartera al final del ejercicio (las consumidas por la propia venta no activan la regla).
-* **Tratamiento:** Las pérdidas bloqueadas quedan diferidas y no compensan ganancias en el año corriente, debiendo integrarse en el futuro cuando se vendan las acciones de sustitución.
+  $$\text{Acciones Bloqueadas} = \min(\text{Acciones Vendidas con Pérdida}, \text{Acciones de Sustitución en Cartera en la Fecha de la Venta})$$
+* **Criterio de Permanencia:** El programa bloquea la pérdida únicamente contra las acciones de sustitución que el contribuyente tenía en cartera *en el momento de la venta con pérdida* (las consumidas por la propia venta no activan la regla). La disponibilidad se mide en esa fecha, no contra lo que quede en cartera hoy, de modo que una cifra ya declarada no puede verse alterada por una venta posterior.
+* **Trazabilidad por lote:** La pérdida diferida se aparca **en el lote de sustitución** que la originó, no en un ejercicio. Cada `ShareLot` lleva un saldo `deferred_wash_sale_loss`, y es la casación FIFO de ese lote lo que lo libera.
+* **Imputación temporal:** La pérdida diferida se integra **en el ejercicio en que se transmiten las acciones de sustitución**, sin rectificar nunca el año de origen (DGT V1547-16 y V1035-18). Una pérdida bloqueada en 2025 y liberada en 2026 permanece bloqueada en la declaración de 2025 y se integra en la de 2026.
+* **Qué muestra "Pérdidas Bloqueadas":** el saldo **aún pendiente a 31 de diciembre**, no el importe bruto diferido en algún momento. Una pérdida diferida y liberada dentro del mismo ejercicio no deja saldo pendiente y es sin más deducible ese año. Si se liquida la posición al 100%, la cifra bloqueada de ese ejercicio es necesariamente 0,00 €.
+* **El 31 de diciembre no cierra el ejercicio:** al computar también las recompras en los dos meses *posteriores*, una pérdida de diciembre sigue expuesta a una compra de enero o febrero. La cifra de ese año solo es firme una vez cerrada la ventana.
 
 ### Gastos Inherentes y Comisiones Deducibles
 De conformidad con los **Art. 35.1 y 35.2 de la LIRPF**, los gastos directamente relacionados con la adquisición y la transmisión de los valores minoran el valor de enajenación o incrementan el de adquisición.
@@ -133,7 +136,7 @@ El **Resumen Fiscal Anual** informa las ganancias y pérdidas de cada año de fo
 Facilita la siguiente información a tu gestor para explicarle el informe:
 * "Este informe utiliza una **asignación estricta por el método FIFO** y aplica los **tipos de cambio diarios del BCE** en las fechas exactas de las operaciones."
 * "Los gastos de transacción (comisiones, tasas SEC y Brokerage Assist) se han deducido directamente como *gastos inherentes* (Art. 35 LIRPF)."
-* "Se ha aplicado la **regla de los 2 meses** (Art. 33.5.f LIRPF) bloqueando las pérdidas en proporción a las acciones de sustitución que permanecen en cartera."
+* "Se ha aplicado la **regla de los 2 meses** (Art. 33.5.f LIRPF) difiriendo las pérdidas en proporción a las acciones de sustitución en cartera en la fecha de cada venta. Las pérdidas diferidas se integran en el ejercicio en que se transmiten esas acciones, sin rectificar el año de origen (DGT V1547-16 y V1035-18)."
 * "El programa controla de manera automática las **ventas anticipadas de ESPP** (< 3 años) para aislar el descuento de compra y poder declararlo como *Rendimiento del Trabajo* mediante declaración complementaria del año de adquisición."
 
 ### Justificante para Hacienda

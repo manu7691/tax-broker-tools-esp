@@ -369,10 +369,13 @@ class TestWashSaleRefinement:
         assert summary is not None
         # Two sales, each loss (30-50)*10 = -200 → total -400.
         assert summary.total_losses == Decimal("-400.0000")
-        # Only 4 replacement shares exist, so only 4 shares of loss may be blocked
-        # in total: 4/10 * -200 = -80 (claimed entirely by the first sale).
-        # The buggy behavior blocked -80 on EACH sale (-160 total).
+        # Sale #1 is deferred onto the 03-10 lot, but that lot is sold on 04-20,
+        # inside the same year — so nothing of it is still pending at 31/12 and it
+        # leaves no blocked balance. Only the 4 shares bought on 05-01 survive the
+        # year, blocking 4/10 * -200 = -80. Those 4 shares are pledged once, never
+        # once per sale (the buggy behavior blocked -80 on EACH sale).
         assert summary.blocked_losses == Decimal("-80.0000")
+        assert summary.unlocked_historical_losses == Decimal("0")
         assert summary.deductible_losses == Decimal("-320.0000")
 
 
@@ -405,3 +408,217 @@ class TestFeeConversion:
         sell = next(pe for pe in engine.processed_events if pe.event.event_type == EventType.SELL)
         assert sell.realized_gain_loss == Decimal("432.0000")  # 450 - 18
         assert engine.get_yearly_summary(2021).total_fees_eur == Decimal("18.0000")
+
+
+def _ev(day: date, kind: EventType, shares: str, price: str) -> StockEvent:
+    """Compact event builder for the wash-sale carry-forward tests (FX pinned to 1.0)."""
+    return StockEvent(
+        event_date=day,
+        event_type=kind,
+        shares=Decimal(shares),
+        price_usd=Decimal(price),
+        fx_rate=Decimal("1.00"),
+    )
+
+
+class TestWashSaleUnlockCarryForward:
+    """Temporal allocation of a blocked loss once the 2-month block breaks.
+
+    Art. 33.5.f LIRPF defers the loss; DGT V1547-16 and V1035-18 forbid
+    rectifying the year of origin. The deferred loss becomes deductible in the
+    year the replacement shares are finally disposed of, never retroactively.
+    """
+
+    # 100 shares bought at 100, sold at 60 (loss -4000), repurchased inside the
+    # 2-month window, and the replacement finally sold the following year.
+    BUY_2025 = date(2025, 1, 10)
+    SELL_2025 = date(2025, 3, 10)
+    REBUY_2025 = date(2025, 4, 1)
+
+    def _base_events(self) -> list[StockEvent]:
+        return [
+            _ev(self.BUY_2025, EventType.BUY, "100", "100.00"),
+            _ev(self.SELL_2025, EventType.SELL, "100", "60.00"),
+            _ev(self.REBUY_2025, EventType.BUY, "100", "60.00"),
+        ]
+
+    def test_block_stands_while_replacement_is_still_held(self):
+        """No disposal of the replacement → the loss stays blocked, nothing unlocked."""
+        engine = TaxEngine()
+        engine.process_all(self._base_events())
+
+        s2025 = engine.get_yearly_summary(2025)
+        assert s2025.blocked_losses == Decimal("-4000.0000")
+        assert s2025.unlocked_historical_losses == Decimal("0")
+        assert s2025.deductible_losses == Decimal("0.0000")
+
+    def test_origin_year_is_immutable_when_block_breaks_later(self):
+        """Selling the replacement in 2026 must not rewrite the 2025 summary."""
+        engine = TaxEngine()
+        engine.process_all(
+            self._base_events() + [_ev(date(2026, 6, 1), EventType.SELL, "100", "70.00")]
+        )
+
+        s2025 = engine.get_yearly_summary(2025)
+        assert s2025.total_losses == Decimal("-4000.0000")
+        assert s2025.blocked_losses == Decimal("-4000.0000")
+        assert s2025.unlocked_historical_losses == Decimal("0")
+        assert s2025.deductible_losses == Decimal("0.0000")
+        assert s2025.net_gain_loss == Decimal("0.0000")
+
+    def test_unlocked_loss_lands_in_the_year_the_block_breaks(self):
+        """2026 absorbs the released 2025 loss on top of its own result."""
+        engine = TaxEngine()
+        engine.process_all(
+            self._base_events() + [_ev(date(2026, 6, 1), EventType.SELL, "100", "70.00")]
+        )
+
+        s2026 = engine.get_yearly_summary(2026)
+        assert s2026.total_gains == Decimal("1000.0000")  # (70 - 60) * 100
+        assert s2026.blocked_losses == Decimal("0")
+        assert s2026.unlocked_historical_losses == Decimal("-4000.0000")
+        assert s2026.unlocked_losses_by_origin == {2025: Decimal("-4000.0000")}
+        assert s2026.deductible_losses == Decimal("-4000.0000")
+        assert s2026.net_gain_loss == Decimal("-3000.0000")
+        assert s2026.taxable_gain == Decimal("0")
+
+    def test_partial_disposal_releases_the_block_pro_rata(self):
+        """Half the replacement sold in 2026, half in 2027 → half the loss each year."""
+        engine = TaxEngine()
+        engine.process_all(
+            self._base_events()
+            + [
+                _ev(date(2026, 6, 1), EventType.SELL, "40", "70.00"),
+                _ev(date(2027, 6, 1), EventType.SELL, "60", "70.00"),
+            ]
+        )
+
+        assert engine.get_yearly_summary(2025).blocked_losses == Decimal("-4000.0000")
+        assert engine.get_yearly_summary(2025).unlocked_historical_losses == Decimal("0")
+        assert engine.get_yearly_summary(2026).unlocked_historical_losses == Decimal("-1600.0000")
+        assert engine.get_yearly_summary(2027).unlocked_historical_losses == Decimal("-2400.0000")
+
+    def test_same_year_break_leaves_no_blocked_balance(self):
+        """Block broken inside its own year → nothing pending at 31/12.
+
+        ``blocked_losses`` reports the balance still deferred at year end, so a
+        deferral that was created and released within the same year reports €0.00
+        and the loss is simply deductible. Showing a gross figure here would claim
+        a pending deferral that does not exist.
+        """
+        engine = TaxEngine()
+        engine.process_all(
+            self._base_events() + [_ev(date(2025, 11, 3), EventType.SELL, "100", "70.00")]
+        )
+
+        s2025 = engine.get_yearly_summary(2025)
+        assert s2025.blocked_losses == Decimal("0")
+        assert s2025.unlocked_historical_losses == Decimal("0")
+        assert s2025.deductible_losses == Decimal("-4000.0000")
+        # The lot that held the deferral has given it all back.
+        assert all(lot.deferred_wash_sale_loss == Decimal("0") for lot in engine.lot_ledger)
+
+    def test_released_amounts_never_exceed_the_blocked_amount(self):
+        """Repeated round trips must not release more than was ever blocked."""
+        engine = TaxEngine()
+        engine.process_all(
+            self._base_events()
+            + [
+                _ev(date(2026, 6, 1), EventType.SELL, "100", "70.00"),
+                _ev(date(2026, 7, 1), EventType.BUY, "100", "70.00"),
+                _ev(date(2028, 1, 5), EventType.SELL, "100", "80.00"),
+            ]
+        )
+
+        blocked = sum((s.blocked_losses for s in engine.get_all_yearly_summaries()), Decimal("0"))
+        unlocked = sum(
+            (s.unlocked_historical_losses for s in engine.get_all_yearly_summaries()),
+            Decimal("0"),
+        )
+        assert unlocked == blocked
+
+
+class TestWashSaleClosedYearIntegrity:
+    """A year already reported must not be rewritten by what happens afterwards.
+
+    The block attaches at the moment the loss sale and the replacement holding
+    coexist, so it is decided from facts that are already in the past. Later
+    disposals release it into their own year; they never reopen the origin year.
+    """
+
+    def _events_through_2026(self) -> list[StockEvent]:
+        return [
+            _ev(date(2026, 1, 10), EventType.BUY, "100", "100.00"),
+            _ev(date(2026, 11, 3), EventType.BUY, "50", "60.00"),  # replacement
+            _ev(date(2026, 12, 1), EventType.SELL, "100", "60.00"),  # loss -4000
+        ]
+
+    def test_2026_figures_are_identical_with_and_without_the_2027_sale(self):
+        """The regression: a 2027 disposal used to erase the 2026 block."""
+        without = TaxEngine()
+        without.process_all(self._events_through_2026())
+
+        with_2027 = TaxEngine()
+        with_2027.process_all(
+            # Sold inside the 2-month window, but after the block attached.
+            self._events_through_2026() + [_ev(date(2027, 1, 15), EventType.SELL, "50", "70.00")]
+        )
+
+        before = without.get_yearly_summary(2026)
+        after = with_2027.get_yearly_summary(2026)
+        assert before.blocked_losses == Decimal("-2000.0000")
+        assert after.blocked_losses == before.blocked_losses
+        assert after.total_losses == before.total_losses
+        assert after.deductible_losses == before.deductible_losses == Decimal("-2000.0000")
+
+    def test_the_2027_sale_receives_the_released_loss(self):
+        engine = TaxEngine()
+        engine.process_all(
+            self._events_through_2026() + [_ev(date(2027, 1, 15), EventType.SELL, "50", "70.00")]
+        )
+
+        s2027 = engine.get_yearly_summary(2027)
+        assert s2027.total_gains == Decimal("500.0000")
+        assert s2027.unlocked_historical_losses == Decimal("-2000.0000")
+        assert s2027.unlocked_losses_by_origin == {2026: Decimal("-2000.0000")}
+        assert s2027.net_gain_loss == Decimal("-1500.0000")
+
+    def test_forward_window_legitimately_crosses_the_year_boundary(self):
+        """A December loss stays provisional until its +2 month window closes.
+
+        Art. 33.5.f counts repurchases in the two months AFTER the sale, so a
+        2026-12-07 sale is still exposed to a 2027-01-08 purchase. This is not a
+        breach of the rule above — the 2026 figure is simply not final until
+        2027-02-07, which is why the filing window opens later.
+        """
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                _ev(date(2026, 6, 1), EventType.BUY, "100", "100.00"),
+                _ev(date(2026, 12, 7), EventType.SELL, "100", "60.00"),  # loss -4000
+                _ev(date(2027, 1, 8), EventType.BUY, "40", "50.00"),  # inside the window
+            ]
+        )
+
+        assert engine.get_yearly_summary(2026).blocked_losses == Decimal("-1600.0000")
+
+    def test_full_liquidation_leaves_no_blocked_balance(self):
+        """Strict requirement: liquidate 100% and nothing may stay blocked."""
+        engine = TaxEngine()
+        engine.process_all(
+            self._events_through_2026()
+            + [
+                _ev(date(2027, 1, 15), EventType.SELL, "20", "70.00"),
+                _ev(date(2027, 3, 2), EventType.BUY, "30", "55.00"),
+                _ev(date(2027, 9, 9), EventType.SELL, "60", "50.00"),  # liquidates everything
+            ]
+        )
+
+        assert engine.state.total_shares == Decimal("0")
+        # The guarantee: the year the position is wound down reports no pending
+        # deferral, because there are no replacement shares left to hold one.
+        last_year = engine.get_all_yearly_summaries()[-1]
+        assert last_year.year == 2027
+        assert last_year.blocked_losses == Decimal("0.00")
+        # And no lot anywhere is still sitting on a deferred loss.
+        assert all(lot.deferred_wash_sale_loss == Decimal("0") for lot in engine.lot_ledger)
