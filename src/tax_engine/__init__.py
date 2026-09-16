@@ -15,7 +15,10 @@ from .ecb_rates import ECBRateFetcher, prefetch_ecb_rates
 from .models import (
     CarryforwardLedger,
     CarryforwardYear,
+    ClosedYearDrift,
+    EsppEarlySaleReport,
     EventType,
+    LotOrigin,
     ProcessedEvent,
     SavingsIncomeYear,
     SavingsLedger,
@@ -26,6 +29,7 @@ from .models import (
 )
 from .options_parser import load_options_events
 from .portfolio import (
+    AmbiguousSecurityError,
     PortfolioResult,
     SecurityResult,
     group_events_by_security,
@@ -56,6 +60,10 @@ from .tax_engine import TaxEngine
 __version__ = "0.1.0"
 
 __all__ = [
+    "AmbiguousSecurityError",
+    "ClosedYearDrift",
+    "EsppEarlySaleReport",
+    "LotOrigin",
     "EventType",
     "StockEvent",
     "ProcessedEvent",

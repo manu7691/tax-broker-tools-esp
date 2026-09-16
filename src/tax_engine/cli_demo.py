@@ -18,7 +18,6 @@ from tax_engine import (
     CryptoTaxEngine,
     TaxEngine,
     create_sample_crypto_events,
-    create_sample_espp_map,
     create_sample_events_with_ecb_rates,
     create_sample_multi_security_events,
     create_sample_savings_income,
@@ -126,9 +125,7 @@ def main() -> None:
         savings_income = create_sample_savings_income()
         from tax_engine.cli_main import detect_espp_early_sales
 
-        espp_early_sales, _ = detect_espp_early_sales(
-            engine.processed_events, create_sample_espp_map()
-        )
+        espp_early_sales = detect_espp_early_sales(engine.processed_events).taxable_by_year
         print(
             f"Portfolio: {len(portfolio.results)} securities — "
             f"{', '.join(r.security.label for r in portfolio.results)}.\n"

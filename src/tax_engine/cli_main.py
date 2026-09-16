@@ -18,7 +18,10 @@ from typing import Any
 import pandas as pd
 
 from tax_engine import (
+    ECBRateFetcher,
+    EsppEarlySaleReport,
     EventType,
+    LotOrigin,
     ProcessedEvent,
     SavingsIncomeYear,
     StockEvent,
@@ -26,8 +29,9 @@ from tax_engine import (
     load_rsu_events,
     prefetch_ecb_rates,
 )
+from tax_engine.dates import add_months
 from tax_engine.options_parser import load_options_events
-from tax_engine.portfolio import SecurityResult, run_portfolio
+from tax_engine.portfolio import AmbiguousSecurityError, SecurityResult, run_portfolio
 from tax_engine.revolut_parser import load_revolut_events, merge_savings_income
 from tax_engine.securities import SecuritiesConfig, load_securities_config
 
@@ -180,6 +184,36 @@ def load_security_config(input_dir: Path) -> tuple[str | None, str | None]:
     return None, None
 
 
+def load_closed_years(path: Path) -> dict[int, dict[str, Decimal]]:
+    """Read the tax years already filed, as declared by the taxpayer.
+
+    Rule 3 forbids rewriting a closed year, so the engine needs to be told which
+    years are closed and what was reported — it can never infer that from the
+    transaction data. The file maps a year to the figures as filed::
+
+        {"2022": {"net_gain_loss": "-5000.00"}, "2021": "120.00"}
+
+    A bare number is shorthand for ``{"net_gain_loss": ...}``. A missing file
+    simply declares nothing; a malformed one is reported rather than ignored,
+    because silently skipping it would defeat the whole check.
+    """
+    if not path.exists():
+        return {}
+
+    with open(path, encoding="utf-8") as fh:
+        raw = json.load(fh)
+
+    declared: dict[int, dict[str, Decimal]] = {}
+    for year, value in raw.items():
+        fields = value if isinstance(value, dict) else {"net_gain_loss": value}
+        declared[int(year)] = {name: Decimal(str(amount)) for name, amount in fields.items()}
+    return declared
+
+
+#: Holding period that keeps the ESPP purchase discount exempt (Art. 42.3.f LIRPF).
+ESPP_HOLDING_MONTHS = 36
+
+
 def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
     """
     Load stock events from the BenefitHistory.xlsx file.
@@ -234,6 +268,20 @@ def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
                 continue
             price_usd = Decimal(price_str)
 
+            # Price actually paid, kept alongside the FMV so the Art. 42.3.f
+            # discount travels with the lot instead of being looked up by date.
+            paid_usd: Decimal | None = None
+            paid_raw = row.get("Purchase Price")
+            if paid_raw is not None and not pd.isna(paid_raw):
+                paid_str = str(paid_raw).replace("$", "").replace(",", "").strip()
+                if paid_str not in ("", "--", "N/A"):
+                    paid_usd = Decimal(paid_str)
+            if paid_usd is None:
+                print(
+                    f"Warning: ESPP row {row_num} has no 'Purchase Price'; the "
+                    f"Art. 42.3.f discount cannot be valued for this lot."
+                )
+
         except (ValueError, InvalidOperation) as e:
             print(f"Error parsing ESPP row {row_num}: {e}")
             continue
@@ -244,6 +292,9 @@ def load_events_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
             shares=shares,
             price_usd=price_usd,
             notes="ESPP Purchase",
+            origin=LotOrigin.ESPP,
+            espp_fmv_usd=price_usd,
+            espp_price_usd=paid_usd,
         )
         events.append(event)
 
@@ -337,6 +388,15 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
 
         # Per-row settlement status (newer downloads only). Empty for older
         # orders.xlsx files that predate the Status column.
+        # Security identity. E*TRADE exports carry no ISIN, but the ticker is
+        # enough for the portfolio runner to merge this sale with the same
+        # security reported by another broker (Rule 1).
+        symbol = ""
+        if "Symbol" in df.columns:
+            raw_symbol = row.get("Symbol")
+            if raw_symbol is not None and not pd.isna(raw_symbol):
+                symbol = str(raw_symbol).strip().upper()
+
         order_status = ""
         if "Status" in df.columns:
             raw_status = row.get("Status")
@@ -352,6 +412,7 @@ def load_orders_from_excel(input_dir: Path = Path("input")) -> list[StockEvent]:
                 fees_usd=fees_usd,
                 notes=notes,
                 order_status=order_status,
+                symbol=symbol,
             )
         )
 
@@ -510,29 +571,28 @@ def build_espp_purchase_map(input_dir: Path = Path("input")) -> dict[date, tuple
 
 def detect_espp_early_sales(
     processed_events: list[ProcessedEvent],
-    espp_map: dict[date, tuple[Decimal, Decimal]],
-) -> tuple[dict[int, Decimal], list[dict[str, Any]]]:
+) -> EsppEarlySaleReport:
     """
-    Detect ESPP shares sold before the 3-year holding period (Art. 42.3.f LIRPF).
+    Detect ESPP shares sold before the 36-month holding period (Art. 42.3.f LIRPF).
 
-    When ESPP shares are sold before 3 years, the purchase discount loses its
-    tax exemption and becomes taxable salary income (rendimiento del trabajo)
-    in the year of the sale.
+    Provenance comes from the lot's typed ``origin``, never from free-text notes,
+    and the discount comes from the FMV/price stored on the lot itself — so two
+    ESPP purchases on the same day are valued separately and a market purchase
+    that merely mentions "ESPP" in its notes is never mistaken for one.
 
-    Returns:
-        - dict of sell_year -> total taxable discount in EUR
-        - list of detail dicts for reporting
+    The 36 months are counted date to date (``add_months``), so a lot bought on
+    29-Feb-2020 is only clear from 28-Feb-2023.
+
+    Breaching the exemption makes the discount *rendimiento del trabajo* of the
+    PURCHASE year — that is what makes it an autoliquidación complementaria — and
+    it never touches the savings base.
+
+    An ESPP disposal whose discount cannot be valued produces a warning rather
+    than being skipped: a missing input must not look like "no breach".
     """
-    from tax_engine.ecb_rates import ECBRateFetcher
-
-    def _add_years(d: date, years: int) -> date:
-        try:
-            return d.replace(year=d.year + years)
-        except ValueError:  # Feb 29
-            return d.replace(year=d.year + years, day=28)
-
     taxable_by_year: dict[int, Decimal] = {}
     details: list[dict[str, Any]] = []
+    warnings: list[str] = []
 
     for pe in processed_events:
         if pe.event.event_type != EventType.SELL:
@@ -541,44 +601,49 @@ def detect_espp_early_sales(
         sell_date = pe.event.event_date
 
         for match in pe.fifo_matches:
-            if "ESPP" not in match.notes:
+            if match.origin is not LotOrigin.ESPP:
                 continue
 
             acq_date = match.acquisition_date
-            three_year_mark = _add_years(acq_date, 3)
+            if sell_date >= add_months(acq_date, ESPP_HOLDING_MONTHS):
+                continue  # exemption secured
 
-            espp_info = espp_map.get(acq_date)
-            if not espp_info:
+            if match.espp_fmv_usd is None or match.espp_price_usd is None:
+                warnings.append(
+                    f"ESPP lot acquired {acq_date.isoformat()} was sold on "
+                    f"{sell_date.isoformat()} before {ESPP_HOLDING_MONTHS} months, but its "
+                    f"purchase discount (FMV / price paid) is missing from the input, so the "
+                    f"Art. 42.3.f adjustment could not be quantified."
+                )
                 continue
 
-            fmv_usd, purchase_price_usd = espp_info
-            discount_per_share_usd = fmv_usd - purchase_price_usd
-
-            if sell_date < three_year_mark:
-                # Sold before 3 years — discount is taxable salary income
+            discount_per_share_usd = match.espp_fmv_usd - match.espp_price_usd
+            # Convert with the lot's own acquisition rate; the taxable salary
+            # accrued at purchase, not at sale.
+            fx_rate = match.acquisition_fx_rate
+            if fx_rate is None:
                 fx_rate = ECBRateFetcher.get_rate(acq_date)
-                discount_eur = (discount_per_share_usd * match.shares * fx_rate).quantize(
-                    Decimal("0.01")
-                )
+            discount_eur = (discount_per_share_usd * match.shares * fx_rate).quantize(
+                Decimal("0.01")
+            )
 
-                purchase_year = acq_date.year
-                taxable_by_year[purchase_year] = (
-                    taxable_by_year.get(purchase_year, Decimal("0")) + discount_eur
-                )
+            purchase_year = acq_date.year
+            taxable_by_year[purchase_year] = (
+                taxable_by_year.get(purchase_year, Decimal("0")) + discount_eur
+            )
 
-                holding_days = (sell_date - acq_date).days
-                details.append(
-                    {
-                        "acquisition_date": acq_date,
-                        "sell_date": sell_date,
-                        "shares": match.shares,
-                        "holding_days": holding_days,
-                        "discount_per_share_usd": discount_per_share_usd,
-                        "discount_eur": discount_eur,
-                    }
-                )
+            details.append(
+                {
+                    "acquisition_date": acq_date,
+                    "sell_date": sell_date,
+                    "shares": match.shares,
+                    "holding_days": (sell_date - acq_date).days,
+                    "discount_per_share_usd": discount_per_share_usd,
+                    "discount_eur": discount_eur,
+                }
+            )
 
-    return taxable_by_year, details
+    return EsppEarlySaleReport(taxable_by_year=taxable_by_year, details=details, warnings=warnings)
 
 
 # E-Trade order statuses that mean the trade has fully settled and its RSU
@@ -660,6 +725,7 @@ def build_portfolio_or_engine(
     securities_config: SecuritiesConfig | None = None,
     primary_symbol: str | None = None,
     primary_isin: str | None = None,
+    release_policy: str = "definitive",
 ) -> tuple[TaxEngine, list[SecurityResult] | None, list[StockEvent]]:
     """Assemble events and run either the single-security engine or the portfolio.
 
@@ -683,10 +749,22 @@ def build_portfolio_or_engine(
     prefetch_ecb_rates(events)
 
     if all_securities:
-        portfolio = run_portfolio(events, config=securities_config)
+        portfolio = run_portfolio(events, config=securities_config, release_policy=release_policy)
         return portfolio.aggregate, portfolio.results, events
 
-    engine = TaxEngine()
+    # Single-security mode pools every event into ONE FIFO queue. That is only
+    # sound while the events really are one homogeneous security: pooling two
+    # tickers would match sales of one against purchases of the other. Portfolio
+    # mode is the supported way to handle several securities.
+    tickers = sorted({(e.symbol or "").strip().upper() for e in events} - {""})
+    if len(tickers) > 1:
+        raise AmbiguousSecurityError(
+            f"Single-security mode received {len(tickers)} tickers ({', '.join(tickers)}), "
+            f"which would pool unrelated securities into one FIFO queue. "
+            f"Re-run with --all-securities (or add input/securities.json)."
+        )
+
+    engine = TaxEngine(release_policy=release_policy)
     engine.process_all(events)
     return engine, None, events
 
@@ -707,6 +785,26 @@ def main() -> None:
         type=Path,
         default=Path("."),
         help="Directory where PDF reports are written (default: current directory).",
+    )
+    parser.add_argument(
+        "--wash-sale-release",
+        choices=list(TaxEngine.RELEASE_POLICIES),
+        default="definitive",
+        help="When an Art. 33.5.f deferred loss becomes deductible. 'definitive' "
+        "(default) is the statutory rule: freed as the remaining securities are "
+        "transmitted, but only for transmissions with no homogeneous repurchase in "
+        "the following 2 months. 'position_zero' additionally demands a full "
+        "liquidation (more conservative); 'per_lot' frees on any disposal, with no "
+        "definitiveness test (more aggressive).",
+    )
+    parser.add_argument(
+        "--closed-years",
+        type=Path,
+        default=None,
+        help="JSON file of already-filed years and their declared figures "
+        '({"2022": {"net_gain_loss": "-5000.00"}}). Defaults to '
+        "<input-dir>/closed_years.json if present. Divergences are reported, never "
+        "applied silently.",
     )
     parser.add_argument(
         "--prior-losses",
@@ -800,6 +898,7 @@ def main() -> None:
         securities_config=securities_config,
         primary_symbol=config_symbol,
         primary_isin=config_isin,
+        release_policy=args.wash_sale_release,
     )
     if report_securities is not None:
         print(
@@ -807,16 +906,41 @@ def main() -> None:
             f"{', '.join(r.security.label for r in report_securities)}."
         )
 
+    # Rule 3: years already filed must never be rewritten in silence. A repurchase
+    # made after filing can legitimately change a past year under Art. 33.5.f, so
+    # the divergence is surfaced and left for the taxpayer to act on.
+    closed_years_path: Path = args.closed_years or (input_dir / "closed_years.json")
+    closed_years = load_closed_years(closed_years_path)
+    # Pin the filed years for every downstream view: the carry-forward pool must
+    # keep the loss the taxpayer actually declared until they amend it, even when
+    # a later repurchase changes what the engine now computes.
+    engine.closed_years = closed_years
+    drifts = engine.check_closed_years(closed_years)
+    if drifts:
+        print()
+        print("⚠️  CLOSED TAX YEAR DIVERGENCE")
+        print("-" * 95)
+        print("These years were already filed, but recomputing them with the current data")
+        print("gives a different result. Nothing was changed automatically — review whether")
+        print("a declaración complementaria or a rectificativa is needed:")
+        for drift in drifts:
+            print(
+                f"    {drift.year}  {drift.field}: declared €{drift.declared:,.2f} "
+                f"-> now €{drift.computed:,.2f}  (delta €{drift.delta:,.2f})"
+            )
+        print()
+
     # Print results
     engine.print_ledger()
     engine.print_tax_summary(opening_losses=opening_losses, savings_income=savings_income)
 
     # ESPP Analysis: 3-year holding period detection
     espp_discounts = calculate_espp_discounts(input_dir)
-    espp_map = build_espp_purchase_map(input_dir)
-    espp_early_sales, espp_early_details = detect_espp_early_sales(
-        engine.processed_events, espp_map
-    )
+    espp_report = detect_espp_early_sales(engine.processed_events)
+    espp_early_sales = espp_report.taxable_by_year
+    espp_early_details = espp_report.details
+    for warning in espp_report.warnings:
+        print(f"⚠️  {warning}")
 
     if espp_early_sales:
         print("⚠️  ESPP EARLY SALE ALERT (Art. 42.3.f LIRPF)")
