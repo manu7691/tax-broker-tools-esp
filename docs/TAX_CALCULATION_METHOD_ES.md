@@ -82,23 +82,30 @@ De acuerdo con el **Art. 33.5.f de la LIRPF**, no se pueden integrar las pérdid
 * **Bloqueo Proporcional:** El importe de la pérdida bloqueada se limita al número de acciones de sustitución adquiridas.
   $$\text{Acciones Bloqueadas} = \min(\text{Acciones Vendidas con Pérdida}, \text{Acciones de Sustitución en Cartera en la Fecha de la Venta})$$
 * **Criterio de Permanencia:** El programa bloquea la pérdida únicamente contra las acciones de sustitución que el contribuyente tenía en cartera *en el momento de la venta con pérdida* (las consumidas por la propia venta no activan la regla). La disponibilidad se mide en esa fecha, no contra lo que quede en cartera hoy, de modo que una cifra ya declarada no puede verse alterada por una venta posterior.
-* **Trazabilidad por lote:** La pérdida diferida se aparca **en el lote de sustitución** que la originó, no en un ejercicio. Cada `ShareLot` lleva un saldo `deferred_wash_sale_loss`, y es la casación FIFO de ese lote lo que lo libera.
-* **Imputación temporal:** La pérdida diferida se integra **en el ejercicio en que se transmiten las acciones de sustitución**, sin rectificar nunca el año de origen (DGT V1547-16 y V1035-18). Una pérdida bloqueada en 2025 y liberada en 2026 permanece bloqueada en la declaración de 2025 y se integra en la de 2026.
+* **Trazabilidad por lote:** La pérdida diferida se aparca **en el lote de sustitución** que la originó, no en un ejercicio. Cada `ShareLot` lleva un saldo `deferred_wash_sale_loss` y el calendario de cómo lo fue consumiendo el FIFO.
+* **Imputación temporal — cuándo se desbloquea:** el Art. 33.5, párrafo final, dispone que las pérdidas diferidas *«se integrarán a medida que se transmitan los valores o participaciones que permanezcan en el patrimonio del contribuyente»* — progresivamente, según se venden los valores que quedan, **no** sólo al liquidar del todo. La doctrina de la DGT (V3282-18, V0046-20, V1119-21) añade que esas transmisiones posteriores deben ser **definitivas**: que no se recompren valores homogéneos en los dos meses siguientes. Tres lecturas, seleccionables con `--wash-sale-release`:
+  * **`definitive` (por defecto — la regla legal).** Una fracción del diferimiento se integra cuando las acciones de reemplazo se transmiten **y** no se reponen en los 2 meses siguientes. El test es **proporcional**: vender 50 acciones recomprando sólo 10 integra lo correspondiente a 40 y hace rodar 10. Lo que no se integra **no se pierde**: pasa a las nuevas acciones de reemplazo y espera a una transmisión limpia, por muchos ciclos que haga falta.
+  * **`position_zero` (conservadora).** Exige además que la posición total llegue a 0,00 acciones y una cuarentena limpia de 2 meses. Más estricta que la norma; difiere la deducción más de lo que la ley exige.
+  * **`per_lot` (agresiva).** Libera en cualquier venta del lote de reemplazo, **sin test de definitividad**. Se ajusta a la literalidad del artículo pero ignora la condición de la DGT, por lo que integra las pérdidas antes de lo que la doctrina permite.
+  En los tres casos **nunca se rectifica el año de origen** (DGT V1547-16 y V1035-18): una pérdida diferida en 2025 permanece bloqueada en la declaración de 2025 y se integra en el ejercicio en que se libere.
+* **Los ejercicios cerrados no se reescriben en silencio.** Declara lo ya presentado en `input/closed_years.json` (`{"2022": {"net_gain_loss": "-5000.00"}}`). Si al recalcular sale otra cifra —algo que el Art. 33.5.f puede provocar legítimamente, porque una recompra de enero bloquea una pérdida vendida en el diciembre anterior— el motor **avisa de la divergencia** y deja en tus manos la decisión entre complementaria y rectificativa. Nunca modifica un ejercicio pasado por su cuenta.
 * **Qué muestra "Pérdidas Bloqueadas":** el saldo **aún pendiente a 31 de diciembre**, no el importe bruto diferido en algún momento. Una pérdida diferida y liberada dentro del mismo ejercicio no deja saldo pendiente y es sin más deducible ese año. Si se liquida la posición al 100%, la cifra bloqueada de ese ejercicio es necesariamente 0,00 €.
 * **El 31 de diciembre no cierra el ejercicio:** al computar también las recompras en los dos meses *posteriores*, una pérdida de diciembre sigue expuesta a una compra de enero o febrero. La cifra de ese año solo es firme una vez cerrada la ventana.
 
 ### Gastos Inherentes y Comisiones Deducibles
 De conformidad con los **Art. 35.1 y 35.2 de la LIRPF**, los gastos directamente relacionados con la adquisición y la transmisión de los valores minoran el valor de enajenación o incrementan el de adquisición.
-* El motor calcula y deduce comisiones de corretaje, tasas SEC y comisiones por asistencia (*Brokerage Assist Fees*).
+* **Importa de qué lado cae el gasto.** Los gastos de transmisión (corretaje, tasas SEC, *Brokerage Assist Fees* de una venta) minoran el *valor de transmisión* de esa venta. Los gastos de adquisición, en cambio, **se incorporan al valor de adquisición del lote**, por lo que reducen la ganancia de la venta futura que consuma esas acciones, en proporción a la fracción consumida. El resumen anual muestra los dos conceptos por separado (`acquisition_fees_eur` / `disposal_fees_eur`).
 * El contribuyente puede registrar gastos financieros por transferencias internacionales (comisiones de salida de E-Trade) para deducirlos como costes inherentes a la transacción.
 
-### Exención de ESPP por Mantenimiento de 3 Años
+### Exención de ESPP por Mantenimiento de 36 Meses
 El descuento del ESPP (hasta 12.000 € anuales) está exento de tributación si:
-1. Las acciones se mantienen en cartera al menos **3 años** desde la fecha de compra.
+1. Las acciones se mantienen en cartera al menos **36 meses** desde la fecha de compra, computados **de fecha a fecha** (un lote comprado el 29-feb-2020 queda libre el 28-feb-2023).
 2. El plan de compra se ofreció a toda la plantilla bajo las mismas condiciones.
 
 **Control de Venta Anticipada:**
-* El motor escanea el histórico de ventas. Si detecta la venta de acciones de ESPP antes de cumplir los 3 años, califica el descuento original como **Rendimiento del Trabajo** ordinario.
+* Cada lote lleva un **origen tipado** (`ESPP`, `RSU`, `EXERCISE`, `MARKET`) y sus propios FMV y precio pagado, que sobreviven a la casación FIFO. La clasificación nunca depende del texto libre de las notas, y dos compras ESPP del mismo día se valoran por separado.
+* El motor escanea el histórico de ventas. Si detecta la venta de acciones de ESPP antes de cumplir los 36 meses, califica el descuento original como **Rendimiento del Trabajo** ordinario, y lo reporta **separadamente** de la base del ahorro: nunca se compensan entre sí.
+* Una venta de ESPP cuyo descuento no se puede valorar (falta el FMV o el precio pagado en los datos de entrada) genera un **aviso**; jamás se omite en silencio.
 * El ingreso se imputa al **Año de Compra**, obligando a presentar una **Declaración Complementaria** de ese ejercicio. Esto devenga intereses de demora, pero no conlleva multas si se realiza voluntariamente antes de un requerimiento de Hacienda.
 
 ---

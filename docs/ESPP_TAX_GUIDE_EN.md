@@ -65,7 +65,7 @@ Imagine this timeline of events:
 
 ## 3. What Happens If I Break the 3-Year Rule?
 
-If you sell ESPP shares before holding them for 3 years:
+If you sell ESPP shares before holding them for 36 months (counted date to date):
 
 1. **Retroactive Taxation**: The discount corresponding to the sold shares is no longer tax-exempt. It must be declared as **Ordinary Salary Income** (*Rendimiento del Trabajo*).
 2. **Tax Year Allocation**: The discount is taxed in the **Purchase Year**, not the Sale Year.

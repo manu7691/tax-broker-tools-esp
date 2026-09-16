@@ -100,6 +100,7 @@ tax-broker-tools-esp/
 │   ├── options/
 │   │   └── option_exercise_1.pdf
 │   ├── prior_losses.json   # optional: pending losses from before your data window
+│   ├── closed_years.json   # optional: tax years already filed, to detect divergences
 │   └── savings_income.json # optional: dividends/interest per year (EUR)
 ```
 
@@ -128,7 +129,7 @@ The PDF is organised into these sections:
 | **Loss Carryforward Ledger** | Simulates the 4-year offset (Art. 49): each year's net result, prior-year losses applied, taxable amount after carryforward, plus pending and **expired** losses. |
 | **Savings Base – Capital Gains + Dividends/Interest** | *Only if you supplied `savings_income.json`.* Combines stock results with dividend/interest income, applies the 25% cross-category offset, and shows the combined base + foreign tax withheld. |
 | **Modelo 100 Filing Guide** | Maps each figure to its Modelo 100 *apartado* (with casilla numbers to verify per year). |
-| **ESPP 3-Year Holding Period Analysis** | Flags ESPP shares sold before 3 years, whose purchase discount becomes taxable salary income (Art. 42.3.f) and needs a complementary return. |
+| **ESPP 36-Month Holding Period Analysis** | Flags ESPP shares sold before 36 months (counted date to date, so a 29-Feb lot clears on 28-Feb three years later), whose purchase discount becomes taxable salary income (Art. 42.3.f) and needs a complementary return. Lots are identified by their typed origin, never by free text, and a lot whose discount cannot be valued raises a warning instead of being skipped. |
 | **Transaction Ledger** | The full per-sale FIFO detail (acquisition lots matched, gain/loss, wash-sale notes) — the evidence trail for your advisor. |
 
 ---

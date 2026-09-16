@@ -7,6 +7,60 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING (tax figures): Art. 33.5.f deferred losses now require a DEFINITIVE
+  transmission to be integrated.** Art. 33.5 (final paragraph) frees the deferred
+  loss *"a medida que se transmitan los valores o participaciones que permanezcan
+  en el patrimonio del contribuyente"* — progressively, not only on a full
+  liquidation — and DGT doctrine (V3282-18, V0046-20, V1119-21) adds that each of
+  those later transmissions must itself be definitive: no homogeneous securities
+  repurchased within the following two months. The engine now models all of it:
+  the definitiveness test, a **proportional** block (selling 50 shares with 10
+  repurchased integrates 40 shares' worth and rolls 10), and a **roll-over chain**
+  so a deferral that meets a non-definitive transmission moves onto the new
+  replacement shares instead of evaporating. Selected with `--wash-sale-release`:
+  `definitive` (default, the statutory rule), `position_zero` (conservative — also
+  demands a full liquidation plus a clean quarantine), `per_lot` (aggressive — any
+  disposal frees it, no definitiveness test). **Blocked/unlocked figures in
+  existing reports will change**; the gains and losses themselves do not.
+- **Acquisition fees are capitalised into the cost basis (Art. 35 LIRPF).** Purchase
+  commissions used to be reported as "fees deducted" while never actually reducing
+  any gain. They now raise the lot's *valor de adquisición* and are consumed
+  proportionally as the lot is sold. `YearlyTaxSummary` gains
+  `acquisition_fees_eur` and `disposal_fees_eur` alongside `total_fees_eur`.
+- **ESPP provenance is typed, not inferred from text.** `StockEvent`, `ShareLot` and
+  `FifoMatch` carry a `LotOrigin` (`ESPP` / `RSU` / `EXERCISE` / `MARKET`) plus the
+  lot's own FMV and price paid. `detect_espp_early_sales()` now takes only the
+  processed events and returns an `EsppEarlySaleReport`; the by-date `espp_map`
+  argument is gone. This fixes a market purchase whose notes merely mentioned
+  "ESPP" being taxed as an exemption breach, and two ESPP purchases on the same day
+  collapsing into one.
+- **The ESPP holding period is counted date to date over 36 months**, so a lot
+  bought on 29-Feb-2020 is only clear from 28-Feb-2023 (previously it unlocked a day
+  early). Applies to both the tax report and the dashboard countdown.
+- `build_unsold_lots_and_espp_tracker()` no longer takes an `espp_map`; it reads the
+  lots directly.
+
+### Added
+
+- **One global FIFO queue per homogeneous security, across brokers.** Events whose
+  ISIN is missing are backfilled from any other event that reports one for the same
+  ticker, so a security held at two brokers (E*TRADE exports carry no ISIN, Revolut's
+  do) no longer splits into two queues with two cost bases. A ticker resolving to two
+  different ISINs now raises `AmbiguousSecurityError` instead of guessing, and
+  single-security mode refuses a run that mixes several tickers rather than pooling
+  them. E*TRADE sells now carry their `Symbol`.
+- **Closed-year divergence check (`--closed-years`, `input/closed_years.json`).**
+  Declare the years you have already filed and their figures; if recomputing gives a
+  different result the engine reports the divergence so you can decide between a
+  *complementaria* and a *rectificativa*. It never edits a past year by itself.
+- `--wash-sale-release {position_zero,per_lot}` on `tax-engine`, forwarded to every
+  per-security engine in portfolio mode.
+- An ESPP disposal whose discount cannot be valued now raises a warning instead of
+  being silently dropped.
+- `tests/test_compliance_rules.py`: 34 tests pinning the four IRPF business rules.
+
 ### Added
 
 - **Crypto capital-gains engine (Spanish FIFO).** A per-coin FIFO orchestrator

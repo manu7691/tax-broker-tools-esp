@@ -28,6 +28,8 @@ Any one of these enables portfolio mode:
 
 With none of these, behaviour is exactly as before (primary security only). Single-security mode is unchanged.
 
+> **ISINs are backfilled automatically.** An ISIN known from any single event is applied to every event for that ticker, so a security reported with an ISIN by one broker and without one by another still shares a single FIFO queue. `isin_map` is only needed when no source supplies the ISIN at all. A ticker that resolves to two different ISINs stops the run with `AmbiguousSecurityError` rather than guessing.
+
 ## `input/securities.json`
 
 All fields are optional:

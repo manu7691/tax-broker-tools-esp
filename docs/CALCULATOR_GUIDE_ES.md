@@ -100,6 +100,7 @@ tax-broker-tools-esp/
 │   ├── options/
 │   │   └── option_exercise_1.pdf
 │   ├── prior_losses.json   # opcional: pérdidas pendientes de antes de tu ventana de datos
+│   ├── closed_years.json   # opcional: ejercicios ya presentados, para detectar divergencias
 │   └── savings_income.json # opcional: dividendos/intereses por año (EUR)
 └── ...
 ```
@@ -129,7 +130,7 @@ El PDF se organiza en estas secciones:
 | **Libro de Compensación de Pérdidas** | Simula la compensación a 4 años (Art. 49): resultado neto de cada año, pérdidas de años anteriores aplicadas, base tras compensación, y pérdidas pendientes y **caducadas**. |
 | **Base del Ahorro – Ganancias + Dividendos/Intereses** | *Solo si aportaste `savings_income.json`.* Combina el resultado bursátil con dividendos/intereses, aplica la compensación cruzada del 25% y muestra la base combinada + la retención en origen. |
 | **Guía de Cumplimentación del Modelo 100** | Asigna cada dato a su *apartado* del Modelo 100 (con casillas a verificar por ejercicio). |
-| **Análisis del Período de Retención ESPP de 3 Años** | Señala acciones ESPP vendidas antes de 3 años, cuyo descuento de compra pasa a ser rendimiento del trabajo (Art. 42.3.f) y requiere declaración complementaria. |
+| **Análisis del Período de Retención ESPP de 36 Meses** | Señala acciones ESPP vendidas antes de 36 meses (contados de fecha a fecha, de modo que un lote del 29-feb queda libre el 28-feb tres años después), cuyo descuento de compra pasa a ser rendimiento del trabajo (Art. 42.3.f) y requiere declaración complementaria. Los lotes se identifican por su origen tipado, nunca por texto libre, y un lote cuyo descuento no se puede valorar genera un aviso en lugar de omitirse. |
 | **Libro de Transacciones** | El detalle FIFO completo por venta (lotes cruzados, ganancia/pérdida, notas de wash-sale) — la traza justificativa para tu asesor. |
 
 ---

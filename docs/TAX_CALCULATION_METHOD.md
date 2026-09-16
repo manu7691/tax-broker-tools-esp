@@ -78,27 +78,34 @@ All values are converted from USD to EUR:
 ## 3. Advanced Spanish Tax Compliance Rules
 
 ### The 2-Month Wash Sale Rule (*Norma de los Dos Meses*)
-Under **Art. 33.5.f LIRPF**, you cannot declare capital losses from a sale if you acquired homogeneous shares within **2 months before or after** that sale. 
+Under **Art. 33.5.f LIRPF**, you cannot declare capital losses from a sale if you acquired homogeneous shares within **2 months before or after** that sale.
 * **Proportional Blocking:** The blocked loss is limited to the number of replacement shares.
   $$\text{Blocked Shares} = \min(\text{Sold Shares}, \text{Replacement Shares Held When the Loss Sale Happens})$$
 * **Correct Application:** The engine blocks a loss only against replacement shares the taxpayer actually held at the moment of the loss sale (shares consumed by the sell itself do not trigger a wash sale). Availability is measured then — not against whatever is left in the portfolio today — so a figure already reported cannot be altered by a later sale.
-* **Lot-level tracking:** The deferred loss is parked **on the replacement lot** that caused it, not on a calendar year. Each `ShareLot` carries a `deferred_wash_sale_loss` balance, and FIFO consuming that lot is what releases it.
-* **Filing Treatment — which year:** The deferred loss becomes deductible **in the tax year the replacement shares are sold**, never by amending the year of origin (DGT V1547-16, V1035-18). A loss deferred in 2025 and released in 2026 stays blocked in the 2025 return and is claimed in the 2026 one.
+* **Lot-level tracking:** The deferred loss is parked **on the replacement lot** that caused it, not on a calendar year. Each `ShareLot` carries a `deferred_wash_sale_loss` balance and the schedule of how FIFO consumed it.
+* **Filing Treatment — when the loss unlocks:** Art. 33.5 (final paragraph) says the deferred losses *"se integrarán a medida que se transmitan los valores o participaciones que permanezcan en el patrimonio del contribuyente"* — progressively, as the remaining securities are sold, **not** only on a full liquidation. DGT doctrine (V3282-18, V0046-20, V1119-21) adds that each of those later transmissions must itself be **definitive**: no homogeneous securities repurchased in the two months that follow it. Three readings are selectable with `--wash-sale-release`:
+  * **`definitive` (default — the statutory rule).** A slice of the deferral is integrated when the replacement shares are transmitted **and** not replaced again within two months. The test is **proportional**: selling 50 shares with only 10 repurchased integrates 40 shares' worth and rolls 10. What is not integrated is **not lost** — it rolls onto the new replacement shares and waits for a clean transmission, however many round trips that takes.
+  * **`position_zero` (conservative).** Additionally requires the whole position to reach 0.00 shares plus a clean 2-month quarantine. Stricter than the statute; defers the deduction longer than the law requires.
+  * **`per_lot` (aggressive).** Frees the loss on any disposal of the replacement lot, with **no definitiveness test**. Matches the bare wording of the statute but ignores the DGT's condition, so it integrates losses earlier than the doctrine allows.
+  Under all three the year of origin is **never amended** (DGT V1547-16, V1035-18): a loss deferred in 2025 and released later stays blocked in the 2025 return and is claimed in the year it unlocks.
+* **Closed years are never rewritten in silence.** Declare what you already filed in `input/closed_years.json` (`{"2022": {"net_gain_loss": "-5000.00"}}`). If recomputing gives a different result — which Art. 33.5.f can legitimately cause, since a January repurchase blocks a loss sold the previous December — the engine reports the divergence and leaves the choice between a *complementaria* and a *rectificativa* to you. It never edits a past year by itself.
 * **What "Blocked Losses" reports:** the balance **still pending at 31 December**, not the gross amount ever deferred. A loss deferred and released within the same year leaves nothing pending and is simply deductible that year. Liquidate a position in full and the blocked figure for that year is necessarily €0.00.
 * **Year-end is not the cut-off:** because the rule also counts repurchases in the two months *after* the sale, a December loss is still exposed to a January or February purchase. That year's figure is final only once the window closes.
 
 ### Transaction & Transfer Fee Deductions (*Gastos Inherentes*)
 According to **Art. 35.1 and 35.2 LIRPF**, commissions and fees directly related to the acquisition or transmission of shares are deductible.
-* The engine automatically parses and deducts **Commissions**, **SEC Fees**, and **Brokerage Assist Fees** from capital gains.
+* **Which side the fee lands on matters.** Disposal costs (commissions, SEC fees, brokerage assist fees on a sale) reduce the *valor de transmisión* of that sale. Acquisition costs are **capitalised into the lot's cost basis** instead, so they reduce the gain of whichever future sale consumes those shares, in proportion to the fraction consumed. The yearly summary reports the two buckets separately (`acquisition_fees_eur` / `disposal_fees_eur`).
 * Users can manually record platform wire transfer fees (for transferring cash out of E-Trade) in the input file to have them deducted as inherent transaction costs.
 
-### ESPP 3-Year Holding Period Exemption (Art. 42.3.f LIRPF)
+### ESPP 36-Month Holding Period Exemption (Art. 42.3.f LIRPF)
 Discounts on ESPP purchases (up to €12,000/year) are tax-exempt if:
-1. The shares are held for at least **3 years** from the purchase date.
+1. The shares are held for at least **36 months** from the purchase date, counted **date to date** (a lot bought on 29-Feb-2020 is clear from 28-Feb-2023).
 2. The ESPP program was offered to all employees under the same conditions (verified via company enrollment sign-off).
 
 **Early Sale Detection:**
-* The engine scans all FIFO sales. If ESPP shares are sold before the 3-year mark, the engine flags the corresponding purchase discount as **taxable salary income** (*Rendimiento del Trabajo*).
+* Every lot carries a **typed origin** (`ESPP`, `RSU`, `EXERCISE`, `MARKET`) and its own FMV / price-paid, both of which survive the FIFO match. Classification never depends on free-text notes, and two ESPP purchases on the same day are valued separately.
+* The engine scans all FIFO sales. If ESPP shares are sold before the 36-month mark, it flags the corresponding purchase discount as **taxable salary income** (*Rendimiento del Trabajo*), reported **separately** from the savings base — the two are never netted.
+* An ESPP disposal whose discount cannot be valued (missing FMV or price paid in the input) raises a **warning**; it is never silently skipped.
 * The tax is imputed to the **Purchase Year**, requiring a **Complementary Tax Return** (*Declaración Complementaria*) for that year, which may incur delay interest but no penalties if filed voluntarily.
 
 ---
