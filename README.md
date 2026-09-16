@@ -142,7 +142,7 @@ The tax report output provides a **Yearly Tax Summary (Modelo 100 - Savings Base
 
 For each tax year, it lists:
 - **Total Gains / Total Losses:** Sums of realized capital gains and losses.
-- **Blocked Losses:** Losses deferred by the 2-month wash sale rule and **still pending at 31 December**. A loss deferred and released in the same year leaves no pending balance, so it does not appear here; liquidate a position in full and this is €0.00.
+- **Blocked Losses:** Losses deferred by the 2-month wash sale rule and **still pending at 31 December**. A loss deferred and released in the same year leaves no pending balance, so it does not appear here. Winding a position down to zero clears it **only if the exit is definitive** — see *Blocked losses: when they unlock* below.
 - **Unblocked Prior Losses:** Losses deferred in *earlier* years that became deductible this year, because the replacement shares were finally sold. They are claimed in this year's return — the year of origin is never amended (DGT V1547-16, V1035-18).
 - **Deductible Losses:** Losses usable this year — this year's losses minus what is still blocked, plus any prior-year losses unblocked now.
 - **Net Taxable Savings Base:** The final net amount after applying allowed losses against gains.
@@ -150,6 +150,8 @@ For each tax year, it lists:
 
 The report also includes:
 - **Loss Carryforward Ledger (Art. 49 LIRPF):** simulates the 4-year offset of net losses against later gains and flags losses that expire unused. Seed pre-window losses via `input/prior_losses.json` (e.g. `{"2019": 1500}`) or `--prior-losses <file>`.
+- **Blocked losses: when they unlock.** Art. 33.5 says a deferred loss is integrated *"a medida que se transmitan los valores que permanezcan en el patrimonio"*, and DGT doctrine (V3282-18, V0046-20, V1119-21) adds that each such transmission must be **definitive** — no homogeneous securities repurchased within the following two months. That is the default (`--wash-sale-release definitive`): the block lifts **proportionally** to the shares definitively transmitted, and whatever is not freed **rolls onto the new replacement shares** rather than being lost. Two alternatives are available for comparison: `position_zero` (conservative — also demands the whole position reach 0.00 shares plus a clean quarantine) and `per_lot` (aggressive — any disposal frees it, no definitiveness test). **This choice changes your figures**; pick one with your advisor and stay consistent across years.
+- **Closed years (`--closed-years`, `input/closed_years.json`):** declare the tax years you have already filed and what you reported, e.g. `{"2024": {"net_gain_loss": "153.23", "blocked_losses": "0.00"}}`. A repurchase made after filing can legitimately move a past year under Art. 33.5.f, so the engine **reports the divergence** instead of rewriting the year in silence, and the carry-forward ledger keeps honouring the loss you actually declared until you amend it. Figures are compared to the cent.
 - **Savings Base with dividends/interest (optional):** provide `input/savings_income.json` (or `--savings-income <file>`) to add your E\*TRADE dividends and cash interest (*rendimientos del capital mobiliario*). The report computes the **25% cross-category offset** (a stock loss offsetting dividend/interest income) and shows the combined savings base. Foreign tax withheld is shown for reference; the *deducción por doble imposición* is left to your advisor.
   - **Recommended format — USD payments (exact):** a list of payments, each with its date; the engine converts each to EUR at the **ECB rate on that date**, exactly like stock trades:
     ```json
@@ -213,6 +215,7 @@ Everything lives under `input/`. Menu options 1–2 create most of these automat
 | `input/rsu/*.pdf` | If you have RSUs | E-Trade → Documents → RSU release confirmations |
 | `input/options/*.pdf` | If you exercised options | E-Trade → Documents → option exercise confirmations |
 | `input/prior_losses.json` | Optional | Pending losses from before your data window, e.g. `{"2019": 1500}` |
+| `input/closed_years.json` | Optional | Tax years already filed and the figures as declared, e.g. `{"2024": {"net_gain_loss": "153.23"}}` — see *Closed years* below |
 | `input/savings_income.json` | Optional | Dividends/interest (see *Filing Spanish Renta* above) |
 | `input/ticker.json` | For Revolut | Primary/employer security, e.g. `{"ticker": "DT", "isin": "US..."}` — the ISIN drives the single-security Revolut filter |
 | `input/securities.json` | Optional | Multi-security config: turns on portfolio mode and maps tickers→ISINs (see *Multiple securities & brokers* below) |
@@ -233,7 +236,7 @@ Matched rows are folded into the **same FIFO pool** as your E\*TRADE shares, so 
 By default the tool tracks **one** security (your employer stock). If you also traded **other** securities (e.g. on Revolut), turn on **portfolio mode**: every security gets its own FIFO queue (grouped by **ISIN**), and the results roll up into one Spanish savings base.
 
 - **Turn it on:** the launcher's *Calculate Tax* option now asks *"Process ALL securities across brokers?"*; or run `tax-engine --all-securities`; or simply create `input/securities.json` (its presence auto-enables it).
-- **`input/securities.json`** (all fields optional): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limits which securities are processed (empty = all), and `isin_map` supplies ISINs for the ticker-only Revolut *account statement* so the same stock merges across brokers reliably.
+- **`input/securities.json`** (all fields optional): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limits which securities are processed (empty = all), and `isin_map` supplies ISINs for the ticker-only Revolut *account statement*. Even without it, an ISIN known from **any** event is backfilled onto every event for that ticker, so a security reported with an ISIN by one broker and without one by another still lands in a **single** FIFO queue; a ticker resolving to two different ISINs aborts the run instead of guessing.
 - **Output:** the PDF adds a **Portfolio Summary by Security** table plus a separate ledger + FIFO section per security; the savings base, 4-year carryforward and 25% cross-offset run on the portfolio total, while the 2-month wash-sale rule stays per security. The dashboard adds a per-security breakdown chart, a security selector, and **scope badges** on every card (🌐 whole portfolio vs 🏷️ selected stock) so a non-finance reader always knows which numbers they're looking at.
 
 Full walkthrough: [MULTI_SECURITY_GUIDE_EN.md](docs/MULTI_SECURITY_GUIDE_EN.md) · [🇪🇸 ES](docs/MULTI_SECURITY_GUIDE_ES.md).
@@ -398,7 +401,7 @@ El informe PDF contiene una sección **Resumen Fiscal Anual (Modelo 100 - Base I
 
 Para cada ejercicio fiscal calcula:
 - **Ganancias / Pérdidas Totales:** Sumas de las plusvalías y minusvalías realizadas.
-- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses y **aún pendientes a 31 de diciembre**. Una pérdida diferida y liberada en el mismo ejercicio no deja saldo pendiente y no aparece aquí; si liquidas la posición al 100%, esta cifra es 0,00 €.
+- **Pérdidas Bloqueadas:** Pérdidas diferidas por la regla de los 2 meses y **aún pendientes a 31 de diciembre**. Una pérdida diferida y liberada en el mismo ejercicio no deja saldo pendiente y no aparece aquí. Liquidar la posición al 100% la deja a cero **solo si la salida es definitiva** — ver *Pérdidas bloqueadas: cuándo se liberan* abajo.
 - **Pérdidas Históricas Liberadas:** Pérdidas diferidas en ejercicios *anteriores* que pasan a ser deducibles este año, al venderse por fin las acciones de sustitución. Se integran en la declaración de este ejercicio: el año de origen no se rectifica nunca (DGT V1547-16 y V1035-18).
 - **Pérdidas Deducibles:** Pérdidas utilizables en el ejercicio: las del año menos las que siguen bloqueadas, más las de años anteriores liberadas ahora.
 - **Base Imponible del Ahorro:** Importe neto a declarar tras compensar las pérdidas correspondientes.
@@ -406,6 +409,8 @@ Para cada ejercicio fiscal calcula:
 
 El informe incluye además:
 - **Libro de Compensación de Pérdidas (Art. 49 LIRPF):** simula la compensación a 4 años de pérdidas netas con ganancias posteriores y avisa de las que caducan. Inicializa pérdidas previas con `input/prior_losses.json` (p. ej. `{"2019": 1500}`) o `--prior-losses <archivo>`.
+- **Pérdidas bloqueadas: cuándo se liberan.** El Art. 33.5 dispone que la pérdida diferida se integra *«a medida que se transmitan los valores que permanezcan en el patrimonio»*, y la doctrina de la DGT (V3282-18, V0046-20, V1119-21) añade que cada una de esas transmisiones debe ser **definitiva** — sin recompra de valores homogéneos en los dos meses siguientes. Ese es el criterio por defecto (`--wash-sale-release definitive`): el bloqueo se levanta **en proporción** a las acciones transmitidas definitivamente, y lo que no se libera **rueda a las nuevas acciones de reemplazo** en lugar de perderse. Hay dos alternativas para contrastar: `position_zero` (conservadora — exige además que la posición llegue a 0,00 y una cuarentena limpia) y `per_lot` (agresiva — cualquier venta libera, sin test de definitividad). **Esta elección cambia tus cifras**; escoge una con tu asesor y mantenla entre ejercicios.
+- **Ejercicios cerrados (`--closed-years`, `input/closed_years.json`):** declara los ejercicios ya presentados y lo que reportaste, p. ej. `{"2024": {"net_gain_loss": "153.23", "blocked_losses": "0.00"}}`. Una recompra posterior a la presentación puede mover legítimamente un ejercicio pasado por el Art. 33.5.f, así que el motor **avisa de la divergencia** en vez de reescribir el año en silencio, y el libro de arrastre sigue respetando la pérdida que realmente declaraste hasta que rectifiques. La comparación se hace al céntimo.
 - **Base del Ahorro con dividendos/intereses (opcional):** aporta `input/savings_income.json` (o `--savings-income <archivo>`) para incluir tus dividendos e intereses de cuenta de E\*TRADE (*rendimientos del capital mobiliario*). El informe calcula la **compensación cruzada del 25%** (una pérdida bursátil compensando dividendos/intereses) y muestra la base del ahorro combinada. La retención en origen se muestra a título informativo; la *deducción por doble imposición* la aplica tu asesor.
   - **Formato recomendado — pagos en USD (exacto):** una lista de pagos, cada uno con su fecha; el motor convierte cada uno a EUR al **tipo del BCE de esa fecha**, igual que las operaciones de acciones:
     ```json
@@ -469,6 +474,7 @@ Todo va dentro de `input/`. Las opciones 1–2 del menú crean la mayoría autom
 | `input/rsu/*.pdf` | Si tienes RSU | E-Trade → Documents → confirmaciones de liberación RSU |
 | `input/options/*.pdf` | Si ejerciste opciones | E-Trade → Documents → confirmaciones de ejercicio de opciones |
 | `input/prior_losses.json` | Opcional | Pérdidas pendientes de antes de tu ventana de datos, p. ej. `{"2019": 1500}` |
+| `input/closed_years.json` | Opcional | Ejercicios ya presentados y sus cifras declaradas, p. ej. `{"2024": {"net_gain_loss": "153.23"}}` — ver *Ejercicios cerrados* abajo |
 | `input/savings_income.json` | Opcional | Dividendos/intereses (ver *Declarar en Renta* arriba) |
 | `input/ticker.json` | Para Revolut | Valor principal/de empresa, p. ej. `{"ticker": "DT", "isin": "US..."}` — el ISIN filtra el CSV de Revolut en modo de un solo valor |
 | `input/securities.json` | Opcional | Configuración multivalor: activa el modo cartera y asigna tickers→ISINs (ver *Varios valores y brókers* abajo) |
@@ -489,7 +495,7 @@ Las filas coincidentes se integran en el **mismo conjunto FIFO** que tus accione
 Por defecto la herramienta analiza **un** valor (las acciones de tu empresa). Si además operaste con **otros** valores (p. ej. en Revolut), activa el **modo cartera**: cada valor tiene su propia cola FIFO (agrupada por **ISIN**) y los resultados se consolidan en una única base del ahorro española.
 
 - **Cómo activarlo:** la opción *Calcular Impuestos* del menú ahora pregunta *«¿Procesar TODOS los valores entre brókers?»*; o ejecuta `tax-engine --all-securities`; o simplemente crea `input/securities.json` (su presencia lo activa automáticamente).
-- **`input/securities.json`** (todos los campos opcionales): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limita qué valores se procesan (vacío = todos) e `isin_map` aporta los ISINs del *extracto de cuenta* de Revolut (que solo tiene ticker) para que el mismo valor se fusione entre brókers de forma fiable.
+- **`input/securities.json`** (todos los campos opcionales): `{ "include": ["DT","TSLA"], "isin_map": {"TSLA":"US88160R1014"}, "primary": "DT" }` — `include` limita qué valores se procesan (vacío = todos) e `isin_map` aporta los ISINs del *extracto de cuenta* de Revolut (que solo tiene ticker). Aun sin él, un ISIN conocido por **cualquier** evento se propaga a todos los eventos de ese ticker, de modo que un valor que un bróker reporta con ISIN y otro sin él acaba en una **única** cola FIFO; si un ticker resuelve a dos ISINs distintos, la ejecución se detiene en lugar de adivinar.
 - **Resultado:** el PDF añade una tabla **Resumen de Cartera por Valor** y una sección de libro + FIFO por valor; la base del ahorro, la compensación a 4 años y el límite del 25% operan sobre el total de la cartera, mientras que la regla de los 2 meses se mantiene por valor. El panel añade un gráfico de desglose por valor, un selector de valores y **etiquetas de alcance** en cada tarjeta (🌐 toda la cartera vs 🏷️ valor seleccionado) para que un lector no financiero siempre sepa qué cifras está viendo.
 
 Guía completa: [MULTI_SECURITY_GUIDE_ES.md](docs/MULTI_SECURITY_GUIDE_ES.md) · [🇺🇸 EN](docs/MULTI_SECURITY_GUIDE_EN.md).

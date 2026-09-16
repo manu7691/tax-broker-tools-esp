@@ -19,6 +19,78 @@ class EventType(Enum):
     EXERCISE = "EXERCISE"  # Stock option exercise - cost basis = FMV at exercise
 
 
+class LotOrigin(Enum):
+    """Where a lot of shares came from.
+
+    Spanish law taxes the *acquisition* differently depending on provenance, so
+    this must survive the FIFO match: an ESPP lot sold before 36 months breaks the
+    Art. 42.3.f exemption and generates rendimientos del trabajo, while an RSU or
+    a plain market purchase never does. Free-text ``notes`` are for display only —
+    they are unreliable as a classifier.
+    """
+
+    ESPP = "ESPP"  # Employee Stock Purchase Plan (discounted, Art. 42.3.f)
+    RSU = "RSU"  # Restricted Stock Unit vesting
+    EXERCISE = "EXERCISE"  # Stock option exercise
+    MARKET = "MARKET"  # Ordinary purchase on the market
+
+
+# Default provenance implied by an event type when the parser does not say.
+# BUY stays MARKET on purpose: only a parser that *knows* it read an ESPP
+# statement may claim the exemption, never a guess from the event type.
+_DEFAULT_ORIGIN = {
+    EventType.VEST: LotOrigin.RSU,
+    EventType.EXERCISE: LotOrigin.EXERCISE,
+    EventType.BUY: LotOrigin.MARKET,
+    EventType.SELL: LotOrigin.MARKET,
+}
+
+
+@dataclass
+class EsppEarlySaleReport:
+    """Art. 42.3.f exemption breaches, kept strictly apart from the savings base.
+
+    Selling ESPP shares before 36 months voids the exemption on the purchase
+    discount, which is *rendimiento del trabajo* of the purchase year and needs an
+    autoliquidación complementaria. It never nets against capital gains, so it
+    travels in its own structure instead of being folded into a yearly summary.
+    """
+
+    taxable_by_year: dict[int, Decimal] = field(default_factory=dict)
+    details: list[dict] = field(default_factory=list)  # type: ignore[type-arg]
+    # ESPP disposals that could not be valued (no FMV/price on the lot). Reported
+    # loudly: a missing input must never look like "no breach".
+    warnings: list[str] = field(default_factory=list)
+
+
+@dataclass
+class ClosedYearDrift:
+    """A filed tax year whose recomputed result no longer matches what was declared.
+
+    Art. 33.5.f can legitimately change a past year (a repurchase in January blocks
+    a loss sold the previous December), but the engine must never rewrite a closed
+    year in silence: it reports the divergence so the taxpayer can decide between a
+    complementaria and a rectificativa.
+    """
+
+    year: int
+    field: str
+    declared: Decimal
+    computed: Decimal
+
+    @property
+    def declared_net(self) -> Decimal:
+        return self.declared
+
+    @property
+    def computed_net(self) -> Decimal:
+        return self.computed
+
+    @property
+    def delta(self) -> Decimal:
+        return self.computed - self.declared
+
+
 @dataclass
 class DeferredWashSaleLoss:
     """A loss deferred by Art. 33.5.f, parked on the replacement lot that caused it.
@@ -36,8 +108,16 @@ class DeferredWashSaleLoss:
     anchor_date: date
     shares: Decimal  # replacement shares of the lot holding this deferral
     amount: Decimal  # total deferred loss (negative)
-    released: Decimal = Decimal("0")  # part already freed (negative)
+    released: Decimal = Decimal("0")  # part already settled: freed or rolled (negative)
     releases: list[tuple[date, Decimal]] = field(default_factory=list)
+    # Part that was NOT integrated but carried over to new replacement shares
+    # because the transmission was not definitive. It is settled on this claim and
+    # pending on the successor claim, so it must not be double-counted as blocked.
+    rolled: Decimal = Decimal("0")
+    # True when this claim is itself the successor of a deferral that rolled over.
+    # Its predecessor already reported the amount as blocked in the origin year, so
+    # a successor must never add to that figure again.
+    is_rollover: bool = False
 
     @property
     def outstanding(self) -> Decimal:
@@ -59,12 +139,38 @@ class ShareLot:
     # single-security/E*TRADE callers working unchanged.
     broker: str = "E*TRADE"
     isin: str | None = None
+    # Typed provenance (Rule 4). Carried from the originating StockEvent and copied
+    # onto every FifoMatch, so an ESPP disposal stays identifiable after matching.
+    origin: "LotOrigin" = None  # type: ignore[assignment]
+    # Acquisition costs (commission, fees) for the WHOLE lot. Art. 35 LIRPF makes
+    # these part of the valor de adquisición, so they must raise the cost basis
+    # proportionally as the lot is consumed.
+    fees_eur: Decimal = Decimal("0")
+    # FX rate used to price this acquisition, kept so downstream analysis converts
+    # with the lot's own rate instead of re-fetching (and possibly re-deriving) it.
+    fx_rate: Decimal | None = None
+    # ESPP discount data for this specific lot (FMV and price actually paid, in the
+    # native currency). Per-lot rather than per-date, so two ESPP purchases on the
+    # same day no longer collapse into one.
+    espp_fmv_usd: Decimal | None = None
+    espp_price_usd: Decimal | None = None
     # Wash-sale state carried BY THE LOT. ``deferred_claims`` holds the losses this
     # lot blocked (a lot can block more than one sale, and from more than one year);
     # ``disposals`` is the (date, shares) schedule of how FIFO consumed the lot,
     # which is what releases those deferrals.
     deferred_claims: list[DeferredWashSaleLoss] = field(default_factory=list)
     disposals: list[tuple[date, Decimal]] = field(default_factory=list)
+
+    def __post_init__(self) -> None:
+        if self.origin is None:
+            object.__setattr__(self, "origin", LotOrigin.MARKET)
+
+    def cost_basis_for(self, shares: Decimal) -> Decimal:
+        """Valor de adquisición of ``shares`` of this lot, acquisition costs included."""
+        basis = self.price_eur * shares
+        if self.fees_eur and self.shares:
+            basis += self.fees_eur * shares / self.shares
+        return basis.quantize(Decimal("0.0001"), ROUND_HALF_UP)
 
     @property
     def deferred_wash_sale_loss(self) -> Decimal:
@@ -88,6 +194,16 @@ class FifoMatch:
     shares: Decimal
     realized_gain_loss: Decimal
     notes: str = ""
+    # Provenance and per-lot ESPP data carried through the match, so Art. 42.3.f
+    # analysis never has to guess from ``notes`` or look a date up in a side map.
+    origin: "LotOrigin" = None  # type: ignore[assignment]
+    acquisition_fx_rate: Decimal | None = None
+    espp_fmv_usd: Decimal | None = None
+    espp_price_usd: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        if self.origin is None:
+            object.__setattr__(self, "origin", LotOrigin.MARKET)
 
 
 @dataclass
@@ -132,6 +248,15 @@ class StockEvent:
     # the Status column existed). Used to tell a settled sale from one whose RSU
     # confirmation is not yet available (see auto_detect_sell_to_cover).
     order_status: str = ""
+    # Typed provenance (Rule 4). ``None`` means "the parser did not say", and
+    # ``__post_init__`` derives it from the event type. Only a parser that actually
+    # read an ESPP statement sets ``LotOrigin.ESPP``.
+    origin: "LotOrigin" = None  # type: ignore[assignment]
+    # ESPP discount data in ``currency``: fair market value at purchase and the
+    # price actually paid. Attached to the event (hence to the lot) so Art. 42.3.f
+    # analysis never needs a by-date side lookup.
+    espp_fmv_usd: Decimal | None = None
+    espp_price_usd: Decimal | None = None
     _fx_rate_resolved: Decimal | None = field(default=None, init=False, repr=False)
 
     @property
@@ -163,6 +288,12 @@ class StockEvent:
     def __post_init__(self) -> None:
         """Convert numeric fields to Decimal if needed and validate."""
         object.__setattr__(self, "currency", (self.currency or "USD").strip().upper())
+        if self.origin is None:
+            object.__setattr__(self, "origin", _DEFAULT_ORIGIN[self.event_type])
+        for money in ("espp_fmv_usd", "espp_price_usd"):
+            value = getattr(self, money)
+            if value is not None and not isinstance(value, Decimal):
+                object.__setattr__(self, money, Decimal(str(value)))
         if not isinstance(self.shares, Decimal):
             object.__setattr__(self, "shares", Decimal(str(self.shares)))
         if not isinstance(self.price_usd, Decimal):
@@ -224,7 +355,13 @@ class YearlyTaxSummary:
     # Breakdown of ``unlocked_historical_losses`` as {origin_year: amount}, kept so
     # the report can state which year each released loss came from.
     unlocked_losses_by_origin: dict[int, Decimal] = field(default_factory=dict)
-    total_fees_eur: Decimal = Decimal("0")  # Total transaction fees deducted (EUR)
+    total_fees_eur: Decimal = Decimal("0")  # All transaction fees seen this year (EUR)
+    # Art. 35 LIRPF splits fees by side: acquisition costs are capitalised into the
+    # valor de adquisición of the lot (so they reduce a FUTURE gain), while disposal
+    # costs reduce the valor de transmisión of the sale that incurred them. Keeping
+    # them apart is what stops the report claiming a deduction that never happened.
+    acquisition_fees_eur: Decimal = Decimal("0")
+    disposal_fees_eur: Decimal = Decimal("0")
 
     @property
     def deductible_losses(self) -> Decimal:
@@ -381,6 +518,11 @@ class TaxEngineState:
                     notes=lot.notes,
                     broker=lot.broker,
                     isin=lot.isin,
+                    origin=lot.origin,
+                    fees_eur=lot.fees_eur,
+                    fx_rate=lot.fx_rate,
+                    espp_fmv_usd=lot.espp_fmv_usd,
+                    espp_price_usd=lot.espp_price_usd,
                 )
                 for lot in self.lots
             ],

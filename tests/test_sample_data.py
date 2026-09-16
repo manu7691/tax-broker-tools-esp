@@ -96,16 +96,18 @@ def test_sample_data_with_ecb_rates():
     assert summary_2021.total_losses == pytest.approx(Decimal("-39.05"), abs=Decimal("0.01"))
     # The 2021-05-17 loss sales are followed by the 2021-05-28 ESPP buy and the
     # 2021-06-15 purchase, both inside the 2-month window, so the whole -39.05 is
-    # deferred onto those lots (Art. 33.5.f). Part of them is sold again on
-    # 2021-08-16 and 2021-11-16, releasing -15.32 within the same year, so what
-    # is still pending at 31/12/2021 — and only that — is reported as blocked.
-    assert summary_2021.blocked_losses == pytest.approx(Decimal("-23.73"), abs=Decimal("0.01"))
-    # Same-year releases are netted above, not reported as unblocked prior losses.
+    # deferred onto those lots (Art. 33.5.f). The sample never liquidates the
+    # position (73 shares survive the dataset), so under the default
+    # ``position_zero`` policy none of it is released and the full -39.05 is still
+    # blocked at 31/12/2021. Under the opt-in ``per_lot`` policy, the replacement
+    # shares resold on 2021-08-16 and 2021-11-16 would release -15.32 here.
+    assert summary_2021.blocked_losses == pytest.approx(Decimal("-39.05"), abs=Decimal("0.01"))
     assert summary_2021.unlocked_historical_losses == Decimal("0")
-    assert summary_2021.deductible_losses == pytest.approx(Decimal("-15.32"), abs=Decimal("0.01"))
-    assert summary_2021.net_gain_loss == pytest.approx(Decimal("557.27"), abs=Decimal("0.01"))
-    assert summary_2021.taxable_gain == pytest.approx(Decimal("557.27"), abs=Decimal("0.01"))
-    assert summary_2021.tax_due == pytest.approx(Decimal("105.88"), abs=Decimal("0.01"))
+    assert summary_2021.deductible_losses == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
+    assert summary_2021.net_gain_loss == pytest.approx(Decimal("572.59"), abs=Decimal("0.01"))
+    assert summary_2021.taxable_gain == pytest.approx(Decimal("572.59"), abs=Decimal("0.01"))
+    # 572.59 taxed wholly in the 19% band.
+    assert summary_2021.tax_due == pytest.approx(Decimal("108.79"), abs=Decimal("0.01"))
 
     # 2022: Net loss
     assert 2022 in tax_summary
@@ -113,13 +115,16 @@ def test_sample_data_with_ecb_rates():
     assert summary_2022.total_gains == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2022.total_losses == pytest.approx(Decimal("-2941.27"), abs=Decimal("0.01"))
     assert summary_2022.blocked_losses == pytest.approx(Decimal("-1018.23"), abs=Decimal("0.01"))
-    # Remainder of the 2021 block, released in 2022 when the last replacement
-    # shares are sold. 2021 itself keeps its own figures untouched.
+    # The 2021 deferral is integrated here: the 2022 transmissions of those
+    # replacement shares are definitive (no homogeneous repurchase in the two
+    # months that follow), which is exactly what Art. 33.5 requires. 2021 itself
+    # keeps its own figures untouched.
     assert summary_2022.unlocked_historical_losses == pytest.approx(
-        Decimal("-23.73"), abs=Decimal("0.01")
+        Decimal("-39.05"), abs=Decimal("0.01")
     )
     assert summary_2022.unlocked_losses_by_origin.keys() == {2021}
-    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1946.77"), abs=Decimal("0.01"))
+    # -2941.27 realised, -1018.23 blocked, -39.05 unblocked -> -1962.09 deductible.
+    assert summary_2022.net_gain_loss == pytest.approx(Decimal("-1962.09"), abs=Decimal("0.01"))
     assert summary_2022.taxable_gain == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
     assert summary_2022.tax_due == pytest.approx(Decimal("0.00"), abs=Decimal("0.01"))
 
@@ -210,8 +215,10 @@ class TestMultiSecuritySample:
         assert all(fmv > price for fmv, price in espp_map.values())
 
         agg = run_portfolio(create_sample_multi_security_events()).aggregate
-        early, details = detect_espp_early_sales(agg.processed_events, espp_map)
-        assert early  # at least one ESPP lot was sold before the 3-year mark
+        report = detect_espp_early_sales(agg.processed_events)
+        assert report.taxable_by_year  # an ESPP lot was sold before the 36-month mark
+        # Every flagged disposal could be valued from the lot's own discount data.
+        assert report.warnings == []
 
 
 class TestCryptoSample:

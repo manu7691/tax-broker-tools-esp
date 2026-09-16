@@ -40,6 +40,39 @@ _TYPE_PRIORITY = {
 }
 
 
+class AmbiguousSecurityError(ValueError):
+    """Raised when one ticker resolves to two different ISINs.
+
+    Merging them would pool unrelated securities into one FIFO queue; keeping them
+    apart would silently split a homogeneous one. Neither is safe to guess, so the
+    run stops and asks the user to fix ``input/securities.json``.
+    """
+
+
+def _learn_isins_by_ticker(events: list[StockEvent]) -> dict[str, str]:
+    """Map every ticker to its ISIN, using every event that states both.
+
+    Broker exports are uneven: E*TRADE reports no ISIN at all, Revolut does. Rule 1
+    requires one global FIFO queue per homogeneous security across all brokers, so
+    an ISIN learned from any single event has to apply to every event for that
+    ticker — otherwise the same security ends up in two queues with two cost bases.
+    """
+    learned: dict[str, str] = {}
+    for ev in events:
+        ticker = (ev.symbol or "").strip().upper()
+        isin = (ev.isin or "").strip().upper()
+        if not ticker or not isin:
+            continue
+        previous = learned.setdefault(ticker, isin)
+        if previous != isin:
+            raise AmbiguousSecurityError(
+                f"Ticker {ticker!r} maps to two different ISINs ({previous} and {isin}). "
+                f"Spanish FIFO cannot group these safely — fix the ISIN in "
+                f"input/securities.json before re-running."
+            )
+    return learned
+
+
 @dataclass
 class SecurityResult:
     """One security's identity and its fully-processed single-security engine."""
@@ -73,12 +106,26 @@ def group_events_by_security(
 ) -> dict[str, tuple[Security, list[StockEvent]]]:
     """Bucket events into ``{key: (Security, events)}``, one bucket per security.
 
+    Events whose ISIN is missing but whose ticker is known from another event are
+    backfilled first (Rule 1: one global queue per homogeneous security, across
+    every broker and account); a ticker claiming two ISINs raises
+    :class:`AmbiguousSecurityError` rather than guessing.
+
     The key is the ISIN when known, else ``@TICKER`` (see
     :func:`~tax_engine.securities.grouping_key`), so the same ISIN reported by
     different brokers merges into a single queue. Within a bucket the ISIN is
     consistent by construction (it is part of the key); the representative
     :class:`Security` takes the first non-empty ISIN/ticker seen.
     """
+    # Backfill ISINs before bucketing, so a security reported with an ISIN by one
+    # broker and without one by another still lands in a single FIFO queue.
+    learned = _learn_isins_by_ticker(events)
+    for ev in events:
+        if not ev.isin:
+            ticker = (ev.symbol or "").strip().upper()
+            if ticker in learned:
+                ev.isin = learned[ticker]
+
     buckets: dict[str, list[StockEvent]] = {}
     isin_by_key: dict[str, str | None] = {}
     ticker_by_key: dict[str, str | None] = {}
@@ -105,7 +152,7 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
 
     Sums each security's yearly summaries (gains, losses, already-computed blocked
     losses, losses unblocked this year, fees) and concatenates their processed
-    events and surviving lots, so
+    events, their surviving lots and their full lot ledgers, so
     the carryforward/savings-ledger and all reporting run on the portfolio total.
     The wash-sale detection is deliberately **not** re-run — doing so across
     securities would be wrong, and each per-security summary already carries it.
@@ -131,6 +178,10 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
         aggregate.state.total_shares += eng.state.total_shares
         aggregate.state.total_portfolio_cost_eur += eng.state.total_portfolio_cost_eur
         aggregate.state.lots.extend(eng.state.lots)
+        # The durable record of every lot ever acquired, not just the surviving
+        # ones: provenance analysis (ESPP breaches, per-origin holdings) reads it,
+        # and a fully liquidated security leaves nothing in ``state.lots``.
+        aggregate.lot_ledger.extend(eng.lot_ledger)
 
     # Plain dict (not the engine's defaultdict): the aggregate is read-only from
     # here on — get_all_yearly_summaries/compute_* only iterate its values.
@@ -150,8 +201,12 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
 def run_portfolio(
     events: list[StockEvent],
     config: SecuritiesConfig | None = None,
+    release_policy: str = "definitive",
 ) -> PortfolioResult:
     """Run a per-security FIFO engine for every security and build the rollup.
+
+    ``release_policy`` is forwarded to every per-security engine, since Art. 33.5.f
+    is applied per homogeneous security and all of them must use the same reading.
 
     ``config`` optionally filters which securities are kept (the ``include``
     allow-list from ``input/securities.json``); with no config, every detected
@@ -163,7 +218,7 @@ def run_portfolio(
     for security, group_events in grouped.values():
         if config is not None and not config.is_included(security.isin, security.ticker):
             continue
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy=release_policy)
         engine.process_all(group_events)
         results.append(SecurityResult(security=security, engine=engine))
 

@@ -319,7 +319,12 @@ class TestWashSaleRefinement:
         repurchase. The replacement shares can neutralize at most their own count
         of sold shares in total — not once per sale.
         """
-        engine = TaxEngine()
+        # ``per_lot`` policy: sale #1's deferral is released when the 03-10 lot is
+        # sold inside the same year, which is what makes the pledging arithmetic
+        # visible in ``blocked_losses``. Under the default ``position_zero`` policy
+        # nothing is released while 4 shares survive the year, so the same run
+        # reports -280.00 — the pledge-once property under test is identical.
+        engine = TaxEngine(release_policy="per_lot")
 
         events = [
             # Two independent acquisitions, each fully sold at a loss.
@@ -422,6 +427,15 @@ def _ev(day: date, kind: EventType, shares: str, price: str) -> StockEvent:
 
 
 class TestWashSaleUnlockCarryForward:
+    """Release semantics of the opt-in ``per_lot`` policy (literal DGT reading).
+
+    Every engine here is built with ``release_policy="per_lot"`` on purpose: these
+    cases pin the lot-by-lot unlock, where a deferred loss is freed as soon as the
+    replacement lot is transmitted. The default ``position_zero`` policy is
+    stricter — it also requires the whole position to reach 0,00 shares and a clean
+    2-month quarantine — and is covered in ``test_compliance_rules.py``.
+    """
+
     """Temporal allocation of a blocked loss once the 2-month block breaks.
 
     Art. 33.5.f LIRPF defers the loss; DGT V1547-16 and V1035-18 forbid
@@ -444,7 +458,7 @@ class TestWashSaleUnlockCarryForward:
 
     def test_block_stands_while_replacement_is_still_held(self):
         """No disposal of the replacement → the loss stays blocked, nothing unlocked."""
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(self._base_events())
 
         s2025 = engine.get_yearly_summary(2025)
@@ -454,7 +468,7 @@ class TestWashSaleUnlockCarryForward:
 
     def test_origin_year_is_immutable_when_block_breaks_later(self):
         """Selling the replacement in 2026 must not rewrite the 2025 summary."""
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(
             self._base_events() + [_ev(date(2026, 6, 1), EventType.SELL, "100", "70.00")]
         )
@@ -468,7 +482,7 @@ class TestWashSaleUnlockCarryForward:
 
     def test_unlocked_loss_lands_in_the_year_the_block_breaks(self):
         """2026 absorbs the released 2025 loss on top of its own result."""
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(
             self._base_events() + [_ev(date(2026, 6, 1), EventType.SELL, "100", "70.00")]
         )
@@ -484,7 +498,7 @@ class TestWashSaleUnlockCarryForward:
 
     def test_partial_disposal_releases_the_block_pro_rata(self):
         """Half the replacement sold in 2026, half in 2027 → half the loss each year."""
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(
             self._base_events()
             + [
@@ -506,7 +520,7 @@ class TestWashSaleUnlockCarryForward:
         and the loss is simply deductible. Showing a gross figure here would claim
         a pending deferral that does not exist.
         """
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(
             self._base_events() + [_ev(date(2025, 11, 3), EventType.SELL, "100", "70.00")]
         )
@@ -520,7 +534,7 @@ class TestWashSaleUnlockCarryForward:
 
     def test_released_amounts_never_exceed_the_blocked_amount(self):
         """Repeated round trips must not release more than was ever blocked."""
-        engine = TaxEngine()
+        engine = TaxEngine(release_policy="per_lot")
         engine.process_all(
             self._base_events()
             + [

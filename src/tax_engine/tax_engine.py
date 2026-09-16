@@ -13,9 +13,11 @@ from typing import TYPE_CHECKING, Any
 if TYPE_CHECKING:
     from .portfolio import SecurityResult
 
+from .dates import add_months
 from .models import (
     CarryforwardLedger,
     CarryforwardYear,
+    ClosedYearDrift,
     DeferredWashSaleLoss,
     EventType,
     FifoMatch,
@@ -28,6 +30,11 @@ from .models import (
     TaxEngineState,
     YearlyTaxSummary,
 )
+
+
+def _to_cents(value: Decimal | str | float) -> Decimal:
+    """Round a monetary figure to cents, the unit a tax return is filed in."""
+    return Decimal(str(value)).quantize(Decimal("0.01"), ROUND_HALF_UP)
 
 
 class TaxEngine:
@@ -46,7 +53,36 @@ class TaxEngine:
             s = s.rstrip("0").rstrip(".")
         return s
 
-    def __init__(self) -> None:
+    #: How a deferred wash-sale loss stops being deferred.
+    #:
+    #: ``"definitive"`` (default) implements the statutory rule as the DGT reads it: the loss
+    #: is integrated "a medida que se transmitan los valores que permanezcan en el
+    #: patrimonio" (Art. 33.5, final paragraph) — progressively, no full
+    #: liquidation required — but only for transmissions that are themselves
+    #: DEFINITIVE, i.e. followed by no acquisition of homogeneous securities within
+    #: two months (DGT V3282-18, V0046-20, V1119-21). This is the recommended
+    #: setting; the other two bracket it.
+    #:
+    #: ``"position_zero"`` follows the stricter reading: the loss only
+    #: becomes deductible in the tax year when the whole position in the security
+    #: reaches 0,00 shares AND a 2-month quarantine elapses with no new
+    #: acquisitions of homogeneous securities (RSU vestings and sell-to-cover
+    #: included). ``"per_lot"`` follows the literal DGT wording — the loss is freed
+    #: "a medida que se transmitan los valores que permanezcan en el patrimonio",
+    #: lot by lot — and is kept so both readings can be compared.
+    RELEASE_POLICIES = ("definitive", "position_zero", "per_lot")
+
+    def __init__(self, release_policy: str = "definitive") -> None:
+        if release_policy not in self.RELEASE_POLICIES:
+            raise ValueError(
+                f"Unknown release_policy {release_policy!r}; "
+                f"expected one of {self.RELEASE_POLICIES}"
+            )
+        self.release_policy = release_policy
+        # Tax years already filed, as declared: ``{year: {"net_gain_loss": ...}}``.
+        # Taxpayer state, not something derivable from the transactions, so it
+        # deliberately survives :meth:`reset` and every reprocessing of events.
+        self.closed_years: dict[int, dict[str, Decimal]] = {}
         self.state = TaxEngineState()
         self.processed_events: list[ProcessedEvent] = []
         # Every lot ever acquired, in chronological order. ``state.lots`` is the
@@ -95,7 +131,17 @@ class TaxEngine:
         """
         shares = event.shares
         price_eur = event.price_eur
-        new_cost_eur = event.total_value_eur
+
+        # Art. 35 LIRPF: "gastos y tributos inherentes a la adquisición" form part
+        # of the valor de adquisición. They are capitalised onto the lot rather
+        # than expensed, so they reduce the gain of whichever FUTURE sale consumes
+        # these shares, in proportion to the fraction consumed.
+        acquisition_fees_eur = Decimal("0")
+        if event.fees_usd > 0:
+            acquisition_fees_eur = (event.fees_usd * event.resolved_fx_rate).quantize(
+                Decimal("0.0001"), ROUND_HALF_UP
+            )
+        new_cost_eur = event.total_value_eur + acquisition_fees_eur
 
         # Add a new lot
         new_lot = ShareLot(
@@ -106,6 +152,11 @@ class TaxEngine:
             notes=event.notes,
             broker=event.broker,
             isin=event.isin,
+            origin=event.origin,
+            fees_eur=acquisition_fees_eur,
+            fx_rate=event.resolved_fx_rate,
+            espp_fmv_usd=event.espp_fmv_usd,
+            espp_price_usd=event.espp_price_usd,
         )
         self.state.lots.append(new_lot)
         self.lot_ledger.append(new_lot)
@@ -165,13 +216,13 @@ class TaxEngine:
             # later releases any wash-sale loss deferred onto it.
             lot.disposals.append((event.event_date, shares_from_lot))
 
-            match_gain_loss = ((sell_price_eur - lot.price_eur) * shares_from_lot).quantize(
+            # Cost basis of this fraction, acquisition costs included (Art. 35).
+            lot_basis = lot.cost_basis_for(shares_from_lot)
+            match_gain_loss = (sell_price_eur * shares_from_lot - lot_basis).quantize(
                 Decimal("0.0001"), ROUND_HALF_UP
             )
             total_realized_gain_loss += match_gain_loss
-            total_cost_basis_removed += (lot.price_eur * shares_from_lot).quantize(
-                Decimal("0.0001"), ROUND_HALF_UP
-            )
+            total_cost_basis_removed += lot_basis
 
             fifo_matches.append(
                 FifoMatch(
@@ -180,6 +231,10 @@ class TaxEngine:
                     shares=shares_from_lot,
                     realized_gain_loss=match_gain_loss,
                     notes=lot.notes,
+                    origin=lot.origin,
+                    acquisition_fx_rate=lot.fx_rate,
+                    espp_fmv_usd=lot.espp_fmv_usd,
+                    espp_price_usd=lot.espp_price_usd,
                 )
             )
 
@@ -255,13 +310,7 @@ class TaxEngine:
     @staticmethod
     def _add_months(d: date, months: int) -> date:
         """Shift a date by whole months, clamping to the end of short months."""
-        import calendar
-
-        month = d.month - 1 + months
-        year = d.year + month // 12
-        month = month % 12 + 1
-        day = min(d.day, calendar.monthrange(year, month)[1])
-        return date(year, month, day)
+        return add_months(d, months)
 
     def _defer_losses_onto_replacement_lots(self) -> None:
         """Phase 1 — park each blocked loss on the replacement lot that caused it."""
@@ -333,8 +382,149 @@ class TaxEngine:
                 )
 
     def _release_deferred_losses(self) -> None:
-        """Phase 2 — selling a lot frees the loss deferred onto it, on that date."""
-        for lot in self.lot_ledger:
+        """Phase 2 — free deferred losses according to the configured policy."""
+        if self.release_policy == "definitive":
+            self._release_per_lot(require_definitive=True)
+        elif self.release_policy == "position_zero":
+            self._release_on_zero_position()
+        else:
+            self._release_per_lot()
+
+    def _zero_position_dates(self) -> list[date]:
+        """Dates at whose close the position in this security was exactly 0,00.
+
+        Read off the running position the ledger already tracks, taking the LAST
+        event of each date so an intraday sell-then-buy is not mistaken for a
+        liquidation.
+        """
+        position_by_date: dict[date, Decimal] = {}
+        for pe in self.processed_events:
+            position_by_date[pe.event.event_date] = pe.total_shares_after
+        return [day for day in sorted(position_by_date) if position_by_date[day] == 0]
+
+    def _release_on_zero_position(self) -> None:
+        """Phase 2 (default) — unlock only on a clean, fully quarantined exit.
+
+        A deferred loss becomes deductible when BOTH conditions hold:
+
+        1. the whole position in the security reaches 0,00 shares, and
+        2. the following 2 months pass with no acquisition of homogeneous
+           securities — RSU vestings and sell-to-cover included, since those are
+           acquisitions like any other.
+
+        A purchase inside the quarantine voids that exit entirely; the engine then
+        waits for the next zero crossing. The release is dated to the END of the
+        quarantine, which is the moment the loss is finally free, so an exit in
+        November unlocks in the same year but one in December unlocks in the next.
+        """
+        claims = [claim for lot in self.lot_ledger for claim in lot.deferred_claims]
+        if not claims:
+            return
+
+        acquisition_dates = [lot.acquisition_date for lot in self.lot_ledger]
+
+        for zero_date in self._zero_position_dates():
+            quarantine_end = add_months(zero_date, 2)
+            if any(zero_date < when <= quarantine_end for when in acquisition_dates):
+                continue  # repurchased inside the quarantine — this exit does not count
+
+            for claim in claims:
+                # A deferral cannot be released before it attached.
+                if claim.anchor_date > zero_date:
+                    continue
+                outstanding = claim.outstanding
+                if outstanding == 0:
+                    continue
+                claim.released += outstanding
+                claim.releases.append((quarantine_end, outstanding))
+
+    def _is_definitive(self, sell_date: date) -> bool:
+        """Whether a transmission on ``sell_date`` is definitive (Art. 33.5 doctrine).
+
+        It is not, if homogeneous securities are acquired within the two months
+        that follow it — an RSU vesting or a sell-to-cover replacement counts like
+        any other purchase. A non-definitive transmission frees nothing: the same
+        anti-avoidance logic that deferred the loss applies again.
+        """
+        window_end = add_months(sell_date, 2)
+        return not any(sell_date < lot.acquisition_date <= window_end for lot in self.lot_ledger)
+
+    def _replacement_lots_after(self, sell_date: date) -> list[ShareLot]:
+        """Lots acquired in the two months after ``sell_date`` (the new replacements)."""
+        window_end = add_months(sell_date, 2)
+        return [lot for lot in self.lot_ledger if sell_date < lot.acquisition_date <= window_end]
+
+    def _roll_claim(
+        self, claim: DeferredWashSaleLoss, sell_date: date, shares: Decimal, amount: Decimal
+    ) -> None:
+        """Carry a deferral over to the shares that replaced the ones just sold.
+
+        When the replacement securities are transmitted but the transmission is not
+        definitive, the loss is not integrated — and it is not lost either. The
+        newly acquired homogeneous securities take over as the replacement holding,
+        so the deferral is re-parked on them and waits for a clean transmission.
+        Without this the deferral would silently evaporate and the taxpayer would
+        lose a deduction they are entitled to.
+        """
+        targets = self._replacement_lots_after(sell_date)
+        if not targets:
+            return
+        available = sum((lot.shares for lot in targets), Decimal("0"))
+        assigned = min(shares, available)
+        if assigned <= 0:
+            return
+
+        unassigned = (amount * assigned / shares).quantize(Decimal("0.0001"), ROUND_HALF_UP)
+        remaining_shares = assigned
+        for position, lot in enumerate(targets):
+            if remaining_shares <= 0:
+                break
+            take = min(lot.shares, remaining_shares)
+            remaining_shares -= take
+            if position == len(targets) - 1 or remaining_shares <= 0:
+                portion = unassigned
+            else:
+                portion = (amount * take / shares).quantize(Decimal("0.0001"), ROUND_HALF_UP)
+            unassigned -= portion
+            lot.deferred_claims.append(
+                DeferredWashSaleLoss(
+                    origin_year=claim.origin_year,
+                    anchor_date=sell_date,
+                    shares=take,
+                    amount=portion,
+                    is_rollover=True,
+                )
+            )
+
+    def _release_per_lot(self, require_definitive: bool = False) -> None:
+        """Phase 2 — selling a lot frees the loss deferred onto it, on that date.
+
+        With ``require_definitive`` a slice is only integrated when its transmission
+        passes :meth:`_is_definitive`; otherwise the slice rolls onto whatever
+        homogeneous securities replaced it (see :meth:`_roll_claim`) and the pass is
+        repeated, so a deferral survives any number of non-definitive round trips
+        until a clean transmission finally frees it.
+        """
+        if require_definitive:
+            # Rolling appends new claims, so iterate until the ledger stops growing.
+            # Each pass can only move deferrals forward in time, and every lot is a
+            # finite sink, so this terminates.
+            # Rolling appends successor claims, so sweep until none are added. Each
+            # claim is settled exactly once (``seen``); without that, a later sweep
+            # would release an already-settled claim a second time.
+            seen: set[int] = set()
+            for _ in range(len(self.lot_ledger) + 1):
+                before = sum(len(lot.deferred_claims) for lot in self.lot_ledger)
+                self._release_pass(require_definitive=True, seen=seen)
+                if sum(len(lot.deferred_claims) for lot in self.lot_ledger) == before:
+                    return
+            return
+        self._release_pass(require_definitive=False, seen=set())
+
+    def _release_pass(self, require_definitive: bool, seen: set[int]) -> None:
+        """One sweep of the lot ledger, settling each claim not yet processed."""
+        capacity: dict[date, Decimal] = {}
+        for lot in list(self.lot_ledger):
             if not lot.deferred_claims:
                 continue
 
@@ -342,7 +532,10 @@ class TaxEngine:
             used_from_current = Decimal("0")
 
             # Claims were appended in sale order, so their anchors ascend.
-            for claim in lot.deferred_claims:
+            for claim in list(lot.deferred_claims):
+                if id(claim) in seen:
+                    continue
+                seen.add(id(claim))
                 # Disposals up to the anchor never acted as replacement shares
                 # (``shares_held_at`` already netted them out), so they release
                 # nothing — and, anchors ascending, never will for later claims.
@@ -371,7 +564,37 @@ class TaxEngine:
                         )
                     amount_left -= portion
                     claim.released += portion
-                    claim.releases.append((sell_date, portion))
+                    if not require_definitive:
+                        claim.releases.append((sell_date, portion))
+                        continue
+
+                    # A transmission is definitive only to the extent the shares were
+                    # NOT replaced within the following two months. Selling 50 and
+                    # buying back 10 integrates 40 shares' worth of the deferral and
+                    # rolls 10 — the replacement capacity is consumed as it is used,
+                    # so one repurchased share can block only one transmitted share.
+                    if sell_date not in capacity:
+                        capacity[sell_date] = sum(
+                            (lot.shares for lot in self._replacement_lots_after(sell_date)),
+                            Decimal("0"),
+                        )
+                    replaced = min(take, capacity[sell_date])
+                    capacity[sell_date] -= replaced
+                    freed = take - replaced
+
+                    if freed > 0:
+                        freed_amount = (
+                            portion
+                            if replaced <= 0
+                            else (portion * freed / take).quantize(Decimal("0.0001"), ROUND_HALF_UP)
+                        )
+                        claim.releases.append((sell_date, freed_amount))
+                    else:
+                        freed_amount = Decimal("0")
+                    if replaced > 0:
+                        rolled_amount = portion - freed_amount
+                        claim.rolled += rolled_amount
+                        self._roll_claim(claim, sell_date, replaced, rolled_amount)
 
                     if used_from_current >= disposed:
                         index += 1
@@ -399,6 +622,8 @@ class TaxEngine:
                     Decimal("0"),
                 )
                 pending_at_year_end = claim.amount - released_same_year
+                if claim.is_rollover:
+                    pending_at_year_end = Decimal("0")  # predecessor already reported it
                 if pending_at_year_end:
                     self._summary_for(origin).blocked_losses += pending_at_year_end
 
@@ -434,7 +659,16 @@ class TaxEngine:
             fees_eur = (event.fees_usd * event.resolved_fx_rate).quantize(
                 Decimal("0.0001"), ROUND_HALF_UP
             )
-            self.yearly_summaries[year].total_fees_eur += fees_eur
+            summary = self.yearly_summaries[year]
+            summary.total_fees_eur += fees_eur
+            # Which side of the trade the fee belongs to decides where it is
+            # deducted: an acquisition fee is already capitalised into the lot's
+            # cost basis (so it bites on a later sale), a disposal fee reduced this
+            # sale's result directly.
+            if event.event_type == EventType.SELL:
+                summary.disposal_fees_eur += fees_eur
+            else:
+                summary.acquisition_fees_eur += fees_eur
 
         self.processed_events.append(result)
         return result
@@ -453,6 +687,69 @@ class TaxEngine:
 
         return self.processed_events
 
+    def _frozen_net(
+        self,
+        year: int,
+        summary: YearlyTaxSummary,
+        closed_years: dict[int, dict[str, Decimal]] | None,
+    ) -> Decimal:
+        """This year's net result for ledger purposes, pinned if the year is closed.
+
+        Reporting a drift is not enough on its own: until the taxpayer files a
+        rectificativa, the result they DECLARED is the one that governs what they
+        may carry forward. Recomputing it away would silently destroy a pending
+        loss they are still entitled to. So the ledgers read the declared figure
+        for a closed year while ``yearly_summaries`` keeps reporting the
+        recomputed truth (and :meth:`check_closed_years` keeps flagging the gap).
+
+        Falls back to :attr:`closed_years` when no explicit mapping is given, so
+        the CLI can set the filing state once and every view inherits it. Passing
+        an empty dict explicitly disables the freeze for that call.
+        """
+        if closed_years is None:
+            closed_years = self.closed_years
+        declared = closed_years.get(year, {})
+        if "net_gain_loss" in declared:
+            return Decimal(str(declared["net_gain_loss"]))
+        return summary.net_gain_loss
+
+    def check_closed_years(self, declared: dict[int, dict[str, Decimal]]) -> list[ClosedYearDrift]:
+        """Compare already-filed years against what the engine now computes.
+
+        Art. 33.5.f can legitimately move a past year's result — a repurchase in
+        January blocks a loss realised the previous December — but Rule 3 forbids
+        rewriting a closed year in silence. So the engine never touches those
+        summaries; it reports every divergence and leaves the decision (a
+        complementaria, a rectificativa, or nothing) to the taxpayer.
+
+        ``declared`` maps a tax year to the figures as filed, e.g.
+        ``{2022: {"net_gain_loss": Decimal("-5000")}}``. Any attribute or property
+        of :class:`YearlyTaxSummary` can be pinned this way. This method is
+        strictly read-only.
+        """
+        drifts: list[ClosedYearDrift] = []
+        for year in sorted(declared):
+            summary = self.yearly_summaries.get(year)
+            for field_name, declared_value in declared[year].items():
+                # A tax return is filed in cents while the engine carries four
+                # decimals, so both sides are compared (and reported) at cent
+                # precision. Without this every correctly-declared year would
+                # raise a sub-cent drift and the alert would become noise.
+                declared_value = _to_cents(declared_value)
+                computed = (
+                    Decimal("0.00") if summary is None else _to_cents(getattr(summary, field_name))
+                )
+                if computed != declared_value:
+                    drifts.append(
+                        ClosedYearDrift(
+                            year=year,
+                            field=field_name,
+                            declared=declared_value,
+                            computed=computed,
+                        )
+                    )
+        return drifts
+
     def get_yearly_summary(self, year: int) -> YearlyTaxSummary | None:
         """Get the tax summary for a specific year."""
         return self.yearly_summaries.get(year)
@@ -465,6 +762,7 @@ class TaxEngine:
         self,
         opening_losses: dict[int, Decimal] | None = None,
         max_year: int | None = None,
+        closed_years: dict[int, dict[str, Decimal]] | None = None,
     ) -> CarryforwardLedger:
         """
         Simulate the 4-year loss carryforward across the tracked years (Art. 49 LIRPF).
@@ -472,6 +770,10 @@ class TaxEngine:
         A net loss generated in year Y can offset net savings-base gains of years
         Y+1 .. Y+4 only. Oldest losses are consumed first. Losses not used within
         that window expire.
+
+        ``closed_years`` pins already-filed years to the result that was declared,
+        so a later repurchase cannot silently delete a loss the taxpayer is still
+        carrying (see :meth:`_frozen_net`).
 
         ``opening_losses`` optionally seeds the pool with pending net losses from
         years *before* the imported data window, as ``{origin_year: magnitude}``
@@ -499,7 +801,7 @@ class TaxEngine:
                     survivors.append([origin_year, remaining])
             pool = survivors
 
-            net = summaries[year].net_gain_loss
+            net = self._frozen_net(year, summaries[year], closed_years)
             applied = Decimal("0")
             new_loss = Decimal("0")
             taxable_after = max(Decimal("0"), net)
@@ -555,6 +857,7 @@ class TaxEngine:
         opening_losses: dict[int, Decimal] | None = None,
         opening_rcm_losses: dict[int, Decimal] | None = None,
         max_year: int | None = None,
+        closed_years: dict[int, dict[str, Decimal]] | None = None,
     ) -> SavingsLedger:
         """
         Simulate the full savings base across two categories (Art. 48 & 49 LIRPF):
@@ -614,7 +917,11 @@ class TaxEngine:
             gp_pool = _expire(gp_pool, "G/L", year)
             rcm_pool = _expire(rcm_pool, "RCM", year)
 
-            gp_net = summaries[year].net_gain_loss if year in summaries else Decimal("0")
+            gp_net = (
+                self._frozen_net(year, summaries[year], closed_years)
+                if year in summaries
+                else Decimal("0")
+            )
             inc = savings_income.get(year)
             rcm_net = inc.rcm_net if inc else Decimal("0")
             foreign_tax = inc.foreign_tax_eur if inc else Decimal("0")

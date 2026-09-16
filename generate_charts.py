@@ -493,33 +493,16 @@ def main():
         sec_espp_map = {}
         if sec_ticker == ticker:
             if args.demo:
-                sec_espp_map = {
-                    date(2020, 11, 27): (Decimal("45.20"), Decimal("38.42")),
-                    date(2021, 5, 28): (Decimal("60.87"), Decimal("51.74")),
-                    date(2021, 11, 26): (Decimal("74.08"), Decimal("62.97")),
-                    date(2022, 5, 27): (Decimal("44.93"), Decimal("38.19")),
-                }
+                # Both figures come from the engine's own ESPP lots, so the demo
+                # dashboard can never disagree with the demo tax report.
                 from tax_engine.cli_main import detect_espp_early_sales
-                from tax_engine.ecb_rates import ECBRateFetcher
+                from tax_engine.dashboard_helpers import espp_discounts_from_lots
 
-                espp_discounts = {}
-                for acq_date, (fmv, price) in sec_espp_map.items():
-                    qty = (
-                        Decimal("50")
-                        if acq_date in (date(2020, 11, 27), date(2021, 5, 28))
-                        else (Decimal("100") if acq_date == date(2021, 11, 26) else Decimal("105"))
-                    )
-                    discount_usd = (fmv - price) * qty
-                    fx_rate = ECBRateFetcher.get_rate(acq_date)
-                    discount_eur = (discount_usd * fx_rate).quantize(Decimal("0.01"))
-                    espp_discounts[acq_date.year] = (
-                        espp_discounts.get(acq_date.year, Decimal("0")) + discount_eur
-                    )
-
-                espp_early_sales, _ = detect_espp_early_sales(
-                    sec_engine.processed_events, sec_espp_map
-                )
-                sec_total_espp_discount = sum(espp_discounts.values())
+                espp_discounts = espp_discounts_from_lots(sec_engine)
+                espp_early_sales = detect_espp_early_sales(
+                    sec_engine.processed_events
+                ).taxable_by_year
+                sec_total_espp_discount = sum(espp_discounts.values(), Decimal("0"))
                 sec_lost_espp_discount = (
                     sum(espp_early_sales.values()) if espp_early_sales else Decimal("0")
                 )
@@ -555,7 +538,7 @@ def main():
             today_dt if today_dt.year >= 2026 else sec_events[-1].event_date
         )
         sec_unsold_lots_data, sec_espp_active_lots = build_unsold_lots_and_espp_tracker(
-            sec_engine, sec_espp_map, sec_current_reference_date
+            sec_engine, sec_current_reference_date
         )
 
         sec_at_risk_espp_discount = Decimal(

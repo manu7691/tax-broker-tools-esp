@@ -10,7 +10,8 @@ from decimal import Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from tax_engine import EventType
+from tax_engine import EventType, LotOrigin
+from tax_engine.dates import add_months
 from tax_engine.ecb_rates import ECBRateFetcher
 
 if TYPE_CHECKING:
@@ -204,7 +205,7 @@ def calculate_espp_savings(
 
     espp_discounts = calculate_espp_discounts(input_dir)
     espp_map = build_espp_purchase_map(input_dir)
-    espp_early_sales, _ = detect_espp_early_sales(engine.processed_events, espp_map)
+    espp_early_sales = detect_espp_early_sales(engine.processed_events).taxable_by_year
 
     total_espp_discount = sum(espp_discounts.values(), Decimal("0"))
     lost_espp_discount = sum(espp_early_sales.values(), Decimal("0"))
@@ -213,15 +214,45 @@ def calculate_espp_savings(
     return saved_espp_discount, lost_espp_discount, total_espp_discount, espp_map
 
 
+def espp_discounts_from_lots(engine: "TaxEngine") -> dict[int, Decimal]:
+    """Total ESPP purchase discount per purchase year, read off the lots themselves.
+
+    Same source of truth as the Art. 42.3.f analysis, so the "exempt vs. lost"
+    figures on the dashboard can never drift from the ones in the tax report.
+    Lots with no discount data on them contribute nothing (and are flagged by
+    ``detect_espp_early_sales`` if they are ever sold early).
+    """
+    discounts: dict[int, Decimal] = {}
+    for lot in engine.lot_ledger:
+        if lot.origin is not LotOrigin.ESPP:
+            continue
+        if lot.espp_fmv_usd is None or lot.espp_price_usd is None:
+            continue
+        fx_rate = lot.fx_rate or ECBRateFetcher.get_rate(lot.acquisition_date)
+        discount = ((lot.espp_fmv_usd - lot.espp_price_usd) * lot.shares * fx_rate).quantize(
+            Decimal("0.01")
+        )
+        year = lot.acquisition_date.year
+        discounts[year] = discounts.get(year, Decimal("0")) + discount
+    return discounts
+
+
 def build_unsold_lots_and_espp_tracker(
-    engine: "TaxEngine", espp_map: "dict[date, tuple[Decimal, Decimal]]", reference_date: date
+    engine: "TaxEngine", reference_date: date
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """
     Build unsold lots data for the simulator and ESPP active lots for the countdown tracker.
 
+    An ESPP lot is identified by its typed ``origin`` and valued from the discount
+    data stored on the lot itself, so this agrees exactly with the Art. 42.3.f
+    figures in the tax report. The 36 months are counted date to date, which is
+    why a 29-Feb lot unlocks on 28-Feb three years later.
+
     Returns:
         (unsold_lots_data, espp_active_lots)
     """
+    from tax_engine.cli_main import ESPP_HOLDING_MONTHS
+
     unsold_lots_data: list[dict[str, Any]] = []
     espp_active_lots: list[dict[str, Any]] = []
 
@@ -239,23 +270,16 @@ def build_unsold_lots_and_espp_tracker(
             }
         )
 
-        if "ESPP" in lot.notes:
-            try:
-                unlock_date = lot.acquisition_date.replace(year=lot.acquisition_date.year + 3)
-            except ValueError:  # Leap year
-                unlock_date = lot.acquisition_date.replace(
-                    year=lot.acquisition_date.year + 3, day=28
-                )
-
+        if lot.origin is LotOrigin.ESPP:
+            unlock_date = add_months(lot.acquisition_date, ESPP_HOLDING_MONTHS)
             days_left = (unlock_date - reference_date).days
 
-            # Resolve original discount at risk
-            espp_info = espp_map.get(lot.acquisition_date)
+            # Discount still exposed if these shares were sold today, valued from
+            # the lot's own FMV/price and its own acquisition FX rate.
             discount_at_risk_eur = 0.0
-            if espp_info:
-                fmv_usd, purchase_price_usd = espp_info
-                disc_per_share_usd = fmv_usd - purchase_price_usd
-                fx_rate = ECBRateFetcher.get_rate(lot.acquisition_date)
+            if lot.espp_fmv_usd is not None and lot.espp_price_usd is not None:
+                disc_per_share_usd = lot.espp_fmv_usd - lot.espp_price_usd
+                fx_rate = lot.fx_rate or ECBRateFetcher.get_rate(lot.acquisition_date)
                 discount_at_risk_eur = float(disc_per_share_usd * lot.remaining_shares * fx_rate)
 
             status = "🔓 Exemption Secured" if days_left <= 0 else "🔒 Locked"

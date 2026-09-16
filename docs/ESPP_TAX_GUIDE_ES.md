@@ -65,7 +65,7 @@ Imagina esta cronología de eventos:
 
 ## 3. ¿Qué ocurre si rompo la regla de los 3 años?
 
-Si vendes acciones de ESPP antes de cumplir los 3 años desde su compra:
+Si vendes acciones de ESPP antes de cumplir los **36 meses** desde su compra (contados de fecha a fecha, de modo que un lote del 29-feb queda libre el 28-feb tres años después):
 
 1. **Pérdida de la exención**: El descuento de las acciones vendidas deja de estar exento y tributa como **Rendimiento del Trabajo** ordinario en la escala general (como tu salario).
 2. **Imputación temporal**: El descuento tributa en el **Año de Compra**, no en el año de la venta.

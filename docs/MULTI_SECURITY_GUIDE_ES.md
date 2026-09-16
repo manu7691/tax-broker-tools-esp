@@ -28,6 +28,8 @@ Cualquiera de estas opciones activa el modo cartera:
 
 Sin ninguna de ellas, el comportamiento es exactamente el de antes (solo el valor principal). El modo de un solo valor no cambia.
 
+> **Los ISINs se propagan automáticamente.** Un ISIN conocido por un solo evento se aplica a todos los eventos de ese ticker, de modo que un valor que un bróker reporta con ISIN y otro sin él comparte una única cola FIFO. `isin_map` solo hace falta cuando ninguna fuente aporta el ISIN. Un ticker que resuelve a dos ISINs distintos detiene la ejecución con `AmbiguousSecurityError` en lugar de adivinar.
+
 ## `input/securities.json`
 
 Todos los campos son opcionales:
