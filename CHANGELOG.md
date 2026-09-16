@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Warns when a deferral is scheduled to be deducted twice.** If
+  `input/closed_years.json` shows a year was filed with less blocked loss than the
+  engine now computes, the difference was in practice taken as deductible then, and
+  integrating its later release would compute the same loss twice. The CLI reports
+  this (`TaxEngine.releases_already_deducted()`) **without changing any figure**,
+  because the remedy the law provides is to regularise the affected year
+  (Art. 122.2 LGT), after which the later integration is legitimate — not to net the
+  error against a later year, a practice the administration has treated as
+  sanctionable when used to carry improper negative bases forward.
+  `--forfeit-declared-releases` (`TaxEngine.apply_closed_year_forfeits()`) gives up
+  the future deduction instead, for taxpayers who decide with their advisor not to
+  regularise. Opt-in, and documented as having no direct statutory backing.
+
 ### Changed
 
 - **BREAKING (tax figures): Art. 33.5.f deferred losses now require a DEFINITIVE

@@ -804,3 +804,108 @@ class TestDefinitiveTransmissionPolicy:
 
         assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-5000.0000")
         assert engine.get_yearly_summary(2024) is None
+
+
+class TestClosedYearForfeits:
+    """A closed year that already deducted its blocked losses cannot release them again.
+
+    If the return as filed took the loss as deductible, the deferral the engine now
+    computes for that year was, in practice, already used. Integrating its later
+    release would deduct the same loss twice — so releases attributed to that origin
+    are forfeited, up to the amount the filed return already absorbed.
+    """
+
+    HISTORY = [
+        ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+        ev(date(2022, 5, 10), EventType.SELL, "100", "50"),  # loss -5000
+        ev(date(2022, 5, 20), EventType.BUY, "100", "50"),  # blocks it
+        ev(date(2023, 9, 10), EventType.SELL, "100", "50"),  # definitive -> releases
+    ]
+
+    def test_without_a_declaration_the_release_stands(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-5000.0000")
+
+    def test_a_year_filed_with_the_loss_deducted_forfeits_its_release(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        # As filed, 2022 reported no blocked loss: the -5000 was taken that year.
+        engine.closed_years = {2022: {"blocked_losses": Decimal("0.00")}}
+
+        engine.apply_closed_year_forfeits()
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("0")
+        assert engine.get_yearly_summary(2023).unlocked_losses_by_origin == {}
+
+    def test_a_year_filed_as_blocked_keeps_its_release(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        engine.closed_years = {2022: {"blocked_losses": Decimal("-5000.00")}}
+
+        engine.apply_closed_year_forfeits()
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-5000.0000")
+
+    def test_a_partial_declaration_forfeits_only_the_part_already_deducted(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        # Filed as 3000 blocked, so 2000 of the deferral was deducted in 2022.
+        engine.closed_years = {2022: {"blocked_losses": Decimal("-3000.00")}}
+
+        engine.apply_closed_year_forfeits()
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-3000.0000")
+
+    def test_applying_it_twice_changes_nothing(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        engine.closed_years = {2022: {"blocked_losses": Decimal("0.00")}}
+
+        engine.apply_closed_year_forfeits()
+        engine.apply_closed_year_forfeits()
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("0")
+
+
+class TestForfeitsAreOptIn:
+    """Forfeiting a release is a reconciliation choice, not a rule of law.
+
+    Art. 122.2 LGT settles an error in a non-prescribed year by regularising THAT
+    year, not by netting it against a later one. So the engine detects the
+    situation and lets the caller decide; it never forfeits on its own.
+    """
+
+    HISTORY = [
+        ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+        ev(date(2022, 5, 10), EventType.SELL, "100", "50"),
+        ev(date(2022, 5, 20), EventType.BUY, "100", "50"),
+        ev(date(2023, 9, 10), EventType.SELL, "100", "50"),
+    ]
+
+    def _engine(self) -> TaxEngine:
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        engine.closed_years = {2022: {"blocked_losses": Decimal("0.00")}}
+        return engine
+
+    def test_setting_closed_years_does_not_forfeit_anything_by_itself(self):
+        engine = self._engine()
+
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-5000.0000")
+
+    def test_the_conflict_is_reported_without_changing_any_figure(self):
+        engine = self._engine()
+
+        pending = engine.releases_already_deducted()
+
+        assert pending == {2022: Decimal("5000.00")}
+        assert engine.get_yearly_summary(2023).unlocked_historical_losses == Decimal("-5000.0000")
+
+    def test_nothing_is_reported_when_the_year_was_filed_as_blocked(self):
+        engine = TaxEngine()
+        engine.process_all(list(self.HISTORY))
+        engine.closed_years = {2022: {"blocked_losses": Decimal("-5000.00")}}
+
+        assert engine.releases_already_deducted() == {}

@@ -798,6 +798,15 @@ def main() -> None:
         "definitiveness test (more aggressive).",
     )
     parser.add_argument(
+        "--forfeit-declared-releases",
+        action="store_true",
+        help="Give up future integration of deferrals that a closed year already "
+        "deducted when it was filed, instead of regularising that year. No direct "
+        "statutory backing: Art. 122.2 LGT settles such an error by amending the "
+        "affected year. Use only as a deliberate decision taken with an advisor; "
+        "without this flag the conflict is reported but no figure is changed.",
+    )
+    parser.add_argument(
         "--closed-years",
         type=Path,
         default=None,
@@ -915,6 +924,35 @@ def main() -> None:
     # keep the loss the taxpayer actually declared until they amend it, even when
     # a later repurchase changes what the engine now computes.
     engine.closed_years = closed_years
+    # A year filed with the loss already deducted would otherwise release it again.
+    # Detected always; only acted upon when the user explicitly asks, because the
+    # remedy the law provides is to regularise that year (Art. 122.2 LGT), not to
+    # net the error against a later one.
+    already_deducted = engine.releases_already_deducted()
+    if already_deducted and args.forfeit_declared_releases:
+        forfeited = engine.apply_closed_year_forfeits()
+        print()
+        print("ℹ️  RELEASES FORFEITED (--forfeit-declared-releases)")
+        print("-" * 95)
+        for origin, amount in sorted(forfeited.items()):
+            print(f"    origin {origin}: €{amount:,.2f} of deferred loss will NOT be integrated.")
+        print("    Note: this leaves the affected return uncorrected. The remedy the law")
+        print("    provides is a complementaria for that year — see --help.")
+        print()
+    elif already_deducted:
+        print()
+        print("⚠️  RISK OF DEDUCTING THE SAME LOSS TWICE")
+        print("-" * 95)
+        print("These years were filed deducting a loss that the current criterion blocks.")
+        print("Their deferral is scheduled to be integrated again in a later year:")
+        for origin, amount in sorted(already_deducted.items()):
+            print(f"    {origin}: €{amount:,.2f} already deducted when filed")
+        print()
+        print("Art. 122.2 LGT settles this by regularising the affected year (complementaria),")
+        print("after which the later integration is legitimate. If you decide with your advisor")
+        print("NOT to regularise, re-run with --forfeit-declared-releases to give up the")
+        print("corresponding future deduction instead.")
+        print()
     drifts = engine.check_closed_years(closed_years)
     if drifts:
         print()
