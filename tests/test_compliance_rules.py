@@ -909,3 +909,32 @@ class TestForfeitsAreOptIn:
         engine.closed_years = {2022: {"blocked_losses": Decimal("-5000.00")}}
 
         assert engine.releases_already_deducted() == {}
+
+
+class TestClosedYearsFileAnnotations:
+    """``closed_years.json`` is hand-edited, so it has to tolerate notes.
+
+    It records why each year is declared the way it is — which matters here,
+    because a year that OMITTED its losses looks nothing like one that deducted
+    them, and only a human can say which happened.
+    """
+
+    def test_underscore_keys_are_treated_as_comments(self, tmp_path: Path):
+        from tax_engine.cli_main import load_closed_years
+
+        (tmp_path / "closed_years.json").write_text(
+            '{"_nota": "2025 refleja el estado previsto tras la complementaria",'
+            ' "2025": {"net_gain_loss": "6276.42"}}'
+        )
+
+        assert load_closed_years(tmp_path / "closed_years.json") == {
+            2025: {"net_gain_loss": Decimal("6276.42")}
+        }
+
+    def test_a_genuinely_malformed_year_still_fails_loudly(self, tmp_path: Path):
+        from tax_engine.cli_main import load_closed_years
+
+        (tmp_path / "closed_years.json").write_text('{"dosmilveinticinco": "100"}')
+
+        with pytest.raises(ValueError):
+            load_closed_years(tmp_path / "closed_years.json")

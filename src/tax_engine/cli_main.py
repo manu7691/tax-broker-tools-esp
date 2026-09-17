@@ -193,7 +193,8 @@ def load_closed_years(path: Path) -> dict[int, dict[str, Decimal]]:
 
         {"2022": {"net_gain_loss": "-5000.00"}, "2021": "120.00"}
 
-    A bare number is shorthand for ``{"net_gain_loss": ...}``. A missing file
+    A bare number is shorthand for ``{"net_gain_loss": ...}``. Keys beginning with
+    ``_`` are treated as comments and skipped. A missing file
     simply declares nothing; a malformed one is reported rather than ignored,
     because silently skipping it would defeat the whole check.
     """
@@ -205,6 +206,12 @@ def load_closed_years(path: Path) -> dict[int, dict[str, Decimal]]:
 
     declared: dict[int, dict[str, Decimal]] = {}
     for year, value in raw.items():
+        # The file is hand-maintained and records WHY each year reads as it does —
+        # a year that omitted its losses looks nothing like one that deducted them,
+        # and only the taxpayer knows which happened. Keys starting with "_" are
+        # notes; anything else must be a real tax year, so a typo still fails loudly.
+        if year.startswith("_"):
+            continue
         fields = value if isinstance(value, dict) else {"net_gain_loss": value}
         declared[int(year)] = {name: Decimal(str(amount)) for name, amount in fields.items()}
     return declared
@@ -646,6 +653,12 @@ def detect_espp_early_sales(
     return EsppEarlySaleReport(taxable_by_year=taxable_by_year, details=details, warnings=warnings)
 
 
+# How far after a vest its withholding sale may appear. Must absorb T+2
+# settlement plus a weekend, and vests dated on a non-trading day push the sale
+# later still; seven days covers the observed cases without loosening the exact
+# quantity match that actually identifies the sale.
+_COVER_SALE_MATCH_DAYS = 7
+
 # E-Trade order statuses that mean the trade has fully settled and its RSU
 # confirmation PDF is therefore available. Anything else ("Executed", "Open", ...)
 # is still in flight, so a matching VEST event may not exist yet.
@@ -676,7 +689,9 @@ def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = Non
 
     Classification is three-way:
       * Sell-to-Cover (Auto-detected): the sold quantity matches a VEST's
-        shares_sold_to_cover within 3 days — confirmed against the RSU PDF.
+        shares_sold_to_cover within a week — confirmed against the RSU PDF. The window
+        absorbs T+2 settlement plus a weekend; the exact quantity match is what
+        actually identifies the sale (see _COVER_SALE_MATCH_DAYS).
       * Pending Settlement: unmatched, but the order has not settled yet, so its
         RSU confirmation PDF may simply not exist yet. We do NOT assert manual
         vs sell-to-cover; re-running after settlement resolves it.
@@ -696,11 +711,13 @@ def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = Non
 
         # Check against RSU vests
         for vest in vests:
-            # Must be within 3 days (often same day, but can vary by a day or two)
             days_diff = abs((sell.event_date - vest.event_date).days)
-            # Within 3 days and quantity matches the withheld shares from the PDF
+            # The cover sale settles a few days after the vest: T+2 plus a weekend
+            # reaches four calendar days, and a vest dated on a Saturday pushes it
+            # further still. The quantity has to equal the withheld shares from the
+            # RSU confirmation exactly, which is what keeps the wider window safe.
             if (
-                days_diff <= 3
+                days_diff <= _COVER_SALE_MATCH_DAYS
                 and sell.shares == vest.shares_sold_to_cover
                 and vest.shares_sold_to_cover > 0
             ):

@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Sell-to-cover sales are no longer mislabelled as manual sells.** The window for
+  matching a withholding sale to its vest went from 3 to 7 calendar days: a vest
+  dated on a Thursday or a non-trading day settles its cover sale after a weekend,
+  which reached four calendar days and fell outside the old window. Real data had
+  three such sales reported as voluntary disposals. The exact quantity match against
+  the RSU confirmation is what identifies the sale, so the wider window adds no false
+  positives. Tax figures are unaffected — only the label.
+- **`input/closed_years.json` accepts comments.** Keys beginning with `_` are
+  skipped, so the file can record why each year is declared the way it is; a year
+  that omitted its losses needs a different entry from one that deducted them, and
+  only the taxpayer knows which. A malformed year key still fails loudly.
+
 - **Warns when a deferral is scheduled to be deducted twice.** If
   `input/closed_years.json` shows a year was filed with less blocked loss than the
   engine now computes, the difference was in practice taken as deductible then, and
