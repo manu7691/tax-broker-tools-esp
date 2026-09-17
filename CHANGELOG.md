@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Sell-to-cover sales are no longer mislabelled as manual sells.** The window for
+  matching a withholding sale to its vest went from 3 to 7 calendar days: a vest
+  dated on a Thursday or a non-trading day settles its cover sale after a weekend,
+  which reached four calendar days and fell outside the old window. Real data had
+  three such sales reported as voluntary disposals. The exact quantity match against
+  the RSU confirmation is what identifies the sale, so the wider window adds no false
+  positives. Tax figures are unaffected — only the label.
+- **`input/closed_years.json` accepts comments.** Keys beginning with `_` are
+  skipped, so the file can record why each year is declared the way it is; a year
+  that omitted its losses needs a different entry from one that deducted them, and
+  only the taxpayer knows which. A malformed year key still fails loudly.
+
+- **Warns when a deferral is scheduled to be deducted twice.** If
+  `input/closed_years.json` shows a year was filed with less blocked loss than the
+  engine now computes, the difference was in practice taken as deductible then, and
+  integrating its later release would compute the same loss twice. The CLI reports
+  this (`TaxEngine.releases_already_deducted()`) **without changing any figure**,
+  because the remedy the law provides is to regularise the affected year
+  (Art. 122.2 LGT), after which the later integration is legitimate — not to net the
+  error against a later year, a practice the administration has treated as
+  sanctionable when used to carry improper negative bases forward.
+  `--forfeit-declared-releases` (`TaxEngine.apply_closed_year_forfeits()`) gives up
+  the future deduction instead, for taxpayers who decide with their advisor not to
+  regularise. Opt-in, and documented as having no direct statutory backing.
+
 ### Changed
 
 - **BREAKING (tax figures): Art. 33.5.f deferred losses now require a DEFINITIVE

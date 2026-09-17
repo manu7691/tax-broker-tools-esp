@@ -193,7 +193,8 @@ def load_closed_years(path: Path) -> dict[int, dict[str, Decimal]]:
 
         {"2022": {"net_gain_loss": "-5000.00"}, "2021": "120.00"}
 
-    A bare number is shorthand for ``{"net_gain_loss": ...}``. A missing file
+    A bare number is shorthand for ``{"net_gain_loss": ...}``. Keys beginning with
+    ``_`` are treated as comments and skipped. A missing file
     simply declares nothing; a malformed one is reported rather than ignored,
     because silently skipping it would defeat the whole check.
     """
@@ -205,6 +206,12 @@ def load_closed_years(path: Path) -> dict[int, dict[str, Decimal]]:
 
     declared: dict[int, dict[str, Decimal]] = {}
     for year, value in raw.items():
+        # The file is hand-maintained and records WHY each year reads as it does —
+        # a year that omitted its losses looks nothing like one that deducted them,
+        # and only the taxpayer knows which happened. Keys starting with "_" are
+        # notes; anything else must be a real tax year, so a typo still fails loudly.
+        if year.startswith("_"):
+            continue
         fields = value if isinstance(value, dict) else {"net_gain_loss": value}
         declared[int(year)] = {name: Decimal(str(amount)) for name, amount in fields.items()}
     return declared
@@ -646,6 +653,12 @@ def detect_espp_early_sales(
     return EsppEarlySaleReport(taxable_by_year=taxable_by_year, details=details, warnings=warnings)
 
 
+# How far after a vest its withholding sale may appear. Must absorb T+2
+# settlement plus a weekend, and vests dated on a non-trading day push the sale
+# later still; seven days covers the observed cases without loosening the exact
+# quantity match that actually identifies the sale.
+_COVER_SALE_MATCH_DAYS = 7
+
 # E-Trade order statuses that mean the trade has fully settled and its RSU
 # confirmation PDF is therefore available. Anything else ("Executed", "Open", ...)
 # is still in flight, so a matching VEST event may not exist yet.
@@ -676,7 +689,9 @@ def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = Non
 
     Classification is three-way:
       * Sell-to-Cover (Auto-detected): the sold quantity matches a VEST's
-        shares_sold_to_cover within 3 days — confirmed against the RSU PDF.
+        shares_sold_to_cover within a week — confirmed against the RSU PDF. The window
+        absorbs T+2 settlement plus a weekend; the exact quantity match is what
+        actually identifies the sale (see _COVER_SALE_MATCH_DAYS).
       * Pending Settlement: unmatched, but the order has not settled yet, so its
         RSU confirmation PDF may simply not exist yet. We do NOT assert manual
         vs sell-to-cover; re-running after settlement resolves it.
@@ -696,11 +711,13 @@ def auto_detect_sell_to_cover(events: list[StockEvent], today: date | None = Non
 
         # Check against RSU vests
         for vest in vests:
-            # Must be within 3 days (often same day, but can vary by a day or two)
             days_diff = abs((sell.event_date - vest.event_date).days)
-            # Within 3 days and quantity matches the withheld shares from the PDF
+            # The cover sale settles a few days after the vest: T+2 plus a weekend
+            # reaches four calendar days, and a vest dated on a Saturday pushes it
+            # further still. The quantity has to equal the withheld shares from the
+            # RSU confirmation exactly, which is what keeps the wider window safe.
             if (
-                days_diff <= 3
+                days_diff <= _COVER_SALE_MATCH_DAYS
                 and sell.shares == vest.shares_sold_to_cover
                 and vest.shares_sold_to_cover > 0
             ):
@@ -796,6 +813,15 @@ def main() -> None:
         "the following 2 months. 'position_zero' additionally demands a full "
         "liquidation (more conservative); 'per_lot' frees on any disposal, with no "
         "definitiveness test (more aggressive).",
+    )
+    parser.add_argument(
+        "--forfeit-declared-releases",
+        action="store_true",
+        help="Give up future integration of deferrals that a closed year already "
+        "deducted when it was filed, instead of regularising that year. No direct "
+        "statutory backing: Art. 122.2 LGT settles such an error by amending the "
+        "affected year. Use only as a deliberate decision taken with an advisor; "
+        "without this flag the conflict is reported but no figure is changed.",
     )
     parser.add_argument(
         "--closed-years",
@@ -915,6 +941,35 @@ def main() -> None:
     # keep the loss the taxpayer actually declared until they amend it, even when
     # a later repurchase changes what the engine now computes.
     engine.closed_years = closed_years
+    # A year filed with the loss already deducted would otherwise release it again.
+    # Detected always; only acted upon when the user explicitly asks, because the
+    # remedy the law provides is to regularise that year (Art. 122.2 LGT), not to
+    # net the error against a later one.
+    already_deducted = engine.releases_already_deducted()
+    if already_deducted and args.forfeit_declared_releases:
+        forfeited = engine.apply_closed_year_forfeits()
+        print()
+        print("ℹ️  RELEASES FORFEITED (--forfeit-declared-releases)")
+        print("-" * 95)
+        for origin, amount in sorted(forfeited.items()):
+            print(f"    origin {origin}: €{amount:,.2f} of deferred loss will NOT be integrated.")
+        print("    Note: this leaves the affected return uncorrected. The remedy the law")
+        print("    provides is a complementaria for that year — see --help.")
+        print()
+    elif already_deducted:
+        print()
+        print("⚠️  RISK OF DEDUCTING THE SAME LOSS TWICE")
+        print("-" * 95)
+        print("These years were filed deducting a loss that the current criterion blocks.")
+        print("Their deferral is scheduled to be integrated again in a later year:")
+        for origin, amount in sorted(already_deducted.items()):
+            print(f"    {origin}: €{amount:,.2f} already deducted when filed")
+        print()
+        print("Art. 122.2 LGT settles this by regularising the affected year (complementaria),")
+        print("after which the later integration is legitimate. If you decide with your advisor")
+        print("NOT to regularise, re-run with --forfeit-declared-releases to give up the")
+        print("corresponding future deduction instead.")
+        print()
     drifts = engine.check_closed_years(closed_years)
     if drifts:
         print()

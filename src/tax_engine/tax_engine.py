@@ -713,6 +713,70 @@ class TaxEngine:
             return Decimal(str(declared["net_gain_loss"]))
         return summary.net_gain_loss
 
+    def releases_already_deducted(self) -> dict[int, Decimal]:
+        """Deferrals a closed year appears to have deducted when it was filed.
+
+        For each year declared in :attr:`closed_years`, the amount by which the
+        blocked loss the engine now computes exceeds the blocked loss actually
+        reported. That excess was, in practice, taken as deductible back then — so
+        integrating its later release would compute the same loss twice.
+
+        **This is a detection, not a rule.** Art. 122.2 LGT settles an error in a
+        non-prescribed year by regularising THAT year, not by netting it against a
+        later one, and the administration has treated silent forward netting of
+        improper negative bases as sanctionable. The normal remedy is therefore a
+        complementaria for the affected year, after which the release is legitimate
+        and needs no adjustment here. :meth:`apply_closed_year_forfeits` exists for
+        the taxpayer who, with their advisor, decides not to regularise; it is never
+        applied automatically. Read-only.
+        """
+        pending: dict[int, Decimal] = {}
+        for year, declared in self.closed_years.items():
+            if "blocked_losses" not in declared:
+                continue
+            summary = self.yearly_summaries.get(year)
+            if summary is None:
+                continue
+            computed = abs(_to_cents(summary.blocked_losses))
+            as_filed = abs(_to_cents(declared["blocked_losses"]))
+            if computed > as_filed:
+                pending[year] = computed - as_filed
+        return pending
+
+    def apply_closed_year_forfeits(self) -> dict[int, Decimal]:
+        """Drop the releases identified by :meth:`releases_already_deducted`.
+
+        **Opt-in, and without direct statutory backing.** It models the choice of
+        leaving an erroneous prior year untouched and giving up the corresponding
+        future deduction instead. Arithmetically the taxpayer ends up with the same
+        total deduction, but the affected return stays uncorrected — which is not
+        what Art. 122.2 LGT prescribes. Use it only as a deliberate decision taken
+        with an advisor; the default path is to regularise the year.
+
+        Idempotent. Returns the amount forfeited per origin year.
+        """
+        budget = self.releases_already_deducted()
+        if not budget:
+            return {}
+
+        forfeited: dict[int, Decimal] = {}
+        for summary in sorted(self.yearly_summaries.values(), key=lambda s: s.year):
+            for origin in sorted(summary.unlocked_losses_by_origin):
+                left = budget.get(origin, Decimal("0"))
+                if left <= 0:
+                    continue
+                amount = summary.unlocked_losses_by_origin[origin]  # negative
+                take = min(abs(amount), left)
+                budget[origin] = left - take
+                forfeited[origin] = forfeited.get(origin, Decimal("0")) + take
+                summary.unlocked_historical_losses += take
+                remaining = amount + take
+                if remaining == 0:
+                    del summary.unlocked_losses_by_origin[origin]
+                else:
+                    summary.unlocked_losses_by_origin[origin] = remaining
+        return forfeited
+
     def check_closed_years(self, declared: dict[int, dict[str, Decimal]]) -> list[ClosedYearDrift]:
         """Compare already-filed years against what the engine now computes.
 

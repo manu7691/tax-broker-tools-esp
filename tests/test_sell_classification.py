@@ -3,7 +3,8 @@ Tests for auto_detect_sell_to_cover() in cli_main.py.
 
 A SELL order is classified three ways:
   * "Sell-to-Cover (Auto-detected)" — sold qty matches a VEST's
-    shares_sold_to_cover within 3 days (confirmed against the RSU PDF).
+    shares_sold_to_cover within _COVER_SALE_MATCH_DAYS calendar days (confirmed
+    against the RSU PDF). The window has to absorb T+2 settlement plus a weekend.
   * "Pending Settlement" — unmatched but not yet settled, so the RSU
     confirmation PDF may not exist yet. Neutral: neither manual nor sell-to-cover.
   * "Manual Sell" — unmatched AND settled, so the data is complete.
@@ -112,3 +113,56 @@ class TestManualSell:
         events = [_sell(event_date=date(2026, 6, 8), status="SETTLED")]
         auto_detect_sell_to_cover(events, today=TODAY)
         assert "Manual Sell" in events[0].notes
+
+
+class TestSettlementLagWindow:
+    """A vest on a Friday or Saturday settles its cover sale the next week.
+
+    The match window has to absorb a weekend plus T+2 settlement. Real data:
+    a 15-Feb-2025 vest (a Saturday) whose 29 withheld shares were sold on the
+    19th, and a 5-Jun-2025 vest (a Thursday) sold on the 9th — both four calendar
+    days out, both exact quantity matches, both previously labelled "Manual Sell".
+    Mislabelling a withholding sale as a voluntary one misrepresents the taxpayer's
+    own record of what they did.
+    """
+
+    def test_matches_a_vest_four_calendar_days_earlier(self) -> None:
+        events = [
+            _vest(event_date=date(2025, 2, 15), sold_to_cover="29"),
+            _sell(event_date=date(2025, 2, 19), shares="29", status="Settled"),
+        ]
+
+        auto_detect_sell_to_cover(events, today=TODAY)
+
+        assert "Sell-to-Cover (Auto-detected)" in events[1].notes
+
+    def test_matches_across_a_full_weekend(self) -> None:
+        events = [
+            _vest(event_date=date(2025, 6, 5), sold_to_cover="65"),
+            _sell(event_date=date(2025, 6, 9), shares="65", status="Settled"),
+        ]
+
+        auto_detect_sell_to_cover(events, today=TODAY)
+
+        assert "Sell-to-Cover (Auto-detected)" in events[1].notes
+
+    def test_a_quantity_that_does_not_match_is_still_a_manual_sell(self) -> None:
+        """Widening the window must not turn any nearby sale into a cover sale."""
+        events = [
+            _vest(event_date=date(2025, 6, 5), sold_to_cover="65"),
+            _sell(event_date=date(2025, 6, 9), shares="440", status="Settled"),
+        ]
+
+        auto_detect_sell_to_cover(events, today=TODAY)
+
+        assert "Manual Sell" in events[1].notes
+
+    def test_a_sale_well_beyond_the_window_stays_manual(self) -> None:
+        events = [
+            _vest(event_date=date(2025, 6, 5), sold_to_cover="65"),
+            _sell(event_date=date(2025, 6, 20), shares="65", status="Settled"),
+        ]
+
+        auto_detect_sell_to_cover(events, today=TODAY)
+
+        assert "Manual Sell" in events[1].notes
