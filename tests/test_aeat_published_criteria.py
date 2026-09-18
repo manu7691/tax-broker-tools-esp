@@ -219,3 +219,68 @@ class TestScopeIsListedSecurities:
         # Correct for a listed security. For an UNLISTED one the one-year window
         # would block this loss, and the engine has no way to express that.
         assert engine.get_yearly_summary(2023).blocked_losses == Decimal("0")
+
+
+class TestTheEsppBreachNoticeMatchesWhatAeatPublishes:
+    """AEAT, Manual Renta 2025, cap. 3, «Entrega de acciones a los trabajadores».
+
+    Three things the notice got wrong or left out, each checked against the
+    published wording rather than against the engine's own docstrings.
+    """
+
+    def _html(self, lang: str = "es") -> str:
+        from tax_engine.report import ReportRenderer
+
+        engine = TaxEngine()
+        engine.process_all([ev(date(2023, 1, 10), EventType.BUY, "10", "10")])
+        return ReportRenderer(engine).generate_html_content(
+            lang=lang, espp_early_sale_discounts={2023: Decimal("484.20")}
+        )
+
+    def test_it_warns_about_late_payment_interest(self):
+        """AEAT: «dará lugar a la obligación […] de presentar una autoliquidación
+        complementaria, **con los correspondientes intereses de demora**».
+
+        The notice told the taxpayer to file and never mentioned that the filing
+        accrues interest — the one consequence that costs money.
+        """
+        assert "intereses de demora" in self._html()
+        assert "late-payment interest" in self._html(lang="en")
+
+    def test_it_names_both_words_the_administration_uses(self):
+        """AEAT says «complementaria» in chapter 3 and «autoliquidación
+        rectificativa» in chapter 18 (regularización) of the 2024 manual.
+
+        The notice asserted only the first. Naming one of two terms the
+        administration itself uses sends the taxpayer to the wrong form.
+        """
+        html = self._html()
+        assert "complementaria" in html.lower()
+        assert "rectificativa" in html.lower()
+
+    def test_it_states_the_requirement_aeat_actually_lists(self):
+        """AEAT's condition is on the EMPLOYER's offer: «Que la oferta se realice
+        en las mismas condiciones para todos los trabajadores de la empresa».
+
+        The notice asserted instead that the employee must have signed the
+        enrolment document — which is useful evidence, but is not among the
+        conditions AEAT lists, and the condition that IS listed was missing.
+        """
+        html = self._html()
+        assert "mismas condiciones" in html
+        assert "todos los trabajadores" in html
+
+    def test_the_twelve_thousand_limit_notes_the_startup_case(self):
+        """The 12.000 € cap rises to 50.000 € for «empresas emergentes» under
+        Ley 28/2022, from 2023. Stating the cap flatly hides which one applies.
+        """
+        from tax_engine.report import ReportRenderer
+
+        engine = TaxEngine()
+        engine.process_all([ev(date(2023, 1, 10), EventType.BUY, "10", "10")])
+        html = ReportRenderer(engine).generate_html_content(
+            lang="es", espp_discounts={2023: Decimal("100.00")}
+        )
+
+        assert "50.000" in html
+        assert "empresa emergente" in html

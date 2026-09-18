@@ -44,6 +44,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The ESPP breach notice corrected against what AEAT publishes.** Checking the
+  Art. 42.3.f claims the way the Art. 33.5.f ones had been checked turned up
+  three defects in a notice that goes to the administration: it never mentioned
+  the **intereses de demora** the filing accrues; it named only
+  *complementaria*, while AEAT's own regularisation chapter calls the same
+  filing *autoliquidación rectificativa*; and it asserted that the employee must
+  have signed the enrolment document, which is not among the conditions AEAT
+  lists — while the condition that **is** listed (the offer made on equal terms
+  to all employees) was missing. The €12,000 cap is now stated with the €50,000
+  case for an *empresa emergente* (Ley 28/2022). Confirmed verbatim: the holding
+  period is three years. Both ESPP guides updated to match.
 - **The engine pinned against AEAT's published criteria, quoted verbatim.**
   `tests/test_aeat_published_criteria.py` tests the engine against the wording
   the administration actually printed, cited with its source in each docstring,

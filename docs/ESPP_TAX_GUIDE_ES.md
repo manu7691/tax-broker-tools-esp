@@ -20,9 +20,9 @@ graph TD
     B -- Sí (Firmaste el acuerdo de inscripción) --> D["¿Cuánto tiempo mantuviste las acciones?"]
     
     D -- Menos de 3 Años (Venta Anticipada) --> E["TRIBUTA como Rendimiento del Trabajo <br> (Requiere Declaración Complementaria del Año de Compra)"]
-    D -- 3 Años o Más --> F["¿El descuento anual total superó los 12.000 €?"]
+    D -- 3 Años o Más --> F["¿El descuento anual total superó el límite exento?"]
     
-    F -- Sí --> G["El exceso sobre 12.000 € TRIBUTA como Rendimiento del Trabajo"]
+    F -- Sí --> G["El exceso sobre el límite TRIBUTA como Rendimiento del Trabajo"]
     F -- No --> H["✅ Descuento 100% EXENTO de Impuestos"]
 
     style H fill:#00c853,stroke:#00e676,stroke-width:2px,color:#fff
@@ -63,13 +63,32 @@ Imagina esta cronología de eventos:
 
 ---
 
+## 2 bis. El límite exento: 12.000 € o 50.000 €
+
+El Art. 42.3.f LIRPF exime el descuento **hasta 12.000 € anuales** por el conjunto de las
+acciones entregadas a cada trabajador. Ese límite sube a **50.000 €** cuando la empresa es
+una *empresa emergente* de la Ley 28/2022 (desde 2023). Cuál de los dos aplica depende de tu
+empleador, no de esta herramienta.
+
+AEAT enumera además dos condiciones que conviene no confundir:
+
+* que los títulos **se mantengan al menos tres años**, y
+* que **la oferta se realice en las mismas condiciones para todos los trabajadores** de la
+  empresa, contribuyendo a su participación en ella.
+
+La segunda es un requisito sobre la **oferta de la empresa**, no sobre el empleado. Guardar
+el documento de inscripción firmado de cada período de oferta conviene como prueba, pero no
+es en sí uno de los requisitos que AEAT enumera.
+
+---
+
 ## 3. ¿Qué ocurre si rompo la regla de los 3 años?
 
 Si vendes acciones de ESPP antes de cumplir los **36 meses** desde su compra (contados de fecha a fecha, de modo que un lote del 29-feb queda libre el 28-feb tres años después):
 
 1. **Pérdida de la exención**: El descuento de las acciones vendidas deja de estar exento y tributa como **Rendimiento del Trabajo** ordinario en la escala general (como tu salario).
 2. **Imputación temporal**: El descuento tributa en el **Año de Compra**, no en el año de la venta.
-3. **Obligación formal**: Debes presentar una **Declaración Complementaria** para el año en que compraste las acciones.
+3. **Obligación formal**: Debes regularizar el año en que compraste las acciones. Ojo con el nombre: el Manual de AEAT lo llama **autoliquidación complementaria** en su capítulo 3, mientras que el capítulo de regularización del Manual 2024 llama a esa misma presentación **autoliquidación rectificativa**. La Administración usa los dos términos; confirma con tu asesor cuál procede para el ejercicio concreto que vayas a corregir.
 4. **Intereses de demora**: Deberás pagar **Intereses de Demora** (alrededor del 3-4% anual) calculados desde el fin de la campaña de renta de ese año de compra hasta la fecha de presentación.
    > [!TIP]
    > Presentar la complementaria de forma voluntaria **no conlleva multas ni sanciones**, solo los intereses de demora por el retraso.
@@ -108,3 +127,9 @@ Muestra este resumen a tu gestor para explicarle el informe del motor fiscal:
 1. **Método FIFO estricto:** Todas las operaciones de venta se cruzan con las compras más antiguas (Art. 37.2 LIRPF).
 2. **Cálculo del coste de adquisición:** Las RSU y ESPP se registran al valor de mercado (FMV) de la fecha de entrega/compra para evitar la doble imposición.
 3. **Detección de ventas anticipadas de ESPP:** El programa detecta automáticamente qué lotes de ESPP se han consumido antes de los 3 años para que puedan declararse correctamente mediante declaraciones complementarias.
+
+> [!NOTE]
+> **Contrastado con material publicado por AEAT** (Manual práctico Renta, cap. 3
+> «Entrega de acciones a los trabajadores» y cap. 18 «Regularización»; consultado
+> el 18/09/2026). Los tests de `tests/test_aeat_published_criteria.py` fijan estas
+> afirmaciones contra la redacción oficial citada.

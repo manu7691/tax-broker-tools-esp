@@ -413,11 +413,11 @@
 <h2>{{ 'Análisis del Período de Retención ESPP de 3 Años (Art. 42.3.f LIRPF)' if is_es else 'ESPP 3-Year Holding Period Analysis (Art. 42.3.f LIRPF)' }}</h2>
 {%- if espp_early_sale_discounts %}
 {%- if not is_es %}
-<p style='color: #cc0000;'><strong>⚠️ The following ESPP discounts are TAXABLE as salary income.</strong><br>Because specific ESPP shares were sold (according to FIFO rules) before reaching the 3-year holding period, they lose their tax exemption. You must file a Complementary Return (Declaración Complementaria) for the year they were originally purchased.</p>
+<p style='color: #cc0000;'><strong>⚠️ The following ESPP discounts are TAXABLE as salary income.</strong><br>Because specific ESPP shares were sold (according to FIFO rules) before reaching the 3-year holding period, they lose their tax exemption, for the year they were originally purchased — that is the year whose return applied the exemption. AEAT's Manual (ch. 3) puts it as an <em>autoliquidación complementaria</em> <strong>with late-payment interest</strong> (intereses de demora); the regularisation chapter of the 2024 Manual (ch. 18) calls the same filing an <em>autoliquidación rectificativa</em>. The administration uses both words — check with your adviser which form applies to the year you are correcting.</p>
 <table>
 <tr><th>Purchase Year (Complementary Return)</th><th>Taxable ESPP Discount (Salary Income)</th></tr>
 {%- else %}
-<p style='color: #cc0000;'><strong>⚠️ Los siguientes descuentos ESPP son IMPONIBLES como rendimiento del trabajo.</strong><br>Debido a que ciertas acciones ESPP fueron vendidas (según reglas FIFO) antes de alcanzar los 3 años de retención, pierden su exención fiscal. Debe presentar una Declaración Complementaria por el año en que fueron adquiridas originalmente.</p>
+<p style='color: #cc0000;'><strong>⚠️ Los siguientes descuentos ESPP son IMPONIBLES como rendimiento del trabajo.</strong><br>Debido a que ciertas acciones ESPP fueron vendidas (según reglas FIFO) antes de alcanzar los 3 años de retención, pierden su exención fiscal, en el ejercicio en que fueron adquiridas — que es el que aplicó la exención. El Manual de AEAT (cap. 3) lo llama <em>autoliquidación complementaria</em>, <strong>con los correspondientes intereses de demora</strong>; el capítulo de regularización del Manual 2024 (cap. 18) llama a esa misma presentación <em>autoliquidación rectificativa</em>. La Administración usa ambos términos — confirma con tu asesor cuál procede para el ejercicio que vas a corregir.</p>
 <table>
 <tr><th>Año de Compra (Declaración Complementaria)</th><th>Descuento ESPP Imponible (Rendimiento del Trabajo)</th></tr>
 {%- endif %}
@@ -430,15 +430,15 @@
 </table>
 {%- elif espp_discounts %}
 {%- if not is_es %}
-<p style='color: green;'><strong>✅ No ESPP shares were sold before the 3-year holding period.</strong> All ESPP discounts may be exempt under Art. 42.3.f LIRPF (subject to €12,000/year limit).</p>
+<p style='color: green;'><strong>✅ No ESPP shares were sold before the 3-year holding period.</strong> All ESPP discounts may be exempt under Art. 42.3.f LIRPF, up to €12,000 a year for the shares delivered to each employee — €50,000 where the employer is an <em>empresa emergente</em> under Ley 28/2022 (from 2023). Which cap applies depends on the employer, not on this report.</p>
 {%- else %}
-<p style='color: green;'><strong>✅ No se vendieron acciones ESPP antes del período de retención de 3 años.</strong> Todos los descuentos ESPP pueden estar exentos según Art. 42.3.f LIRPF (sujeto al límite de 12.000 €/año).</p>
+<p style='color: green;'><strong>✅ No se vendieron acciones ESPP antes del período de retención de 3 años.</strong> Todos los descuentos ESPP pueden estar exentos según el Art. 42.3.f LIRPF, hasta 12.000 € anuales por el conjunto de las entregadas a cada trabajador — 50.000 € si la empresa es una <em>empresa emergente</em> de la Ley 28/2022 (desde 2023). Cuál de los dos límites aplica depende de tu empresa, no de este informe.</p>
 {%- endif %}
 {%- endif %}
 {%- if not is_es %}
-<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANT:</strong> Employee must have signed the ESPP enrollment/agreement document from the company for each offering period to qualify for the tax exemption.</p>
+<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ Conditions AEAT lists.</strong> The exemption requires that the shares be <strong>held for at least three years</strong> and that <strong>the offer be made on the same terms to all the company's employees</strong>, contributing to their participation in it (AEAT, Manual Renta, ch. 3). Note the second one is a condition on the <em>employer's</em> offer, not on the employee. Keeping the signed enrolment document for each offering period is worth doing as evidence, but it is not itself one of the listed conditions.</p>
 {%- else %}
-<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANTE:</strong> El empleado debe haber firmado el documento de inscripción/acuerdo ESPP de la empresa para cada período de oferta para poder optar a la exención fiscal.</p>
+<p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ Requisitos que enumera AEAT.</strong> La exención exige que los títulos <strong>se mantengan al menos durante tres años</strong> y que <strong>la oferta se realice en las mismas condiciones para todos los trabajadores de la empresa</strong>, contribuyendo a su participación en ella (AEAT, Manual de Renta, cap. 3). Fíjate en que el segundo es un requisito sobre la <em>oferta de la empresa</em>, no sobre el empleado. Guardar el documento de inscripción firmado de cada período de oferta conviene como prueba, pero no es en sí uno de los requisitos enumerados.</p>
 {%- endif %}
 {%- endif %}
 {%- if espp_exposure_rows %}
