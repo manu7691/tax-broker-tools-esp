@@ -24,31 +24,12 @@ from .models import (
     EventType,
     SavingsIncomeYear,
     YearlyTaxSummary,
+    merge_yearly_summaries,
 )
 
 if TYPE_CHECKING:
     from .portfolio import SecurityResult
     from .tax_engine import TaxEngine
-
-
-def _merge_summaries(
-    *summary_dicts: "dict[int, YearlyTaxSummary] | None",
-) -> dict[int, YearlyTaxSummary]:
-    """Sum several per-year summary dicts into one (stocks + crypto combined).
-
-    Kept local to avoid importing the crypto engine here; mirrors
-    ``CryptoTaxEngine.merge_yearly_summaries`` so the combined savings base
-    reconciles with the crypto report.
-    """
-    merged: dict[int, YearlyTaxSummary] = {}
-    for d in summary_dicts:
-        for year, s in (d or {}).items():
-            agg = merged.setdefault(year, YearlyTaxSummary(year=year))
-            agg.total_gains += s.total_gains
-            agg.total_losses += s.total_losses
-            agg.blocked_losses += s.blocked_losses
-            agg.total_fees_eur += s.total_fees_eur
-    return merged
 
 
 # --- Jinja environment + formatting filters -------------------------------
@@ -730,7 +711,25 @@ class ReportRenderer:
                         "net": net,
                     }
                 )
-        return {"transm_rows": rows, "transm_total": total_net}
+        # Each row is rounded to cents on its own — including its prorated share
+        # of the sale's fee — so the column can drift a cent or two from the
+        # figure every aggregate table shows, which rounds once at the end. The
+        # total stays the sum of the printed rows, because a table that does not
+        # add up is worse than two tables that differ; the aggregate is carried
+        # alongside so the report can state both and name the reason.
+        aggregate = sum(
+            (
+                s.total_gains + s.total_losses
+                for s in self.engine.get_all_yearly_summaries()
+                if max_year is None or s.year <= max_year
+            ),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        return {
+            "transm_rows": rows,
+            "transm_total": total_net,
+            "transm_total_aggregate": aggregate,
+        }
 
     def _hacienda_summary_context(
         self,
@@ -969,7 +968,7 @@ class ReportRenderer:
         base_engine: TaxEngine | None = None
         if crypto_summaries:
             base_engine = TaxEngine()
-            base_engine.yearly_summaries = _merge_summaries(
+            base_engine.yearly_summaries = merge_yearly_summaries(
                 {s.year: s for s in engine.get_all_yearly_summaries()}, crypto_summaries
             )
 

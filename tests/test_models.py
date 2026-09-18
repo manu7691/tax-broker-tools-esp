@@ -5,6 +5,7 @@ Tests the computed properties and validation logic in models.py
 without any external dependencies (ECB API, files, etc).
 """
 
+from dataclasses import fields
 from datetime import date
 from decimal import Decimal
 
@@ -14,6 +15,7 @@ from tax_engine.models import (
     StockEvent,
     TaxEngineState,
     YearlyTaxSummary,
+    merge_yearly_summaries,
 )
 
 
@@ -321,3 +323,72 @@ class TestProcessedEvent:
         assert processed.realized_gain_loss == Decimal("0")
         assert processed.cost_change_eur == Decimal("0")
         assert processed.total_portfolio_cost_eur == Decimal("0")
+
+
+class TestMergingYearlySummaries:
+    """One canonical merge, because three copies of it lost a field twice.
+
+    ``portfolio`` carried ``unlocked_historical_losses``; the report's merge and
+    the crypto engine's did not, so a released Art. 33.5.f deferral vanished in
+    combined mode and the savings base came out overstated — the taxpayer would
+    pay tax on a deduction they were entitled to.
+    """
+
+    def _populated(self, year: int = 2023) -> YearlyTaxSummary:
+        """A summary whose every field carries a distinct, non-zero value."""
+        s = YearlyTaxSummary(year=year)
+        for i, f in enumerate(fields(s), start=1):
+            if f.name == "year":
+                continue
+            current = getattr(s, f.name)
+            if isinstance(current, dict):
+                setattr(s, f.name, {2020: Decimal(f"-{i}.11")})
+            else:
+                setattr(s, f.name, Decimal(f"{i}.11"))
+        return s
+
+    def test_every_field_survives_the_merge(self):
+        """Pinned structurally: a field added later cannot be silently dropped."""
+        a, b = self._populated(), self._populated()
+
+        merged = merge_yearly_summaries({2023: a}, {2023: b})[2023]
+
+        for f in fields(a):
+            if f.name == "year":
+                continue
+            got = getattr(merged, f.name)
+            if isinstance(got, dict):
+                assert got == {2020: getattr(a, f.name)[2020] * 2}, f"{f.name} not merged"
+            else:
+                assert got == getattr(a, f.name) * 2, f"{f.name} not summed"
+
+    def test_a_released_deferral_survives(self):
+        a = YearlyTaxSummary(year=2023)
+        a.total_losses = Decimal("-100")
+        a.unlocked_historical_losses = Decimal("-5000")
+
+        merged = merge_yearly_summaries({2023: a}, {})[2023]
+
+        assert merged.unlocked_historical_losses == Decimal("-5000")
+        assert merged.deductible_losses == a.deductible_losses
+
+    def test_years_present_in_only_one_side_are_kept(self):
+        a = YearlyTaxSummary(year=2023, total_gains=Decimal("10"))
+        b = YearlyTaxSummary(year=2024, total_gains=Decimal("20"))
+
+        merged = merge_yearly_summaries({2023: a}, {2024: b})
+
+        assert sorted(merged) == [2023, 2024]
+        assert merged[2024].total_gains == Decimal("20")
+
+    def test_none_entries_are_ignored(self):
+        a = YearlyTaxSummary(year=2023, total_gains=Decimal("10"))
+
+        assert merge_yearly_summaries({2023: a}, None)[2023].total_gains == Decimal("10")
+
+    def test_the_inputs_are_left_alone(self):
+        a = YearlyTaxSummary(year=2023, total_gains=Decimal("10"))
+
+        merge_yearly_summaries({2023: a}, {2023: a})
+
+        assert a.total_gains == Decimal("10")

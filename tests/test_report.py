@@ -796,3 +796,96 @@ class TestTheDeferralNoteExplainsAFullySoldLot:
 
         assert "repurchase" in html.lower()
         assert "following two months" in html
+
+
+def _fee_rounding_engine():
+    """One sale consuming three equal lots, with a fee that does not divide by three.
+
+    Each row's share of the €10 fee rounds to €3.33, so the rows deduct €9.99
+    while the engine deducts the whole €10 once. The disposal table therefore
+    totals €290.01 where every aggregate table says €290.00 — the same mechanism
+    that puts a cent between the real report's two totals.
+    """
+
+    def _ev(d, kind, shares, price, fees="0"):
+        return StockEvent(
+            event_date=d,
+            event_type=kind,
+            shares=Decimal(shares),
+            price_usd=Decimal(price),
+            fx_rate=Decimal("1"),
+            fees_usd=Decimal(fees),
+        )
+
+    engine = TaxEngine()
+    engine.process_all(
+        [
+            _ev(date(2023, 1, 10), EventType.BUY, "10", "10"),
+            _ev(date(2023, 2, 10), EventType.BUY, "10", "10"),
+            _ev(date(2023, 3, 10), EventType.BUY, "10", "10"),
+            _ev(date(2023, 6, 10), EventType.SELL, "30", "20", fees="10"),
+        ]
+    )
+    return engine
+
+
+class TestTheDisposalTableExplainsItsOwnTotal:
+    """Per-row rounding puts a cent between this table and every aggregate one.
+
+    The row total must keep matching the column above it — a table whose own
+    figures do not add up is worse than one that differs from another table. So
+    the total stays as printed and the report states the other figure and why
+    they differ, instead of leaving a reader to find the cent themselves.
+    """
+
+    def _ctx(self):
+        return ReportRenderer(_fee_rounding_engine())._transmisiones_context(max_year=2025)
+
+    def test_the_total_is_the_sum_of_the_printed_rows(self):
+        ctx = self._ctx()
+
+        assert ctx["transm_total"] == sum((r["net"] for r in ctx["transm_rows"]), Decimal("0"))
+        assert ctx["transm_total"] == Decimal("290.01")
+
+    def test_the_aggregate_figure_is_reported_alongside(self):
+        assert self._ctx()["transm_total_aggregate"] == Decimal("290.00")
+
+    def test_the_report_explains_the_difference(self):
+        html = ReportRenderer(_fee_rounding_engine()).generate_html_content(lang="es")
+
+        assert "redondeo" in html
+        assert "290,01" in html
+        assert "290,00" in html
+
+    def test_english_explains_it_too(self):
+        html = ReportRenderer(_fee_rounding_engine()).generate_html_content(lang="en")
+
+        assert "rounding" in html
+        assert "290.01" in html and "290.00" in html
+
+    def test_nothing_is_said_when_the_two_agree(self):
+        """No note when there is nothing to explain."""
+
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2023, 1, 10),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("10"),
+                    fx_rate=Decimal("1"),
+                ),
+                StockEvent(
+                    event_date=date(2023, 6, 10),
+                    event_type=EventType.SELL,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("20"),
+                    fx_rate=Decimal("1"),
+                ),
+            ]
+        )
+        ctx = ReportRenderer(engine)._transmisiones_context(max_year=2025)
+
+        assert ctx["transm_total"] == ctx["transm_total_aggregate"]
+        assert "redondeo" not in ReportRenderer(engine).generate_html_content(lang="es")

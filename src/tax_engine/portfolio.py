@@ -26,7 +26,7 @@ The aggregate is itself a :class:`TaxEngine`, so all existing reporting
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 
-from .models import EventType, ProcessedEvent, StockEvent, YearlyTaxSummary
+from .models import EventType, ProcessedEvent, StockEvent, merge_yearly_summaries
 from .securities import SecuritiesConfig, Security, grouping_key
 from .tax_engine import TaxEngine
 
@@ -158,22 +158,13 @@ def _build_aggregate(results: list[SecurityResult]) -> TaxEngine:
     securities would be wrong, and each per-security summary already carries it.
     """
     aggregate = TaxEngine()
-    summaries: dict[int, YearlyTaxSummary] = {}
+    # One shared merge, so a field added to YearlyTaxSummary cannot go missing
+    # from this rollup while the report's and the crypto engine's keep it.
+    summaries = merge_yearly_summaries(*(r.engine.yearly_summaries for r in results))
     processed: list[ProcessedEvent] = []
 
     for r in results:
         eng = r.engine
-        for year, s in eng.yearly_summaries.items():
-            tgt = summaries.setdefault(year, YearlyTaxSummary(year=year))
-            tgt.total_gains += s.total_gains
-            tgt.total_losses += s.total_losses
-            tgt.blocked_losses += s.blocked_losses
-            tgt.unlocked_historical_losses += s.unlocked_historical_losses
-            for origin_year, amount in s.unlocked_losses_by_origin.items():
-                tgt.unlocked_losses_by_origin[origin_year] = (
-                    tgt.unlocked_losses_by_origin.get(origin_year, Decimal("0")) + amount
-                )
-            tgt.total_fees_eur += s.total_fees_eur
         processed.extend(eng.processed_events)
         aggregate.state.total_shares += eng.state.total_shares
         aggregate.state.total_portfolio_cost_eur += eng.state.total_portfolio_cost_eur

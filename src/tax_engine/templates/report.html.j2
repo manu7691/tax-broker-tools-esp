@@ -394,6 +394,13 @@
 {%- endfor %}
 <tr><td colspan='7'><strong>{{ 'G/P neta total' if is_es else 'Total net gain/loss' }}</strong></td><td class='{{ 'gain' if transm_total >= 0 else 'loss' }}'><strong>{{ transm_total | eur }}</strong></td></tr>
 </table>
+{%- if transm_total != transm_total_aggregate %}
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'><strong>Why this total differs by a few cents.</strong> Every row above is rounded to cents on its own, including its prorated share of each sale's commission, so they add up to {{ transm_total | eur }}. The aggregate tables start from the unrounded amounts and round once at the end, giving {{ transm_total_aggregate | eur }}. It is rounding, not a discrepancy: the total here is kept as the sum of the rows printed above so the column adds up. <strong>Declare the per-year figures</strong> from the yearly summary, not either of these multi-year totals.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'><strong>Por qué este total difiere en unos céntimos.</strong> Cada fila de arriba se redondea a céntimos por separado, incluida su parte prorrateada de la comisión de cada venta, y así suman {{ transm_total | eur }}. Las tablas agregadas parten de los importes sin redondear y redondean una sola vez al final, lo que da {{ transm_total_aggregate | eur }}. Es redondeo, no una discrepancia: aquí se conserva la suma de las filas impresas arriba para que la columna cuadre. <strong>Declara las cifras por ejercicio</strong> del Resumen Fiscal Anual, no ninguno de estos totales plurianuales.</p>
+{%- endif %}
+{%- endif %}
 {%- endif %}
 {%- if espp_early_sale_discounts or espp_discounts %}
 {# ---- ESPP 3-Year Holding Period Analysis ---- #}

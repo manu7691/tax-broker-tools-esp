@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One merge for yearly summaries, instead of four that had drifted apart.**
+  The savings base is computed on a rollup — per security in portfolio mode,
+  stocks plus crypto in the combined report — and each rollup had grown its own
+  copy of the same field-by-field merge. Three of the four dropped
+  `unlocked_historical_losses`, so a released Art. 33.5.f deferral vanished and
+  the savings base came out **overstated**: tax paid on a deduction the taxpayer
+  was entitled to. The portfolio rollup, which carried that field, dropped the
+  split `acquisition_fees_eur` / `disposal_fees_eur` instead. All four now call
+  `models.merge_yearly_summaries`, and a test walks the dataclass's fields so a
+  field added later cannot be silently forgotten again.
+- **The disposal table explains why its total differs by a cent.** Each row is
+  rounded to cents on its own, including its prorated share of the sale
+  commission, so the column can land a cent or two from the figure the aggregate
+  tables show — they round once at the end. The total stays the sum of the rows
+  printed above it, because a table that does not add up is worse than two that
+  differ; the report now states both figures, names rounding as the reason, and
+  points at the per-year figures as the ones to declare.
 - **A forfeited release now disappears from the per-security table too.**
   `--forfeit-declared-releases` was applied only to the portfolio rollup. In
   portfolio mode the per-security engines hold their own summary objects, and the

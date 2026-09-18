@@ -289,3 +289,61 @@ class TestSingleStockRegression:
         assert agg.total_losses == ref.total_losses
         assert agg.net_gain_loss == ref.net_gain_loss
         assert portfolio.aggregate.state.total_shares == plain.state.total_shares
+
+
+class TestTheRollupKeepsEveryField:
+    """The portfolio rollup must carry the same fields as every other merge.
+
+    It was the only one of four that carried ``unlocked_historical_losses``.
+    Now that they share one implementation, this pins that the rollup still
+    routes through it rather than growing its own copy again.
+    """
+
+    def test_a_released_deferral_reaches_the_aggregate(self) -> None:
+        portfolio = run_portfolio(
+            [
+                _ev("2021-01-10", EventType.BUY, "100", "100", isin=TSLA_ISIN, symbol="TSLA"),
+                _ev("2022-05-10", EventType.SELL, "100", "50", isin=TSLA_ISIN, symbol="TSLA"),
+                _ev("2022-05-20", EventType.BUY, "100", "50", isin=TSLA_ISIN, symbol="TSLA"),
+                _ev("2023-09-10", EventType.SELL, "100", "50", isin=TSLA_ISIN, symbol="TSLA"),
+                _ev("2022-03-01", EventType.BUY, "10", "10", isin=NVDA_ISIN, symbol="NVDA"),
+            ]
+        )
+
+        per_security = sum(
+            (
+                s.unlocked_historical_losses
+                for r in portfolio.results
+                for s in r.engine.get_all_yearly_summaries()
+            ),
+            Decimal("0"),
+        )
+        rollup = sum(
+            (s.unlocked_historical_losses for s in portfolio.aggregate.get_all_yearly_summaries()),
+            Decimal("0"),
+        )
+
+        assert per_security != 0, "scenario must actually release a deferral"
+        assert rollup == per_security
+
+    def test_the_split_acquisition_and_disposal_fees_reach_it_too(self) -> None:
+        buy = _ev("2022-01-10", EventType.BUY, "10", "100", isin=TSLA_ISIN, symbol="TSLA")
+        buy.fees_usd = Decimal("7")
+        sell = _ev("2022-06-10", EventType.SELL, "10", "150", isin=TSLA_ISIN, symbol="TSLA")
+        sell.fees_usd = Decimal("9")
+        portfolio = run_portfolio([buy, sell])
+
+        per_security = sum(
+            (
+                s.disposal_fees_eur
+                for r in portfolio.results
+                for s in r.engine.get_all_yearly_summaries()
+            ),
+            Decimal("0"),
+        )
+        rollup = sum(
+            (s.disposal_fees_eur for s in portfolio.aggregate.get_all_yearly_summaries()),
+            Decimal("0"),
+        )
+        assert per_security != 0, "scenario must actually charge a disposal fee"
+        assert rollup == per_security
