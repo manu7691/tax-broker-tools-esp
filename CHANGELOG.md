@@ -44,6 +44,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **The engine pinned against AEAT's published criteria, quoted verbatim.**
+  `tests/test_aeat_published_criteria.py` tests the engine against the wording
+  the administration actually printed, cited with its source in each docstring,
+  rather than against a developer's paraphrase. It confirmed the progressive
+  integration rule, the definition of a *definitive* transmission, and FIFO
+  under Art. 37.2, and it closed a real gap: nothing tested the «dos meses
+  **anteriores**» half of the window, only the «posteriores» half. It also
+  records a scope limit that was silent — AEAT gives a **one-year** window for
+  securities not admitted to trading, and only the two-month (listed) window is
+  implemented.
 - **What Art. 33.5.f still has locked up, and the lot that would free it.** The
   yearly table said how much each year blocked; nothing said how much is *still*
   deferred, where it sits, or what has to be transmitted to integrate it — the
@@ -52,7 +62,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (that is Art. 49, for the negative savings balance — a confusion that leads to
   selling shares to "rescue" losses that were never at risk), and that a fully
   sold lot can still carry a balance when its sales were not definitive. Its
-  total reconciles with the "Pérdidas Bloqueadas" column it explains.
+  total reconciles with the "Pérdidas Bloqueadas" column it explains, and when a
+  renuncia is in force the section names the amount it differs by — that loss
+  released but is not credited, so it is neither pending nor deducted.
   `DeferredWashSaleLoss` gained `rollovers`, the dated schedule behind `rolled`:
   `releases` dated only the freed half, so the balance at a past date could not
   be reconstructed once a deferral had rolled over. No figure changes — the

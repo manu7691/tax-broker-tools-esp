@@ -889,3 +889,70 @@ class TestTheDisposalTableExplainsItsOwnTotal:
 
         assert ctx["transm_total"] == ctx["transm_total_aggregate"]
         assert "redondeo" not in ReportRenderer(engine).generate_html_content(lang="es")
+
+
+class TestTheDeferralsSectionAccountsForARenuncia:
+    """With a renuncia applied, this table stops tying to the yearly columns.
+
+    The renounced part genuinely released — the block broke — so it is not
+    pending here; and the yearly table no longer credits it, because it was
+    given up. Both figures are right and they differ by exactly the renounced
+    amount, which is the same unexplained-gap problem this whole section was
+    added to remove. So the section states it.
+    """
+
+    def _html(self):
+        """A portfolio with BOTH a renounced release and a deferral still alive.
+
+        AAA's deferral is blocked in 2023, released in 2024, and renounced.
+        BBB's is blocked in 2023 and still held, so the section actually renders
+        and there is a table for the renounced amount to fail to tie to.
+        """
+        from tax_engine.portfolio import run_portfolio
+
+        def _ev(d, kind, shares, price, isin):
+            return StockEvent(
+                event_date=d,
+                event_type=kind,
+                shares=Decimal(shares),
+                price_usd=Decimal(price),
+                fx_rate=Decimal("1"),
+                isin=isin,
+                symbol=isin,
+                broker="E*TRADE",
+            )
+
+        portfolio = run_portfolio(
+            [
+                _ev(date(2022, 1, 10), EventType.BUY, "100", "100", "AAA"),
+                _ev(date(2023, 5, 10), EventType.SELL, "100", "50", "AAA"),
+                _ev(date(2023, 5, 20), EventType.BUY, "100", "50", "AAA"),
+                _ev(date(2024, 9, 10), EventType.SELL, "100", "50", "AAA"),
+                # BBB blocks a loss in 2023 and simply keeps the replacement.
+                _ev(date(2022, 2, 1), EventType.BUY, "10", "100", "BBB"),
+                _ev(date(2023, 3, 1), EventType.SELL, "10", "50", "BBB"),
+                _ev(date(2023, 3, 10), EventType.BUY, "10", "50", "BBB"),
+            ]
+        )
+        portfolio.aggregate.closed_years = {2023: {"blocked_losses": Decimal("-500.00")}}
+        portfolio.aggregate.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in portfolio.results]
+        )
+        return ReportRenderer(portfolio.aggregate).generate_html_content(
+            lang="es", securities=portfolio.results
+        )
+
+    def test_the_renounced_amount_is_stated_in_this_section_too(self):
+        html = self._html()
+        start = html.index("Pérdidas Diferidas del Art")
+        section = html[start : html.index("<h2", start + 10)]
+
+        assert "renuncia" in section.lower()
+        assert "5.000,00 €" in section
+
+    def test_nothing_is_said_when_there_was_no_renuncia(self):
+        html = ReportRenderer(_deferral_engine()).generate_html_content(lang="es")
+        start = html.index("Pérdidas Diferidas del Art")
+        section = html[start : html.index("<h2", start + 10)]
+
+        assert "renuncia" not in section.lower()

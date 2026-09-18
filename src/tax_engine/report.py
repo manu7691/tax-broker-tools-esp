@@ -483,8 +483,21 @@ class ReportRenderer:
                     }
                 )
         rows.sort(key=lambda r: (r["origin_year"], r["lot_date"]))
+        # A renuncia leaves this table short of the yearly columns by exactly the
+        # amount given up: those deferrals did release — the block broke, so they
+        # are not pending here — but the yearly table no longer credits them. Both
+        # figures are right, and the gap between them has to be named.
+        forfeited = sum(
+            (
+                amount
+                for origin, amount in self.engine.forfeited_releases.items()
+                if max_year is None or origin <= max_year
+            ),
+            Decimal("0"),
+        )
         return {
             "deferral_rows": rows,
+            "deferral_forfeited": forfeited,
             "deferral_cutoff": cutoff,
             "deferral_today": today,
             "deferral_totals": {

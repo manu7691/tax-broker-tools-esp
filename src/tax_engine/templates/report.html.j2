@@ -243,8 +243,14 @@
 <tr><td><strong>Total</strong></td><td class='loss'><strong>{{ deferral_totals.pending_cutoff | eur }}</strong></td><td class='loss'><strong>{{ deferral_totals.pending_today | eur }}</strong></td><td></td><td></td><td></td></tr>
 </table>
 {%- if not is_es %}
+{%- if deferral_forfeited > 0 %}
+<p style='font-size: 11px; color: #555;'><strong>Does not tie to the yearly table, by exactly {{ deferral_forfeited | eur }}.</strong> That much deferred loss did release — the block broke — so it is not pending above; but this run renounces its integration, so the yearly table does not credit it either. It is neither pending nor deducted: it is given up. Any other difference between the two would be an error.</p>
+{%- endif %}
 <p style='font-size: 11px; color: #555;'>A lot showing 0 shares left has already been transmitted, yet its deferral may still be pending: the loss is only integrated by a transmission that is <em>definitive</em> — one with no repurchase of homogeneous securities in the following two months (DGT V3282-18, V0046-20, V1119-21). Until that condition is met the loss keeps waiting, which is why a fully sold lot can still carry a balance here.</p>
 {%- else %}
+{%- if deferral_forfeited > 0 %}
+<p style='font-size: 11px; color: #555;'><strong>No cuadra con la tabla anual, y la diferencia es exactamente {{ deferral_forfeited | eur }}.</strong> Esa pérdida diferida sí se liberó — el bloqueo se rompió — así que no figura como pendiente arriba; pero esta ejecución renuncia a integrarla, así que la tabla anual tampoco la acredita. No está ni pendiente ni deducida: está cedida. Cualquier otra diferencia entre ambas tablas sí sería un error.</p>
+{%- endif %}
 <p style='font-size: 11px; color: #555;'>Un lote con 0 acciones vivas ya se transmitió, pero su diferida puede seguir pendiente: la pérdida solo se integra con una transmisión <em>definitiva</em>, es decir, sin recompra de valores homogéneos en los 2 meses siguientes (DGT V3282-18, V0046-20, V1119-21). Mientras esa condición no se cumpla la pérdida sigue esperando, y por eso un lote íntegramente vendido puede conservar saldo aquí.</p>
 {%- endif %}
 {%- endif %}
