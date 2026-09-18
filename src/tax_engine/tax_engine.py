@@ -83,6 +83,11 @@ class TaxEngine:
         # Taxpayer state, not something derivable from the transactions, so it
         # deliberately survives :meth:`reset` and every reprocessing of events.
         self.closed_years: dict[int, dict[str, Decimal]] = {}
+        # Deferrals given up by :meth:`apply_closed_year_forfeits`, per origin
+        # year (positive magnitudes). Kept so the report can state the renuncia
+        # explicitly instead of leaving it as an unexplained gap between the
+        # gross realized result and the computable one.
+        self.forfeited_releases: dict[int, Decimal] = {}
         self.state = TaxEngineState()
         self.processed_events: list[ProcessedEvent] = []
         # Every lot ever acquired, in chronological order. ``state.lots`` is the
@@ -594,6 +599,7 @@ class TaxEngine:
                     if replaced > 0:
                         rolled_amount = portion - freed_amount
                         claim.rolled += rolled_amount
+                        claim.rollovers.append((sell_date, rolled_amount))
                         self._roll_claim(claim, sell_date, replaced, rolled_amount)
 
                     if used_from_current >= disposed:
@@ -743,24 +749,18 @@ class TaxEngine:
                 pending[year] = computed - as_filed
         return pending
 
-    def apply_closed_year_forfeits(self) -> dict[int, Decimal]:
-        """Drop the releases identified by :meth:`releases_already_deducted`.
+    @staticmethod
+    def _spend_forfeit_budget(
+        budget: dict[int, Decimal], summaries: list[YearlyTaxSummary]
+    ) -> dict[int, Decimal]:
+        """Drop releases from ``summaries`` (oldest year first) until ``budget`` runs out.
 
-        **Opt-in, and without direct statutory backing.** It models the choice of
-        leaving an erroneous prior year untouched and giving up the corresponding
-        future deduction instead. Arithmetically the taxpayer ends up with the same
-        total deduction, but the affected return stays uncorrected — which is not
-        what Art. 122.2 LGT prescribes. Use it only as a deliberate decision taken
-        with an advisor; the default path is to regularise the year.
-
-        Idempotent. Returns the amount forfeited per origin year.
+        ``budget`` is consumed in place, so a caller can hand the *same* budget to
+        two disjoint sets of summaries describing the same facts (the portfolio
+        rollup and the per-security engines behind it) by passing a copy to each.
         """
-        budget = self.releases_already_deducted()
-        if not budget:
-            return {}
-
         forfeited: dict[int, Decimal] = {}
-        for summary in sorted(self.yearly_summaries.values(), key=lambda s: s.year):
+        for summary in sorted(summaries, key=lambda s: s.year):
             for origin in sorted(summary.unlocked_losses_by_origin):
                 left = budget.get(origin, Decimal("0"))
                 if left <= 0:
@@ -775,6 +775,44 @@ class TaxEngine:
                     del summary.unlocked_losses_by_origin[origin]
                 else:
                     summary.unlocked_losses_by_origin[origin] = remaining
+        return forfeited
+
+    def apply_closed_year_forfeits(
+        self, mirror_engines: "list[TaxEngine] | None" = None
+    ) -> dict[int, Decimal]:
+        """Drop the releases identified by :meth:`releases_already_deducted`.
+
+        **Opt-in, and without direct statutory backing.** It models the choice of
+        leaving an erroneous prior year untouched and giving up the corresponding
+        future deduction instead. Arithmetically the taxpayer ends up with the same
+        total deduction, but the affected return stays uncorrected — which is not
+        what Art. 122.2 LGT prescribes. Use it only as a deliberate decision taken
+        with an advisor; the default path is to regularise the year.
+
+        ``mirror_engines`` are the per-security engines a portfolio rollup was
+        built from. The budget can only be computed here — it compares the filed
+        return against the *whole* base del ahorro — but those engines hold their
+        own summary objects, and the report reads them for its per-security table.
+        Consuming the same budget across them keeps that table tied to the Modelo
+        100 figures instead of still counting a renounced deduction.
+
+        Idempotent. Returns the amount forfeited per origin year.
+        """
+        budget = self.releases_already_deducted()
+        if not budget:
+            return {}
+
+        if mirror_engines:
+            self._spend_forfeit_budget(
+                dict(budget),
+                [s for eng in mirror_engines for s in eng.yearly_summaries.values()],
+            )
+
+        forfeited = self._spend_forfeit_budget(budget, list(self.yearly_summaries.values()))
+        for origin, amount in forfeited.items():
+            self.forfeited_releases[origin] = (
+                self.forfeited_releases.get(origin, Decimal("0")) + amount
+            )
         return forfeited
 
     def check_closed_years(self, declared: dict[int, dict[str, Decimal]]) -> list[ClosedYearDrift]:

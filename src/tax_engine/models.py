@@ -114,6 +114,10 @@ class DeferredWashSaleLoss:
     # because the transmission was not definitive. It is settled on this claim and
     # pending on the successor claim, so it must not be double-counted as blocked.
     rolled: Decimal = Decimal("0")
+    # The (date, amount) schedule behind ``rolled``, mirroring ``releases``.
+    # ``released`` is freed + rolled; without dating both halves the balance still
+    # deferred at a past date cannot be reconstructed once a rollover has happened.
+    rollovers: list[tuple[date, Decimal]] = field(default_factory=list)
     # True when this claim is itself the successor of a deferral that rolled over.
     # Its predecessor already reported the amount as blocked in the origin year, so
     # a successor must never add to that figure again.
@@ -414,6 +418,44 @@ class YearlyTaxSummary:
                 remaining -= limit
 
         return tax.quantize(Decimal("0.01"), ROUND_HALF_UP)
+
+
+def merge_yearly_summaries(
+    *summary_dicts: "dict[int, YearlyTaxSummary] | None",
+) -> dict[int, YearlyTaxSummary]:
+    """Sum several per-year summary dicts into one, field by field.
+
+    The savings base is computed on the aggregate of every source of capital
+    gains — each security in portfolio mode, and stocks plus crypto in the
+    combined report — so those rollups all need the same merge.
+
+    It lives here, beside :class:`YearlyTaxSummary`, because three separate
+    copies of it existed and two of them had quietly fallen behind the dataclass:
+    both dropped ``unlocked_historical_losses``, so a released Art. 33.5.f
+    deferral vanished from the rollup and the savings base came out overstated —
+    the taxpayer would have paid tax on a deduction they were entitled to. A
+    field added to the dataclass must be carried here too; the tests pin that
+    structurally rather than one field at a time.
+
+    Inputs are never mutated: every year gets a fresh summary. ``None`` entries
+    are ignored, so callers can pass an optional dict straight through.
+    """
+    merged: dict[int, YearlyTaxSummary] = {}
+    for summaries in summary_dicts:
+        for year, s in (summaries or {}).items():
+            agg = merged.setdefault(year, YearlyTaxSummary(year=year))
+            agg.total_gains += s.total_gains
+            agg.total_losses += s.total_losses
+            agg.blocked_losses += s.blocked_losses
+            agg.unlocked_historical_losses += s.unlocked_historical_losses
+            for origin_year, amount in s.unlocked_losses_by_origin.items():
+                agg.unlocked_losses_by_origin[origin_year] = (
+                    agg.unlocked_losses_by_origin.get(origin_year, Decimal("0")) + amount
+                )
+            agg.total_fees_eur += s.total_fees_eur
+            agg.acquisition_fees_eur += s.acquisition_fees_eur
+            agg.disposal_fees_eur += s.disposal_fees_eur
+    return merged
 
 
 @dataclass

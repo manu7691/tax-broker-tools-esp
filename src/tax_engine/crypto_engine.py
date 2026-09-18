@@ -36,6 +36,7 @@ from .models import (
     SavingsLedger,
     StockEvent,
     YearlyTaxSummary,
+    merge_yearly_summaries,
 )
 from .tax_engine import TaxEngine
 
@@ -147,16 +148,18 @@ class CryptoTaxEngine:
         return sorted(self.engines)
 
     def combined_summaries(self) -> dict[int, YearlyTaxSummary]:
-        """Sum each coin's per-year gains/losses/fees into combined summaries."""
-        combined: dict[int, YearlyTaxSummary] = {}
-        for engine in self.engines.values():
-            for s in engine.get_all_yearly_summaries():
-                agg = combined.setdefault(s.year, YearlyTaxSummary(year=s.year))
-                agg.total_gains += s.total_gains
-                agg.total_losses += s.total_losses
-                agg.blocked_losses += s.blocked_losses
-                agg.total_fees_eur += s.total_fees_eur
-        return combined
+        """Sum each coin's per-year gains/losses/fees into combined summaries.
+
+        Reachable with a deferral outstanding: the 2-month rule is off for crypto
+        by default, but ``detect_wash_sale`` turns it on as an advisor-directed
+        override, and then the released half has to survive this rollup too.
+        """
+        return merge_yearly_summaries(
+            *(
+                {s.year: s for s in engine.get_all_yearly_summaries()}
+                for engine in self.engines.values()
+            )
+        )
 
     def aggregate_engine(self) -> TaxEngine:
         """A TaxEngine carrying the combined summaries (for savings/carryforward)."""
@@ -206,16 +209,12 @@ class CryptoTaxEngine:
     def merge_yearly_summaries(
         summaries_list: list[dict[int, YearlyTaxSummary]],
     ) -> dict[int, YearlyTaxSummary]:
-        """Merge several engines' yearly-summary dicts into one combined dict."""
-        combined: dict[int, YearlyTaxSummary] = {}
-        for summaries in summaries_list:
-            for year, s in summaries.items():
-                agg = combined.setdefault(year, YearlyTaxSummary(year=year))
-                agg.total_gains += s.total_gains
-                agg.total_losses += s.total_losses
-                agg.blocked_losses += s.blocked_losses
-                agg.total_fees_eur += s.total_fees_eur
-        return combined
+        """Merge several engines' yearly-summary dicts into one combined dict.
+
+        Delegates to :func:`~tax_engine.models.merge_yearly_summaries`: the field
+        list belongs with the dataclass, not in a copy that falls behind it.
+        """
+        return merge_yearly_summaries(*summaries_list)
 
     @staticmethod
     def _disposal_row(coin: str, pe: ProcessedEvent) -> DisposalRow:

@@ -20,9 +20,9 @@ graph TD
     B -- Yes (Signed Enrollment) --> D["How long did you hold the shares?"]
     
     D -- Less than 3 Years (Early Sale) --> E["TAXABLE as Salary Income <br> (Requires Complementary Return for the Purchase Year)"]
-    D -- 3 Years or More --> F["Did the total annual discount exceed €12,000?"]
+    D -- 3 Years or More --> F["Did the total annual discount exceed the exempt cap?"]
     
-    F -- Yes --> G["Discount above €12,000 is TAXABLE as Salary Income"]
+    F -- Yes --> G["Discount above the cap is TAXABLE as Salary Income"]
     F -- No --> H["✅ 100% TAX-EXEMPT Discount"]
 
     style H fill:#00c853,stroke:#00e676,stroke-width:2px,color:#fff
@@ -63,13 +63,31 @@ Imagine this timeline of events:
 
 ---
 
+## 2b. The Exempt Cap: €12,000 or €50,000
+
+Art. 42.3.f LIRPF exempts the discount **up to €12,000 a year** for the shares delivered to
+each employee. That cap rises to **€50,000** where the employer is an *empresa emergente*
+under Ley 28/2022 (from 2023). Which one applies depends on your employer, not on this tool.
+
+AEAT also lists two conditions that are easy to confuse:
+
+* the shares must be **held for at least three years**, and
+* **the offer must be made on the same terms to all the company's employees**, contributing
+  to their participation in it.
+
+The second is a condition on the **employer's offer**, not on the employee. Keeping the
+signed enrolment document for each offering period is worth doing as evidence, but it is not
+itself one of the conditions AEAT lists.
+
+---
+
 ## 3. What Happens If I Break the 3-Year Rule?
 
 If you sell ESPP shares before holding them for 36 months (counted date to date):
 
 1. **Retroactive Taxation**: The discount corresponding to the sold shares is no longer tax-exempt. It must be declared as **Ordinary Salary Income** (*Rendimiento del Trabajo*).
 2. **Tax Year Allocation**: The discount is taxed in the **Purchase Year**, not the Sale Year.
-3. **Filing Requirement**: You must file a **Complementary Tax Return** (*Declaración Complementaria*) for the year you purchased the shares.
+3. **Filing Requirement**: You must regularise the year you purchased the shares. Mind the name: AEAT's Manual calls it an **autoliquidación complementaria** in chapter 3, while the regularisation chapter of the 2024 Manual calls the same filing an **autoliquidación rectificativa**. The administration uses both terms; check with your adviser which form applies to the specific year you are correcting.
 4. **Interest**: You will have to pay **Delay Interest** (*Intereses de Demora*), which is around 3-4% per year, calculated from the original tax filing deadline until the day you submit the complementary return.
    > [!TIP]
    > There are **no penalties** (multas) as long as you file the complementary return voluntarily before Hacienda sends you a formal notification/warning.
@@ -108,3 +126,9 @@ Show this summary to your tax advisor to explain your tax engine report:
 1. **FIFO Cost Basis:** All transactions are matched strictly using FIFO (Art. 37.2 LIRPF).
 2. **ESPP Discount Tracking:** ESPP cost basis is recorded at Purchase FMV. Any early sales are detected and flagged so they can be declared on complementary returns.
 3. **Double Taxation Avoidance:** The tax engine uses FMV as the cost basis to ensure you don't pay capital gains tax on the portion of the value that is already taxed as salary income.
+
+> [!NOTE]
+> **Checked against material published by AEAT** (Manual práctico Renta, ch. 3
+> "Entrega de acciones a los trabajadores" and ch. 18 "Regularización"; retrieved
+> 2026-09-18). `tests/test_aeat_published_criteria.py` pins these statements
+> against the official wording cited there.

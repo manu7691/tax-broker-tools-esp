@@ -12,42 +12,24 @@ the heavier aggregation tables) and expose the formatting filters. The console
 tables (``print_ledger`` / ``print_tax_summary``) stay as direct ``print`` calls.
 """
 
+import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, pass_context
 
 from .models import (
     EventType,
     SavingsIncomeYear,
     YearlyTaxSummary,
+    merge_yearly_summaries,
 )
 
 if TYPE_CHECKING:
     from .portfolio import SecurityResult
     from .tax_engine import TaxEngine
-
-
-def _merge_summaries(
-    *summary_dicts: "dict[int, YearlyTaxSummary] | None",
-) -> dict[int, YearlyTaxSummary]:
-    """Sum several per-year summary dicts into one (stocks + crypto combined).
-
-    Kept local to avoid importing the crypto engine here; mirrors
-    ``CryptoTaxEngine.merge_yearly_summaries`` so the combined savings base
-    reconciles with the crypto report.
-    """
-    merged: dict[int, YearlyTaxSummary] = {}
-    for d in summary_dicts:
-        for year, s in (d or {}).items():
-            agg = merged.setdefault(year, YearlyTaxSummary(year=year))
-            agg.total_gains += s.total_gains
-            agg.total_losses += s.total_losses
-            agg.blocked_losses += s.blocked_losses
-            agg.total_fees_eur += s.total_fees_eur
-    return merged
 
 
 # --- Jinja environment + formatting filters -------------------------------
@@ -61,10 +43,25 @@ def _merge_summaries(
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
-def _shares_filter(val: Decimal) -> str:
+def _swap_separators(text: str) -> str:
+    """Turn en-US digit grouping into es-ES: ``1,234.56`` -> ``1.234,56``.
+
+    Swapped through a placeholder, because a straight two-step replace would
+    turn every comma into a dot and then that same dot back into a comma.
+    """
+    return text.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def _shares_filter(val: Decimal, is_es: bool = False) -> str:
+    """Share counts, grouped the way the report's language groups digits.
+
+    The console keeps ``TaxEngine.format_shares`` as-is; only the rendered
+    report localizes, so a Spanish page never mixes ``0,008079`` in one column
+    with ``0.008079`` in the next.
+    """
     from .tax_engine import TaxEngine
 
-    return TaxEngine.format_shares(val)
+    return _swap_separators(TaxEngine.format_shares(val)) if is_es else TaxEngine.format_shares(val)
 
 
 def _localized_date(d: date, is_es: bool) -> str:
@@ -110,12 +107,21 @@ def _translate_event_type(event_type: EventType, is_es: bool) -> str:
     return event_type.value
 
 
+# An amount the engine baked into a ledger note, e.g. "[Wash Sale Blocked Loss:
+# €6,000.00]" or "(Includes $5.00 fees)". Anchored on the currency sign so plain
+# numbers in the prose (share counts, years) are left alone.
+_NOTE_AMOUNT = re.compile(r"(?<=[€$])(\d[\d,]*(?:\.\d+)?)")
+
+
 def _translate_notes(notes: str, is_es: bool) -> str:
     if not is_es:
         return notes
     for en, es in _NOTE_REPLACEMENTS_ES:
         notes = notes.replace(en, es)
-    return notes
+    # The amounts inside these notes are formatted by the engine, not by the
+    # template filters, so they need localizing here or the Spanish page mixes
+    # "€6,000.00" in the notes with "6.000,00 €" in the table beside it.
+    return _NOTE_AMOUNT.sub(lambda m: _swap_separators(m.group(1)), notes)
 
 
 _ENV = Environment(
@@ -123,10 +129,66 @@ _ENV = Environment(
     autoescape=False,
     keep_trailing_newline=False,
 )
-_ENV.filters["num2"] = lambda x: f"{x:,.2f}"
-_ENV.filters["num4"] = lambda x: f"{x:,.4f}"
-_ENV.filters["fx4"] = lambda x: f"{x:.4f}"
-_ENV.filters["shares"] = _shares_filter
+# Non-breaking space, so "1.234,56 €" never wraps across a line in the PDF.
+_NBSP = "\u00a0"
+
+
+def _localized_number(value: Any, places: int, is_es: bool) -> str:
+    """Group digits the way the target language does.
+
+    en-US writes ``1,234.56``; es-ES swaps both separators to ``1.234,56``. The
+    report is transcribed into the Modelo 100 by hand, so a decimal point read
+    as a thousands separator is a three-orders-of-magnitude error on a figure
+    that goes straight into a tax return.
+    """
+    text = f"{value:,.{places}f}"
+    return _swap_separators(text) if is_es else text
+
+
+def _amount(value: Any, places: int, is_es: bool) -> str:
+    """A money amount with the euro sign where the language puts it."""
+    number = _localized_number(value, places, is_es)
+    return f"{number}{_NBSP}€" if is_es else f"€{number}"
+
+
+# ``is_es`` lives in the render context rather than in every call site: these
+# filters are used ~80 times across the template, and threading the language
+# through each one by hand is exactly the kind of edit that gets half-applied.
+@pass_context
+def _num_filter(ctx: Any, value: Any, places: int = 2) -> str:
+    return _localized_number(value, places, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _num4_filter(ctx: Any, value: Any) -> str:
+    return _localized_number(value, 4, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _eur_filter(ctx: Any, value: Any, places: int = 2) -> str:
+    return _amount(value, places, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _eur4_filter(ctx: Any, value: Any) -> str:
+    return _amount(value, 4, bool(ctx.get("is_es")))
+
+
+_ENV.filters["num2"] = _num_filter
+_ENV.filters["num4"] = _num4_filter
+_ENV.filters["eur"] = _eur_filter
+_ENV.filters["eur4"] = _eur4_filter
+
+
+@pass_context
+def _fx4_filter(ctx: Any, value: Any) -> str:
+    """The ECB rate, ungrouped (it is never >= 1000) but locale-aware."""
+    text = f"{value:.4f}"
+    return _swap_separators(text) if ctx.get("is_es") else text
+
+
+_ENV.filters["fx4"] = _fx4_filter
+_ENV.filters["shares"] = pass_context(lambda ctx, val: _shares_filter(val, bool(ctx.get("is_es"))))
 _ENV.filters["ld"] = _localized_date
 _ENV.filters["tetype"] = _translate_event_type
 _ENV.filters["tnotes"] = _translate_notes
@@ -373,6 +435,165 @@ class ReportRenderer:
             "portfolio_totals": {"gains": total_gains, "losses": total_losses, "net": total_net},
         }
 
+    def _deferrals_context(self, max_year: int | None = None) -> dict[str, Any]:
+        """Art. 33.5.f deferrals still locked up, and the lot that would free each.
+
+        The yearly table says how much each year blocked; this says how much is
+        still deferred, where it sits, and what has to be transmitted to
+        integrate it — the balance a técnico needs to verify a future deduction,
+        and the taxpayer needs to plan one.
+
+        Two dates, because the two answers differ and both matter: 31 December of
+        the last complete year (the figure that belongs with the declared years)
+        and today (the live position). Unlike the Art. 49 carry-forward these
+        deferrals do **not** expire; they wait for the replacement shares to go.
+        """
+        cutoff = date(max_year, 12, 31) if max_year is not None else date.today()
+        today = date.today()
+
+        def pending_at(claim: Any, when: date) -> Decimal:
+            # Before it attached, the deferral did not exist. After that it is the
+            # amount less everything settled by then — freed (``releases``) and
+            # rolled onto successor shares (``rollovers``), which is why both
+            # halves have to carry dates.
+            if when < claim.anchor_date:
+                return Decimal("0")
+            settled = sum(
+                (amount for on, amount in claim.releases + claim.rollovers if on <= when),
+                Decimal("0"),
+            )
+            return Decimal(claim.amount - settled)
+
+        rows: list[dict[str, Any]] = []
+        for lot in self.engine.lot_ledger:
+            for claim in lot.deferred_claims:
+                at_cutoff = pending_at(claim, cutoff)
+                at_today = pending_at(claim, today)
+                if at_cutoff == 0 and at_today == 0:
+                    continue
+                rows.append(
+                    {
+                        "origin_year": claim.origin_year,
+                        "pending_cutoff": at_cutoff,
+                        "pending_today": at_today,
+                        "lot_date": lot.acquisition_date,
+                        "lot_broker": lot.broker,
+                        "lot_label": lot.isin or "—",
+                        "lot_shares_today": lot.remaining_shares,
+                    }
+                )
+        rows.sort(key=lambda r: (r["origin_year"], r["lot_date"]))
+        # A renuncia leaves this table short of the yearly columns by exactly the
+        # amount given up: those deferrals did release — the block broke, so they
+        # are not pending here — but the yearly table no longer credits them. Both
+        # figures are right, and the gap between them has to be named.
+        forfeited = sum(
+            (
+                amount
+                for origin, amount in self.engine.forfeited_releases.items()
+                if max_year is None or origin <= max_year
+            ),
+            Decimal("0"),
+        )
+        return {
+            "deferral_rows": rows,
+            "deferral_forfeited": forfeited,
+            "deferral_cutoff": cutoff,
+            "deferral_today": today,
+            "deferral_totals": {
+                "pending_cutoff": sum((r["pending_cutoff"] for r in rows), Decimal("0")),
+                "pending_today": sum((r["pending_today"] for r in rows), Decimal("0")),
+            },
+        }
+
+    def _espp_exposure_context(self, max_year: int | None = None) -> dict[str, Any]:
+        """ESPP lots still inside the 36 months, and the FIFO cushion in front.
+
+        The Art. 42.3.f table above reports breaches that already happened. This
+        reports the exposure still open: how much of the purchase discount would
+        become rendimiento del trabajo if those shares left now, and how many
+        shares stand ahead of them in the FIFO queue — because what usually
+        reaches an ESPP lot is not a decision to sell it, but a later vest's
+        sell-to-cover eating through everything in front of it.
+
+        The cushion is a projection over the current queue, not a tax figure. It
+        is computed per security: Spanish FIFO is per ISIN, so a holding in
+        another security shields nothing.
+        """
+        from .cli_main import ESPP_HOLDING_MONTHS
+        from .dates import add_months
+        from .ecb_rates import ECBRateFetcher
+        from .models import LotOrigin
+
+        cutoff = date(max_year, 12, 31) if max_year is not None else date.today()
+        today = date.today()
+        ledger = self.engine.lot_ledger
+
+        def discount_per_share(lot: Any) -> Decimal | None:
+            """EUR discount on one share, at the lot's own acquisition rate.
+
+            The salary accrued at purchase, not at sale, so the purchase-date
+            rate is the right one — same basis as the breach table, so the two
+            can be added together.
+            """
+            if lot.espp_fmv_usd is None or lot.espp_price_usd is None:
+                return None
+            fx = lot.fx_rate or ECBRateFetcher.get_rate(lot.acquisition_date)
+            return Decimal((lot.espp_fmv_usd - lot.espp_price_usd) * fx)
+
+        rows: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        for index, lot in enumerate(ledger):
+            if lot.origin is not LotOrigin.ESPP:
+                continue
+            exempt_from = add_months(lot.acquisition_date, ESPP_HOLDING_MONTHS)
+            if today >= exempt_from:
+                continue  # exemption already secured; nothing at risk
+            shares_today = lot.shares_held_at(today)
+            shares_cutoff = lot.shares_held_at(cutoff)
+            if shares_today <= 0 and shares_cutoff <= 0:
+                continue
+
+            per_share = discount_per_share(lot)
+            if per_share is None:
+                # A missing input must never read as "nothing at risk".
+                warnings.append(lot.acquisition_date.isoformat())
+                continue
+
+            # Everything acquired earlier in the same security and still held is
+            # consumed before FIFO can reach this lot.
+            cushion = sum(
+                (
+                    earlier.shares_held_at(today)
+                    for earlier in ledger[:index]
+                    if earlier.isin == lot.isin
+                ),
+                Decimal("0"),
+            )
+            rows.append(
+                {
+                    "acq_date": lot.acquisition_date,
+                    "broker": lot.broker,
+                    "shares_cutoff": shares_cutoff,
+                    "shares_today": shares_today,
+                    "discount_cutoff": (per_share * shares_cutoff).quantize(Decimal("0.01")),
+                    "discount_today": (per_share * shares_today).quantize(Decimal("0.01")),
+                    "exempt_from": exempt_from,
+                    "cushion_today": cushion,
+                }
+            )
+        rows.sort(key=lambda r: r["acq_date"])
+        return {
+            "espp_exposure_rows": rows,
+            "espp_exposure_cutoff": cutoff,
+            "espp_exposure_today": today,
+            "espp_exposure_unvalued": warnings,
+            "espp_exposure_totals": {
+                "discount_cutoff": sum((r["discount_cutoff"] for r in rows), Decimal("0")),
+                "discount_today": sum((r["discount_today"] for r in rows), Decimal("0")),
+            },
+        }
+
     def _broker_context(self, max_year: int | None = None) -> dict[str, Any]:
         """Per-broker realized G/L view-model, attributed to the selling broker."""
         gains: dict[str, Decimal] = {}
@@ -398,12 +619,66 @@ class ReportRenderer:
             rows.append(
                 {"broker": b, "gains": gain_amt, "losses": loss_amt, "net": gain_amt + loss_amt}
             )
+        # Bridge from this table's gross result to the computable one used
+        # everywhere else, so two different totals never read as a contradiction.
+        #
+        #   gross + deferred - released = computable
+        #
+        # A loss Art. 33.5.f defers does NOT reduce the base yet, so deferring it
+        # RAISES the computable result — it is added back, not subtracted. A
+        # deferral from an earlier year whose block has since broken does reduce
+        # it, so it is subtracted. A renuncia is not a step in this chain: it
+        # removes a release before the chain starts, and is reported separately
+        # because it is the one figure the reader cannot derive from the tables.
+        # Every term comes from the same yearly summaries that feed the Modelo
+        # 100 tables, so the arithmetic ties to the cent.
+        summaries = [
+            s
+            for s in self.engine.get_all_yearly_summaries()
+            if max_year is None or s.year <= max_year
+        ]
+        blocked = sum((abs(s.blocked_losses) for s in summaries), Decimal("0"))
+        released = sum((abs(s.unlocked_historical_losses) for s in summaries), Decimal("0"))
+        forfeited = sum(
+            (
+                amount
+                for origin, amount in self.engine.forfeited_releases.items()
+                if max_year is None or origin <= max_year
+            ),
+            Decimal("0"),
+        )
+        # Both endpoints have to keep matching the tables they point at — the
+        # broker total above and the portfolio total below, each rounded to cents
+        # on its own. Rounding the bridging terms independently too can leave the
+        # printed line a cent out, on a note whose only job is to show that those
+        # two totals reconcile. So the endpoints are pinned and the deferral term
+        # (failing that, the release term) absorbs the residual; it moves by at
+        # most a cent or two from its own rounded value.
+        cents = Decimal("0.01")
+        gross_net = (total_gain + total_loss).quantize(cents, ROUND_HALF_UP)
+        computable_net = sum((s.net_gain_loss for s in summaries), Decimal("0")).quantize(
+            cents, ROUND_HALF_UP
+        )
+        blocked_shown = blocked.quantize(cents, ROUND_HALF_UP)
+        released_shown = released.quantize(cents, ROUND_HALF_UP)
+        residual = computable_net - (gross_net + blocked_shown - released_shown)
+        if blocked_shown:
+            blocked_shown += residual
+        elif released_shown:
+            released_shown -= residual
         return {
             "broker_rows": rows,
             "broker_totals": {
                 "gains": total_gain,
                 "losses": total_loss,
                 "net": total_gain + total_loss,
+            },
+            "broker_bridge": {
+                "gross_net": gross_net,
+                "blocked": blocked_shown,
+                "released": released_shown,
+                "forfeited": forfeited,
+                "computable_net": computable_net,
             },
         }
 
@@ -449,7 +724,25 @@ class ReportRenderer:
                         "net": net,
                     }
                 )
-        return {"transm_rows": rows, "transm_total": total_net}
+        # Each row is rounded to cents on its own — including its prorated share
+        # of the sale's fee — so the column can drift a cent or two from the
+        # figure every aggregate table shows, which rounds once at the end. The
+        # total stays the sum of the printed rows, because a table that does not
+        # add up is worse than two tables that differ; the aggregate is carried
+        # alongside so the report can state both and name the reason.
+        aggregate = sum(
+            (
+                s.total_gains + s.total_losses
+                for s in self.engine.get_all_yearly_summaries()
+                if max_year is None or s.year <= max_year
+            ),
+            Decimal("0"),
+        ).quantize(Decimal("0.01"), ROUND_HALF_UP)
+        return {
+            "transm_rows": rows,
+            "transm_total": total_net,
+            "transm_total_aggregate": aggregate,
+        }
 
     def _hacienda_summary_context(
         self,
@@ -671,6 +964,11 @@ class ReportRenderer:
         else:
             ctx["single_events"] = _in_window(engine.processed_events)
 
+        # Deferrals are a live balance, not a yearly figure, so this section runs
+        # on the whole lot ledger regardless of the report's year window.
+        ctx.update(self._deferrals_context(max_year=max_year))
+        ctx.update(self._espp_exposure_context(max_year=max_year))
+
         if multi_broker:
             ctx.update(self._broker_context(max_year=max_year))
 
@@ -683,7 +981,7 @@ class ReportRenderer:
         base_engine: TaxEngine | None = None
         if crypto_summaries:
             base_engine = TaxEngine()
-            base_engine.yearly_summaries = _merge_summaries(
+            base_engine.yearly_summaries = merge_yearly_summaries(
                 {s.year: s for s in engine.get_all_yearly_summaries()}, crypto_summaries
             )
 

@@ -947,7 +947,12 @@ def main() -> None:
     # net the error against a later one.
     already_deducted = engine.releases_already_deducted()
     if already_deducted and args.forfeit_declared_releases:
-        forfeited = engine.apply_closed_year_forfeits()
+        # The per-security engines behind the rollup feed the report's portfolio
+        # table, so they have to give up the same releases — otherwise that table
+        # keeps counting a deduction this run has just renounced.
+        forfeited = engine.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in report_securities or []]
+        )
         print()
         print("ℹ️  RELEASES FORFEITED (--forfeit-declared-releases)")
         print("-" * 95)

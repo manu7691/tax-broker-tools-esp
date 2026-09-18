@@ -9,6 +9,95 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **One merge for yearly summaries, instead of four that had drifted apart.**
+  The savings base is computed on a rollup — per security in portfolio mode,
+  stocks plus crypto in the combined report — and each rollup had grown its own
+  copy of the same field-by-field merge. Three of the four dropped
+  `unlocked_historical_losses`, so a released Art. 33.5.f deferral vanished and
+  the savings base came out **overstated**: tax paid on a deduction the taxpayer
+  was entitled to. The portfolio rollup, which carried that field, dropped the
+  split `acquisition_fees_eur` / `disposal_fees_eur` instead. All four now call
+  `models.merge_yearly_summaries`, and a test walks the dataclass's fields so a
+  field added later cannot be silently forgotten again.
+- **The disposal table explains why its total differs by a cent.** Each row is
+  rounded to cents on its own, including its prorated share of the sale
+  commission, so the column can land a cent or two from the figure the aggregate
+  tables show — they round once at the end. The total stays the sum of the rows
+  printed above it, because a table that does not add up is worse than two that
+  differ; the report now states both figures, names rounding as the reason, and
+  points at the per-year figures as the ones to declare.
+- **A forfeited release now disappears from the per-security table too.**
+  `--forfeit-declared-releases` was applied only to the portfolio rollup. In
+  portfolio mode the per-security engines hold their own summary objects, and the
+  report's *Resumen de Cartera* reads those, so that table kept counting a
+  deduction the run had just renounced — the "con renuncia" and "sin renuncia"
+  reports showed an identical portfolio row while their Modelo 100 tables
+  correctly differed. `TaxEngine.apply_closed_year_forfeits()` takes
+  `mirror_engines` and spends the same portfolio-level budget across them. Only
+  the portfolio table moves; every declared figure is unchanged.
+- **The Spanish report is written in Spanish number format.** Amounts rendered as
+  `€1,234.56` in both languages; the Spanish report now reads `1.234,56 €`,
+  symbol included, in tables, ledger notes and prose. Dates were already
+  localized. This report is transcribed into the Modelo 100 by hand, where a
+  decimal point read as a thousands separator is a three-orders-of-magnitude
+  error.
+
+### Added
+
+- **The ESPP breach notice corrected against what AEAT publishes.** Checking the
+  Art. 42.3.f claims the way the Art. 33.5.f ones had been checked turned up
+  three defects in a notice that goes to the administration: it never mentioned
+  the **intereses de demora** the filing accrues; it named only
+  *complementaria*, while AEAT's own regularisation chapter calls the same
+  filing *autoliquidación rectificativa*; and it asserted that the employee must
+  have signed the enrolment document, which is not among the conditions AEAT
+  lists — while the condition that **is** listed (the offer made on equal terms
+  to all employees) was missing. The €12,000 cap is now stated with the €50,000
+  case for an *empresa emergente* (Ley 28/2022). Confirmed verbatim: the holding
+  period is three years. Both ESPP guides updated to match.
+- **The engine pinned against AEAT's published criteria, quoted verbatim.**
+  `tests/test_aeat_published_criteria.py` tests the engine against the wording
+  the administration actually printed, cited with its source in each docstring,
+  rather than against a developer's paraphrase. It confirmed the progressive
+  integration rule, the definition of a *definitive* transmission, and FIFO
+  under Art. 37.2, and it closed a real gap: nothing tested the «dos meses
+  **anteriores**» half of the window, only the «posteriores» half. It also
+  records a scope limit that was silent — AEAT gives a **one-year** window for
+  securities not admitted to trading, and only the two-month (listed) window is
+  implemented.
+- **What Art. 33.5.f still has locked up, and the lot that would free it.** The
+  yearly table said how much each year blocked; nothing said how much is *still*
+  deferred, where it sits, or what has to be transmitted to integrate it — the
+  balance a técnico needs to verify a future deduction and the taxpayer needs to
+  plan one. The section states plainly that these deferrals **do not expire**
+  (that is Art. 49, for the negative savings balance — a confusion that leads to
+  selling shares to "rescue" losses that were never at risk), and that a fully
+  sold lot can still carry a balance when its sales were not definitive. Its
+  total reconciles with the "Pérdidas Bloqueadas" column it explains, and when a
+  renuncia is in force the section names the amount it differs by — that loss
+  released but is not credited, so it is neither pending nor deducted.
+  `DeferredWashSaleLoss` gained `rollovers`, the dated schedule behind `rolled`:
+  `releases` dated only the freed half, so the balance at a past date could not
+  be reconstructed once a deferral had rolled over. No figure changes — the
+  amounts were already computed, they just had no date.
+- **Live ESPP exposure, with the FIFO cushion in front of it.** The Art. 42.3.f
+  table reports breaches that already happened. This reports the exposure still
+  open: lots inside the 36 months, the discount that would become salary income
+  of the purchase year, the date each is clear, and how many shares of the same
+  security stand ahead in the queue — because what usually reaches an ESPP lot
+  is not a decision to sell it but a later vest's sell-to-cover eating through
+  everything in front. The cushion is labelled a projection over today's queue,
+  not a tax figure, and an unvalued lot is reported loudly rather than read as
+  "nothing at risk".
+- **The two loss columns no longer share a name, and a note reconciles them.**
+  *Resumen de Cartera* reports losses that are **deducible** (after Art. 33.5.f);
+  *G/P Realizadas por Bróker* reports them **brutas**. Both were labelled
+  "Pérdidas Realizadas", which made two correct totals read as a contradiction.
+  The broker table now carries the arithmetic that joins them —
+  `gross + deferred − released = computable` — pinned to the cent against the two
+  totals it references, plus the amount of any renuncia, which is the one figure
+  a reader cannot derive from the tables.
+
 - **Sell-to-cover sales are no longer mislabelled as manual sells.** The window for
   matching a withholding sale to its vest went from 3 to 7 calendar days: a vest
   dated on a Thursday or a non-trading day settles its cover sale after a weekend,
