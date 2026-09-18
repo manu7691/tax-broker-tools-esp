@@ -938,3 +938,94 @@ class TestClosedYearsFileAnnotations:
 
         with pytest.raises(ValueError):
             load_closed_years(tmp_path / "closed_years.json")
+
+
+class TestForfeitsReachThePerSecurityView:
+    """A forfeited release must disappear from the per-security tables too.
+
+    In portfolio mode the rollup and the per-security engines hold *separate*
+    summary objects. The forfeit budget is portfolio-level (it compares the
+    declared return against the whole base del ahorro), so it can only be
+    computed on the rollup — but if it is applied there alone, the per-security
+    view keeps counting a deduction the taxpayer has renounced, and the report's
+    portfolio table stops tying to its own Modelo 100 tables.
+    """
+
+    # AAA realises a loss in 2022, blocks it with a repurchase, and frees it in
+    # 2023. BBB is an unrelated security, present so portfolio mode is in play.
+    HISTORY = [
+        ev(date(2021, 1, 10), EventType.BUY, "100", "100", isin="AAA", symbol="AAA"),
+        ev(date(2022, 5, 10), EventType.SELL, "100", "50", isin="AAA", symbol="AAA"),
+        ev(date(2022, 5, 20), EventType.BUY, "100", "50", isin="AAA", symbol="AAA"),
+        ev(date(2023, 9, 10), EventType.SELL, "100", "50", isin="AAA", symbol="AAA"),
+        ev(date(2022, 3, 1), EventType.BUY, "10", "10", isin="BBB", symbol="BBB"),
+        ev(date(2023, 3, 1), EventType.SELL, "10", "20", isin="BBB", symbol="BBB"),
+    ]
+
+    def _portfolio(self):
+        portfolio = run_portfolio(list(self.HISTORY))
+        # As filed, 2022 reported no blocked loss: the -5000 was taken that year.
+        portfolio.aggregate.closed_years = {2022: {"blocked_losses": Decimal("0.00")}}
+        return portfolio
+
+    def test_the_per_security_engine_drops_the_forfeited_release(self):
+        portfolio = self._portfolio()
+
+        portfolio.aggregate.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in portfolio.results]
+        )
+
+        aaa = next(r.engine for r in portfolio.results if r.security.ticker == "AAA")
+        assert aaa.get_yearly_summary(2023).unlocked_historical_losses == Decimal("0")
+
+    def test_the_per_security_deductible_losses_still_sum_to_the_rollup(self):
+        portfolio = self._portfolio()
+
+        portfolio.aggregate.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in portfolio.results]
+        )
+
+        per_security = sum(
+            (
+                s.deductible_losses
+                for r in portfolio.results
+                for s in r.engine.get_all_yearly_summaries()
+            ),
+            Decimal("0"),
+        )
+        rollup = sum(
+            (s.deductible_losses for s in portfolio.aggregate.get_all_yearly_summaries()),
+            Decimal("0"),
+        )
+        assert per_security == rollup
+
+    def test_the_rollup_still_forfeits_the_same_amount(self):
+        portfolio = self._portfolio()
+
+        forfeited = portfolio.aggregate.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in portfolio.results]
+        )
+
+        assert forfeited == {2022: Decimal("5000.00")}
+        assert portfolio.aggregate.get_yearly_summary(2023).unlocked_historical_losses == (
+            Decimal("0")
+        )
+
+    def test_mirroring_twice_changes_nothing(self):
+        portfolio = self._portfolio()
+        mirrors = [r.engine for r in portfolio.results]
+
+        portfolio.aggregate.apply_closed_year_forfeits(mirror_engines=mirrors)
+        portfolio.aggregate.apply_closed_year_forfeits(mirror_engines=mirrors)
+
+        aaa = next(r.engine for r in portfolio.results if r.security.ticker == "AAA")
+        assert aaa.get_yearly_summary(2023).unlocked_historical_losses == Decimal("0")
+
+    def test_the_amount_forfeited_is_recorded_on_the_engine(self):
+        portfolio = self._portfolio()
+
+        portfolio.aggregate.apply_closed_year_forfeits(
+            mirror_engines=[r.engine for r in portfolio.results]
+        )
+
+        assert portfolio.aggregate.forfeited_releases == {2022: Decimal("5000.00")}
