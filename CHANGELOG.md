@@ -9,6 +9,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A forfeited release now disappears from the per-security table too.**
+  `--forfeit-declared-releases` was applied only to the portfolio rollup. In
+  portfolio mode the per-security engines hold their own summary objects, and the
+  report's *Resumen de Cartera* reads those, so that table kept counting a
+  deduction the run had just renounced — the "con renuncia" and "sin renuncia"
+  reports showed an identical portfolio row while their Modelo 100 tables
+  correctly differed. `TaxEngine.apply_closed_year_forfeits()` takes
+  `mirror_engines` and spends the same portfolio-level budget across them. Only
+  the portfolio table moves; every declared figure is unchanged.
+- **The Spanish report is written in Spanish number format.** Amounts rendered as
+  `€1,234.56` in both languages; the Spanish report now reads `1.234,56 €`,
+  symbol included, in tables, ledger notes and prose. Dates were already
+  localized. This report is transcribed into the Modelo 100 by hand, where a
+  decimal point read as a thousands separator is a three-orders-of-magnitude
+  error.
+
+### Added
+
+- **The two loss columns no longer share a name, and a note reconciles them.**
+  *Resumen de Cartera* reports losses that are **deducible** (after Art. 33.5.f);
+  *G/P Realizadas por Bróker* reports them **brutas**. Both were labelled
+  "Pérdidas Realizadas", which made two correct totals read as a contradiction.
+  The broker table now carries the arithmetic that joins them —
+  `gross + deferred − released = computable` — pinned to the cent against the two
+  totals it references, plus the amount of any renuncia, which is the one figure
+  a reader cannot derive from the tables.
+
 - **Sell-to-cover sales are no longer mislabelled as manual sells.** The window for
   matching a withholding sale to its vest went from 3 to 7 calendar days: a vest
   dated on a Thursday or a non-trading day settles its cover sale after a weekend,

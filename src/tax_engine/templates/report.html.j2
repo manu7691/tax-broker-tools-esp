@@ -23,25 +23,25 @@
 <td>{{ '+' if e.event_type.value != 'SELL' else '-' }}{{ e.shares | shares }}</td>
 <td>{% if e.currency == 'USD' %}${{ e.price_usd | num2 }}{% else %}{{ e.price_usd | num2 }} {{ e.currency }}{% endif %}</td>
 <td>{{ e.resolved_fx_rate | fx4 }}</td>
-<td>€{{ e.price_eur | num4 }}</td>
-<td>€{{ e.total_value_eur | num2 }}</td>
+<td>{{ e.price_eur | eur4 }}</td>
+<td>{{ e.total_value_eur | eur }}</td>
 <td>{{ pe.total_shares_after | shares }}</td>
-<td>€{{ pe.avg_cost_eur_after | num4 }}</td>
+<td>{{ pe.avg_cost_eur_after | eur4 }}</td>
 <td>
 {%- if pe.realized_gain_loss != 0 -%}
-<strong>€{{ pe.realized_gain_loss | num2 }}</strong>
+<strong>{{ pe.realized_gain_loss | eur }}</strong>
 {%- if pe.event.event_type.value == 'SELL' and pe.realized_gain_loss < 0 and 'Wash Sale Blocked' in pe.event.notes -%}
 <br><small style='color:red;'>{{ 'Bloqueado Regla 2 Meses' if is_es else 'Wash Sale Blocked' }}</small>
 {%- endif -%}
-{%- elif e.event_type.value == 'SELL' -%}€0.00{%- endif -%}
+{%- elif e.event_type.value == 'SELL' -%}{{ 0 | eur }}{%- endif -%}
 </td>
 </tr>
 {%- for match in pe.fifo_matches %}
 <tr style='background-color:#fafafa; font-style:italic;'>
 <td></td>
 <td colspan='3' style='text-align:right;'>{{ 'Cruce FIFO:' if is_es else 'FIFO Match:' }}</td>
-<td colspan='6'>{% if is_es %}Se cruzaron {{ match.shares | shares }} acciones de la adquisición del {{ match.acquisition_date.strftime('%d/%m/%Y') }} a €{{ match.acquisition_price_eur | num4 }}{% else %}Matched {{ match.shares | shares }} shares from acquisition on {{ match.acquisition_date }} at €{{ match.acquisition_price_eur | num4 }}{% endif %}</td>
-<td>€{{ match.realized_gain_loss | num2 }}</td>
+<td colspan='6'>{% if is_es %}Se cruzaron {{ match.shares | shares }} acciones de la adquisición del {{ match.acquisition_date.strftime('%d/%m/%Y') }} a {{ match.acquisition_price_eur | eur4 }}{% else %}Matched {{ match.shares | shares }} shares from acquisition on {{ match.acquisition_date }} at {{ match.acquisition_price_eur | eur4 }}{% endif %}</td>
+<td>{{ match.realized_gain_loss | eur }}</td>
 </tr>
 {%- endfor %}
 {%- endfor %}
@@ -56,14 +56,14 @@
 {%- for pe in sells %}{% set e = pe.event %}
 <h3>{{ loop.index }}. {% if is_es %}Venta el {{ e.event_date.strftime('%d/%m/%Y') }}{% else %}Sale on {{ e.event_date.isoformat() }}{% endif %}</h3>
 <ul>
-<li><strong>{% if is_es %}Vendido: {{ e.shares | shares }} acciones @ €{{ e.price_eur | num4 }}{% else %}Sold: {{ e.shares | shares }} shares @ €{{ e.price_eur | num4 }}{% endif %}</strong></li>
+<li><strong>{% if is_es %}Vendido: {{ e.shares | shares }} acciones @ {{ e.price_eur | eur4 }}{% else %}Sold: {{ e.shares | shares }} shares @ {{ e.price_eur | eur4 }}{% endif %}</strong></li>
 <li><strong>{{ 'Cruces de Lotes FIFO' if is_es else 'FIFO Lot Matches' }}</strong>:</li>
 <ul>
 {%- for match in pe.fifo_matches %}
-<li>{% if is_es %}Cruza {{ match.shares | shares }} acciones adquiridas el {{ match.acquisition_date.strftime('%d/%m/%Y') }} @ €{{ match.acquisition_price_eur | num4 }}. Ganancia/Pérdida{% else %}Matched {{ match.shares | shares }} shares acquired on {{ match.acquisition_date }} @ €{{ match.acquisition_price_eur | num4 }}. Gain/Loss{% endif %}: <code>({{ e.price_eur | num4 }} - {{ match.acquisition_price_eur | num4 }}) * {{ match.shares | shares }} = €{{ match.realized_gain_loss | num2 }}</code></li>
+<li>{% if is_es %}Cruza {{ match.shares | shares }} acciones adquiridas el {{ match.acquisition_date.strftime('%d/%m/%Y') }} @ {{ match.acquisition_price_eur | eur4 }}. Ganancia/Pérdida{% else %}Matched {{ match.shares | shares }} shares acquired on {{ match.acquisition_date }} @ {{ match.acquisition_price_eur | eur4 }}. Gain/Loss{% endif %}: <code>({{ e.price_eur | num4 }} - {{ match.acquisition_price_eur | num4 }}) * {{ match.shares | shares }} = {{ match.realized_gain_loss | eur }}</code></li>
 {%- endfor %}
 </ul>
-<li><strong>{{ 'Total Ganancia/Pérdida Realizada' if is_es else 'Total Realized Gain/Loss' }}</strong>: <strong>€{{ pe.realized_gain_loss | num2 }}</strong></li>
+<li><strong>{{ 'Total Ganancia/Pérdida Realizada' if is_es else 'Total Realized Gain/Loss' }}</strong>: <strong>{{ pe.realized_gain_loss | eur }}</strong></li>
 {%- if 'Wash Sale Blocked' in pe.event.notes %}
 <li><strong style='color:red;'>{% if is_es %}Aviso de Regla de 2 Meses: Esta pérdida está bloqueada según la ley española debido a la compra de acciones homogéneas en un plazo de 2 meses.{% else %}Wash Sale Warning: This loss is blocked under Spanish rules due to a purchase of homogenous shares within 2 months.{% endif %}</strong></li>
 {%- endif %}
@@ -103,7 +103,7 @@
 <h3>Reglas Clave:</h3>
 <ul>
 <li><strong>Casación FIFO</strong>: Las acciones de un mismo valor se consideran vendidas en el orden de su adquisición. Las ventas se casan con los lotes de compra más antiguos disponibles.</li>
-<li><strong>Escala de Gravamen del Ahorro</strong>: Se aplica la escala progresiva española: 19% hasta €6.000; 21% hasta €50.000; 23% hasta €200.000; 27% hasta €300.000; y 28% para importes superiores a €300.000.</li>
+<li><strong>Escala de Gravamen del Ahorro</strong>: Se aplica la escala progresiva española: 19% hasta 6.000 €; 21% hasta 50.000 €; 23% hasta 200.000 €; 27% hasta 300.000 €; y 28% para importes superiores a 300.000 €.</li>
 <li><strong>Regla de los 2 Meses (Wash Sale)</strong>: Las pérdidas patrimoniales quedan bloqueadas (diferidas) si se adquieren acciones homogéneas dentro de los 2 meses anteriores o posteriores a la fecha de la venta.</li>
 {%- if multi_broker %}
 <li><strong style='color: #cc6600;'>ALCANCE - Varias Cuentas</strong>: Este informe combina datos de <strong>{{ brokers_joined }}</strong>, por lo que el FIFO y la regla de los 2 meses se aplican entre ellos en conjunto. Si además tienes el mismo valor en <strong>otra</strong> cuenta/bróker no importada aquí, las recompras allí dentro de la ventana de 2 meses NO se detectan y algunas pérdidas bloqueadas podrían estar infravaloradas.</li>
@@ -131,48 +131,48 @@
 <tr><th colspan='3' style='background-color:#eaf2ff;'>1) Rendimientos del trabajo (salary income)</th></tr>
 <tr><td colspan='3' style='font-size:11px; color:#555;'>RSU vesting and the ordinary ESPP discount are <strong>already on your payroll (nómina)</strong> and pre-filled by Hacienda — do <strong>not</strong> re-enter them from this report.</td></tr>
 {%- if y.espp_early %}
-<tr><td>ESPP sold before 3-year holding (Complementaria for {{ y.year }})</td><td><strong style='color:#cc0000;'>€{{ y.espp_early | num2 }}</strong></td><td>trabajo boxes</td></tr>
+<tr><td>ESPP sold before 3-year holding (Complementaria for {{ y.year }})</td><td><strong style='color:#cc0000;'>{{ y.espp_early | eur }}</strong></td><td>trabajo boxes</td></tr>
 {%- endif %}
 <tr><th colspan='3' style='background-color:#eaf2ff;'>2) Base del ahorro — savings base</th></tr>
 <tr><td><strong>a) Capital gains/losses on shares</strong></td><td></td><td>≈ 0328–0344</td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Transmission value (valor de transmisión)</td><td>€{{ y.transm_value | num2 }}</td><td></td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Acquisition value (valor de adquisición)</td><td>€{{ y.acq_value | num2 }}</td><td></td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Less: transaction fees (gastos)</td><td>−€{{ y.fees | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Transmission value (valor de transmisión)</td><td>{{ y.transm_value | eur }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Acquisition value (valor de adquisición)</td><td>{{ y.acq_value | eur }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Less: transaction fees (gastos)</td><td>−{{ y.fees | eur }}</td><td></td></tr>
 {%- if y.blocked > 0 %}
-<tr><td>&nbsp;&nbsp;&nbsp;Add back: 2-month blocked losses (deferred, not deductible this year)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Add back: 2-month blocked losses (deferred, not deductible this year)</td><td>+{{ y.blocked | eur }}</td><td></td></tr>
 {%- endif %}
-<tr><td>&nbsp;&nbsp;&nbsp;<strong>Net saldo integrated into the base (deductible){{ ' — shares' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Net saldo integrated into the base (deductible){{ ' — shares' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>{{ y.saldo_neto | eur }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
 {%- if y.crypto_saldo is not none %}
-<tr><td><strong>a-bis) Crypto capital gains/losses (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>€{{ y.crypto_saldo | num2 }}</strong></td><td>≈ 1624–1631</td></tr>
+<tr><td><strong>a-bis) Crypto capital gains/losses (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>{{ y.crypto_saldo | eur }}</strong></td><td>≈ 1624–1631</td></tr>
 {%- endif %}
-<tr><td><strong>b) Dividends + interest (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
-<tr><td><strong>Integrated savings base (after offsets/carryforward)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
+<tr><td><strong>b) Dividends + interest (RCM)</strong></td><td>{{ y.rcm | eur }}</td><td>≈ 0027–0031</td></tr>
+<tr><td><strong>Integrated savings base (after offsets/carryforward)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>{{ y.base_ahorro | eur }}</strong></td><td>≈ 0460</td></tr>
 {%- if y.foreign_tax > 0 %}
-<tr><td>Foreign tax withheld (deducción doble imposición)</td><td>€{{ y.foreign_tax | num2 }}</td><td>≈ 0588/0589</td></tr>
+<tr><td>Foreign tax withheld (deducción doble imposición)</td><td>{{ y.foreign_tax | eur }}</td><td>≈ 0588/0589</td></tr>
 {%- endif %}
 {%- else %}
 <tr><th>Concepto</th><th>Importe (EUR)</th><th>Casilla (verificar)</th></tr>
 <tr><th colspan='3' style='background-color:#eaf2ff;'>1) Rendimientos del trabajo</th></tr>
 <tr><td colspan='3' style='font-size:11px; color:#555;'>La concesión de RSU y el descuento ESPP ordinario <strong>ya constan en tu nómina</strong> y vienen en los datos fiscales de Hacienda — <strong>no</strong> los vuelvas a introducir desde este informe.</td></tr>
 {%- if y.espp_early %}
-<tr><td>ESPP vendido antes de 3 años (Complementaria del {{ y.year }})</td><td><strong style='color:#cc0000;'>€{{ y.espp_early | num2 }}</strong></td><td>casillas de trabajo</td></tr>
+<tr><td>ESPP vendido antes de 3 años (Complementaria del {{ y.year }})</td><td><strong style='color:#cc0000;'>{{ y.espp_early | eur }}</strong></td><td>casillas de trabajo</td></tr>
 {%- endif %}
 <tr><th colspan='3' style='background-color:#eaf2ff;'>2) Base del ahorro</th></tr>
 <tr><td><strong>a) Ganancias/pérdidas patrimoniales (acciones)</strong></td><td></td><td>≈ 0328–0344</td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Valor de transmisión</td><td>€{{ y.transm_value | num2 }}</td><td></td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Valor de adquisición</td><td>€{{ y.acq_value | num2 }}</td><td></td></tr>
-<tr><td>&nbsp;&nbsp;&nbsp;Menos: gastos (comisiones)</td><td>−€{{ y.fees | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Valor de transmisión</td><td>{{ y.transm_value | eur }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Valor de adquisición</td><td>{{ y.acq_value | eur }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Menos: gastos (comisiones)</td><td>−{{ y.fees | eur }}</td><td></td></tr>
 {%- if y.blocked > 0 %}
-<tr><td>&nbsp;&nbsp;&nbsp;Se suma: pérdidas bloqueadas regla 2 meses (diferidas, no deducibles este año)</td><td>+€{{ y.blocked | num2 }}</td><td></td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;Se suma: pérdidas bloqueadas regla 2 meses (diferidas, no deducibles este año)</td><td>+{{ y.blocked | eur }}</td><td></td></tr>
 {%- endif %}
-<tr><td>&nbsp;&nbsp;&nbsp;<strong>Saldo neto a integrar en la base (deducible){{ ' — acciones' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>€{{ y.saldo_neto | num2 }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
+<tr><td>&nbsp;&nbsp;&nbsp;<strong>Saldo neto a integrar en la base (deducible){{ ' — acciones' if y.crypto_saldo is not none else '' }}</strong></td><td class='{{ 'gain' if y.saldo_neto >= 0 else 'loss' }}'><strong>{{ y.saldo_neto | eur }}</strong></td><td>saldo ≈ 0424/0425</td></tr>
 {%- if y.crypto_saldo is not none %}
-<tr><td><strong>a-bis) Ganancias/pérdidas de cripto (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>€{{ y.crypto_saldo | num2 }}</strong></td><td>≈ 1624–1631</td></tr>
+<tr><td><strong>a-bis) Ganancias/pérdidas de cripto (otros elementos patrimoniales)</strong></td><td class='{{ 'gain' if y.crypto_saldo >= 0 else 'loss' }}'><strong>{{ y.crypto_saldo | eur }}</strong></td><td>≈ 1624–1631</td></tr>
 {%- endif %}
-<tr><td><strong>b) Dividendos + intereses (RCM)</strong></td><td>€{{ y.rcm | num2 }}</td><td>≈ 0027–0031</td></tr>
-<tr><td><strong>Base del ahorro integrada (tras compensaciones/arrastre)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>€{{ y.base_ahorro | num2 }}</strong></td><td>≈ 0460</td></tr>
+<tr><td><strong>b) Dividendos + intereses (RCM)</strong></td><td>{{ y.rcm | eur }}</td><td>≈ 0027–0031</td></tr>
+<tr><td><strong>Base del ahorro integrada (tras compensaciones/arrastre)</strong></td><td class='{{ 'gain' if y.base_ahorro >= 0 else 'loss' }}'><strong>{{ y.base_ahorro | eur }}</strong></td><td>≈ 0460</td></tr>
 {%- if y.foreign_tax > 0 %}
-<tr><td>Retención en origen (deducción doble imposición)</td><td>€{{ y.foreign_tax | num2 }}</td><td>≈ 0588/0589</td></tr>
+<tr><td>Retención en origen (deducción doble imposición)</td><td>{{ y.foreign_tax | eur }}</td><td>≈ 0588/0589</td></tr>
 {%- endif %}
 {%- endif %}
 </table>
@@ -187,14 +187,14 @@
 {%- endif %}
 <table>
 {%- if not is_es %}
-<tr><th>Security</th><th>ISIN</th><th>Broker(s)</th><th>Realized Gains</th><th>Realized Losses</th><th>Net G/L</th><th>Open Position (shares)</th></tr>
+<tr><th>Security</th><th>ISIN</th><th>Broker(s)</th><th>Realized Gains</th><th>Deductible Losses</th><th>Net G/L</th><th>Open Position (shares)</th></tr>
 {%- else %}
-<tr><th>Valor</th><th>ISIN</th><th>Bróker(es)</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas</th><th>G/P Neta</th><th>Posición Abierta (acciones)</th></tr>
+<tr><th>Valor</th><th>ISIN</th><th>Bróker(es)</th><th>Ganancias Realizadas</th><th>Pérdidas Deducibles</th><th>G/P Neta</th><th>Posición Abierta (acciones)</th></tr>
 {%- endif %}
 {%- for r in portfolio_rows %}
-<tr><td>{{ r.label }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.brokers }}</td><td>€{{ r.gains | num2 }}</td><td>€{{ r.losses | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td><td>{{ r.shares | num4 }}</td></tr>
+<tr><td>{{ r.label }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.brokers }}</td><td>{{ r.gains | eur }}</td><td>{{ r.losses | eur }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>{{ r.net | eur }}</strong></td><td>{{ r.shares | num4 }}</td></tr>
 {%- endfor %}
-<tr><td><strong>{{ 'Total (Cartera)' if is_es else 'Total (Portfolio)' }}</strong></td><td></td><td></td><td><strong>€{{ portfolio_totals.gains | num2 }}</strong></td><td><strong>€{{ portfolio_totals.losses | num2 }}</strong></td><td class='{{ 'gain' if portfolio_totals.net >= 0 else 'loss' }}'><strong>€{{ portfolio_totals.net | num2 }}</strong></td><td></td></tr>
+<tr><td><strong>{{ 'Total (Cartera)' if is_es else 'Total (Portfolio)' }}</strong></td><td></td><td></td><td><strong>{{ portfolio_totals.gains | eur }}</strong></td><td><strong>{{ portfolio_totals.losses | eur }}</strong></td><td class='{{ 'gain' if portfolio_totals.net >= 0 else 'loss' }}'><strong>{{ portfolio_totals.net | eur }}</strong></td><td></td></tr>
 </table>
 {%- endif %}
 {# ---- Yearly Tax Summary ---- #}
@@ -208,13 +208,13 @@
 {%- for summary in summaries %}
 <tr>
 <td>{{ summary.year }}</td>
-<td>€{{ summary.total_gains | num2 }}</td>
-<td>€{{ summary.total_losses | num2 }}</td>
-<td>€{{ summary.blocked_losses | num2 }}</td>
-<td>€{{ summary.deductible_losses | num2 }}</td>
-<td>€{{ summary.total_fees_eur | num2 }}</td>
-<td class='{{ 'gain' if summary.taxable_gain >= 0 else 'loss' }}'><strong>€{{ summary.taxable_gain | num2 }}</strong></td>
-<td><strong>€{{ summary.tax_due | num2 }}</strong></td>
+<td>{{ summary.total_gains | eur }}</td>
+<td>{{ summary.total_losses | eur }}</td>
+<td>{{ summary.blocked_losses | eur }}</td>
+<td>{{ summary.deductible_losses | eur }}</td>
+<td>{{ summary.total_fees_eur | eur }}</td>
+<td class='{{ 'gain' if summary.taxable_gain >= 0 else 'loss' }}'><strong>{{ summary.taxable_gain | eur }}</strong></td>
+<td><strong>{{ summary.tax_due | eur }}</strong></td>
 </tr>
 {%- endfor %}
 </table>
@@ -233,15 +233,20 @@
 {%- endif %}
 <table>
 {%- if not is_es %}
-<tr><th>Broker</th><th>Realized Gains</th><th>Realized Losses</th><th>Net Realized G/L</th></tr>
+<tr><th>Broker</th><th>Realized Gains</th><th>Realized Losses (gross)</th><th>Net Realized G/L (gross)</th></tr>
 {%- else %}
-<tr><th>Bróker</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas</th><th>G/P Neta Realizada</th></tr>
+<tr><th>Bróker</th><th>Ganancias Realizadas</th><th>Pérdidas Realizadas (brutas)</th><th>G/P Neta Realizada (bruta)</th></tr>
 {%- endif %}
 {%- for r in broker_rows %}
-<tr><td>{{ r.broker }}</td><td>€{{ r.gains | num2 }}</td><td>€{{ r.losses | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td></tr>
+<tr><td>{{ r.broker }}</td><td>{{ r.gains | eur }}</td><td>{{ r.losses | eur }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>{{ r.net | eur }}</strong></td></tr>
 {%- endfor %}
-<tr><td><strong>Total</strong></td><td><strong>€{{ broker_totals.gains | num2 }}</strong></td><td><strong>€{{ broker_totals.losses | num2 }}</strong></td><td class='{{ 'gain' if broker_totals.net >= 0 else 'loss' }}'><strong>€{{ broker_totals.net | num2 }}</strong></td></tr>
+<tr><td><strong>Total</strong></td><td><strong>{{ broker_totals.gains | eur }}</strong></td><td><strong>{{ broker_totals.losses | eur }}</strong></td><td class='{{ 'gain' if broker_totals.net >= 0 else 'loss' }}'><strong>{{ broker_totals.net | eur }}</strong></td></tr>
 </table>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'><strong>Reconciliation — this total is not the figure to declare.</strong> The gross realized result (<strong>{{ broker_bridge.gross_net | eur }}</strong>){% if broker_bridge.blocked > 0 %}, plus the losses Art. 33.5.f defers, which do not reduce the base yet ({{ broker_bridge.blocked | eur }}){% endif %}{% if broker_bridge.released > 0 %}, minus the earlier deferrals released this period ({{ broker_bridge.released | eur }}){% endif %}, gives the computable result of <strong>{{ broker_bridge.computable_net | eur }}</strong> — the same total shown in the portfolio table and used in the Modelo 100 tables above.{% if broker_bridge.forfeited > 0 %} Separately, {{ broker_bridge.forfeited | eur }} of deferred losses are <strong>not</strong> integrated at all: they were already deducted in a closed year and this run gives up their release rather than amending that year.{% endif %} Declare the yearly figures, never this multi-year total.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'><strong>Conciliación — este total no es la cifra a declarar.</strong> El resultado realizado bruto (<strong>{{ broker_bridge.gross_net | eur }}</strong>){% if broker_bridge.blocked > 0 %}, más las pérdidas que difiere el Art. 33.5.f y que todavía no reducen la base ({{ broker_bridge.blocked | eur }}){% endif %}{% if broker_bridge.released > 0 %}, menos las diferidas de ejercicios anteriores liberadas en este período ({{ broker_bridge.released | eur }}){% endif %}, da el resultado computable de <strong>{{ broker_bridge.computable_net | eur }}</strong> — el mismo total del Resumen de Cartera y el que usan las tablas del Modelo 100 de arriba.{% if broker_bridge.forfeited > 0 %} Aparte, hay {{ broker_bridge.forfeited | eur }} de pérdidas diferidas que <strong>no</strong> se integran: ya se dedujeron en un ejercicio cerrado y esta ejecución renuncia a su liberación en lugar de regularizar aquel ejercicio.{% endif %} Declara las cifras <em>por ejercicio</em>, nunca este total plurianual.</p>
+{%- endif %}
 {%- endif %}
 {%- if use_savings %}
 {# ---- Savings Base (two-bucket) ---- #}
@@ -260,20 +265,20 @@
 {%- for r in sledger.rows %}
 <tr>
 <td>{{ r.year }}</td>
-<td class='{{ 'gain' if r.gp_net >= 0 else 'loss' }}'>€{{ r.gp_net | num2 }}</td>
-<td>€{{ r.rcm_net | num2 }}</td>
-<td>{% if r.cross_offset > 0 %}€{{ r.cross_offset | num2 }}{% else %}—{% endif %}</td>
-<td><strong>€{{ r.savings_base | num2 }}</strong></td>
-<td>€{{ r.foreign_tax_eur | num2 }}</td>
+<td class='{{ 'gain' if r.gp_net >= 0 else 'loss' }}'>{{ r.gp_net | eur }}</td>
+<td>{{ r.rcm_net | eur }}</td>
+<td>{% if r.cross_offset > 0 %}{{ r.cross_offset | eur }}{% else %}—{% endif %}</td>
+<td><strong>{{ r.savings_base | eur }}</strong></td>
+<td>{{ r.foreign_tax_eur | eur }}</td>
 </tr>
 {%- endfor %}
 </table>
 {%- if sledger.total_foreign_tax > 0 %}
 {%- if not is_es %}
-<p style='font-size: 11px; color: #555;'><em>Total foreign tax withheld: €{{ sledger.total_foreign_tax | num2 }} — claim as deducción por doble imposición internacional (advisor).</em></p>
+<p style='font-size: 11px; color: #555;'><em>Total foreign tax withheld: {{ sledger.total_foreign_tax | eur }} — claim as deducción por doble imposición internacional (advisor).</em></p>
 <p style='font-size: 11px; color: #555;'><em>Spain's tax treaties cap the foreign-tax credit at the treaty rate (<strong>15%</strong> for US dividends). Withholding above that is not creditable here — reclaim the excess from the source country (e.g. a corrected W-8BEN / US 1040-NR).</em></p>
 {%- else %}
-<p style='font-size: 11px; color: #555;'><em>Retención total en origen: €{{ sledger.total_foreign_tax | num2 }} — reclámala como deducción por doble imposición internacional (asesor).</em></p>
+<p style='font-size: 11px; color: #555;'><em>Retención total en origen: {{ sledger.total_foreign_tax | eur }} — reclámala como deducción por doble imposición internacional (asesor).</em></p>
 <p style='font-size: 11px; color: #555;'><em>Los convenios de doble imposición limitan la deducción al tipo del convenio (<strong>15%</strong> para dividendos de EE. UU.). La retención por encima de ese límite no es deducible aquí — reclama el exceso al país de origen (p. ej. un W-8BEN corregido / 1040-NR de EE. UU.).</em></p>
 {%- endif %}
 {%- if over15_flagged %}
@@ -287,21 +292,21 @@
 {%- if sledger.gp_pending_end %}
 <p><strong>{{ 'Pérdidas patrimoniales pendientes de compensar:' if is_es else 'Pending capital losses carried forward:' }}</strong></p><ul>
 {%- for oy, rem, ub in sledger.gp_pending_end %}
-<li class='loss'>{{ oy }}: €{{ rem | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
+<li class='loss'>{{ oy }}: {{ rem | eur }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
 {%- endfor %}
 </ul>
 {%- endif %}
 {%- if sledger.rcm_pending_end %}
 <p><strong>{{ 'Pérdidas de RCM (dividendos/intereses) pendientes de compensar:' if is_es else 'Pending RCM (dividend/interest) losses carried forward:' }}</strong></p><ul>
 {%- for oy, rem, ub in sledger.rcm_pending_end %}
-<li class='loss'>{{ oy }}: €{{ rem | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
+<li class='loss'>{{ oy }}: {{ rem | eur }} — {{ 'usar antes de' if is_es else 'use by' }} {{ ub }}</li>
 {%- endfor %}
 </ul>
 {%- endif %}
 {%- if sledger.expired %}
 <p style='color:#cc0000;'><strong>{{ '⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):' if is_es else '⚠️ Losses that EXPIRED unused (4-year limit passed):' }}</strong></p><ul>
 {%- for bucket, oy, amount in sledger.expired %}
-<li style='color:#cc0000;'>{{ bucket }} {{ oy }}: €{{ amount | num2 }}</li>
+<li style='color:#cc0000;'>{{ bucket }} {{ oy }}: {{ amount | eur }}</li>
 {%- endfor %}
 </ul>
 {%- endif %}
@@ -325,23 +330,23 @@
 {%- for r in cf_ledger.rows %}
 <tr>
 <td>{{ r.year }}</td>
-<td class='{{ 'gain' if r.net_result >= 0 else 'loss' }}'>€{{ r.net_result | num2 }}</td>
-<td>€{{ r.prior_losses_applied | num2 }}</td>
-<td><strong>€{{ r.taxable_after | num2 }}</strong></td>
+<td class='{{ 'gain' if r.net_result >= 0 else 'loss' }}'>{{ r.net_result | eur }}</td>
+<td>{{ r.prior_losses_applied | eur }}</td>
+<td><strong>{{ r.taxable_after | eur }}</strong></td>
 </tr>
 {%- endfor %}
 </table>
 {%- if cf_ledger.pending_end %}
 <p><strong>{{ 'Pérdidas pendientes de compensar (aún utilizables):' if is_es else 'Pending losses carried forward (still usable):' }}</strong></p><ul>
 {%- for origin_year, remaining, use_by in cf_ledger.pending_end %}
-<li class='loss'>{{ origin_year }}: €{{ remaining | num2 }} — {{ 'usar antes de' if is_es else 'use by' }} {{ use_by }}</li>
+<li class='loss'>{{ origin_year }}: {{ remaining | eur }} — {{ 'usar antes de' if is_es else 'use by' }} {{ use_by }}</li>
 {%- endfor %}
 </ul>
 {%- endif %}
 {%- if cf_ledger.expired %}
 <p style='color:#cc0000;'><strong>{{ '⚠️ Pérdidas CADUCADAS sin usar (superado el límite de 4 años):' if is_es else '⚠️ Losses that EXPIRED unused (4-year limit passed):' }}</strong></p><ul>
 {%- for origin_year, amount in cf_ledger.expired %}
-<li style='color:#cc0000;'>{{ origin_year }}: €{{ amount | num2 }}</li>
+<li style='color:#cc0000;'>{{ origin_year }}: {{ amount | eur }}</li>
 {%- endfor %}
 </ul>
 {%- endif %}
@@ -360,9 +365,9 @@
 <table class='ledger'><tr><th>Valor</th><th>ISIN</th><th>Fecha adq.</th><th>Valor adq. (EUR)</th><th>Fecha transm.</th><th>Valor transm. (EUR)</th><th>Gastos (EUR)</th><th>G/P Neta (EUR)</th></tr>
 {%- endif %}
 {%- for r in transm_rows %}
-<tr><td>{{ r.symbol or '—' }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.acq_date | ld(is_es) }}</td><td>€{{ r.acq_value | num2 }}</td><td>{{ r.transm_date | ld(is_es) }}</td><td>€{{ r.transm_value | num2 }}</td><td>€{{ r.fee | num2 }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>€{{ r.net | num2 }}</strong></td></tr>
+<tr><td>{{ r.symbol or '—' }}</td><td>{{ r.isin or '—' }}</td><td>{{ r.acq_date | ld(is_es) }}</td><td>{{ r.acq_value | eur }}</td><td>{{ r.transm_date | ld(is_es) }}</td><td>{{ r.transm_value | eur }}</td><td>{{ r.fee | eur }}</td><td class='{{ 'gain' if r.net >= 0 else 'loss' }}'><strong>{{ r.net | eur }}</strong></td></tr>
 {%- endfor %}
-<tr><td colspan='7'><strong>{{ 'G/P neta total' if is_es else 'Total net gain/loss' }}</strong></td><td class='{{ 'gain' if transm_total >= 0 else 'loss' }}'><strong>€{{ transm_total | num2 }}</strong></td></tr>
+<tr><td colspan='7'><strong>{{ 'G/P neta total' if is_es else 'Total net gain/loss' }}</strong></td><td class='{{ 'gain' if transm_total >= 0 else 'loss' }}'><strong>{{ transm_total | eur }}</strong></td></tr>
 </table>
 {%- endif %}
 {%- if espp_early_sale_discounts or espp_discounts %}
@@ -381,7 +386,7 @@
 {%- for year, amount in espp_early_sale_rows %}
 <tr>
 <td>{{ year }}</td>
-<td><strong style='color: #cc0000;'>€{{ amount | num2 }}</strong></td>
+<td><strong style='color: #cc0000;'>{{ amount | eur }}</strong></td>
 </tr>
 {%- endfor %}
 </table>
@@ -389,7 +394,7 @@
 {%- if not is_es %}
 <p style='color: green;'><strong>✅ No ESPP shares were sold before the 3-year holding period.</strong> All ESPP discounts may be exempt under Art. 42.3.f LIRPF (subject to €12,000/year limit).</p>
 {%- else %}
-<p style='color: green;'><strong>✅ No se vendieron acciones ESPP antes del período de retención de 3 años.</strong> Todos los descuentos ESPP pueden estar exentos según Art. 42.3.f LIRPF (sujeto al límite de €12.000/año).</p>
+<p style='color: green;'><strong>✅ No se vendieron acciones ESPP antes del período de retención de 3 años.</strong> Todos los descuentos ESPP pueden estar exentos según Art. 42.3.f LIRPF (sujeto al límite de 12.000 €/año).</p>
 {%- endif %}
 {%- endif %}
 {%- if not is_es %}

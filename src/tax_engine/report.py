@@ -12,12 +12,13 @@ the heavier aggregation tables) and expose the formatting filters. The console
 tables (``print_ledger`` / ``print_tax_summary``) stay as direct ``print`` calls.
 """
 
+import re
 from datetime import date
 from decimal import ROUND_HALF_UP, Decimal
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, pass_context
 
 from .models import (
     EventType,
@@ -61,10 +62,25 @@ def _merge_summaries(
 _TEMPLATE_DIR = Path(__file__).parent / "templates"
 
 
-def _shares_filter(val: Decimal) -> str:
+def _swap_separators(text: str) -> str:
+    """Turn en-US digit grouping into es-ES: ``1,234.56`` -> ``1.234,56``.
+
+    Swapped through a placeholder, because a straight two-step replace would
+    turn every comma into a dot and then that same dot back into a comma.
+    """
+    return text.replace(",", "\x00").replace(".", ",").replace("\x00", ".")
+
+
+def _shares_filter(val: Decimal, is_es: bool = False) -> str:
+    """Share counts, grouped the way the report's language groups digits.
+
+    The console keeps ``TaxEngine.format_shares`` as-is; only the rendered
+    report localizes, so a Spanish page never mixes ``0,008079`` in one column
+    with ``0.008079`` in the next.
+    """
     from .tax_engine import TaxEngine
 
-    return TaxEngine.format_shares(val)
+    return _swap_separators(TaxEngine.format_shares(val)) if is_es else TaxEngine.format_shares(val)
 
 
 def _localized_date(d: date, is_es: bool) -> str:
@@ -110,12 +126,21 @@ def _translate_event_type(event_type: EventType, is_es: bool) -> str:
     return event_type.value
 
 
+# An amount the engine baked into a ledger note, e.g. "[Wash Sale Blocked Loss:
+# €6,000.00]" or "(Includes $5.00 fees)". Anchored on the currency sign so plain
+# numbers in the prose (share counts, years) are left alone.
+_NOTE_AMOUNT = re.compile(r"(?<=[€$])(\d[\d,]*(?:\.\d+)?)")
+
+
 def _translate_notes(notes: str, is_es: bool) -> str:
     if not is_es:
         return notes
     for en, es in _NOTE_REPLACEMENTS_ES:
         notes = notes.replace(en, es)
-    return notes
+    # The amounts inside these notes are formatted by the engine, not by the
+    # template filters, so they need localizing here or the Spanish page mixes
+    # "€6,000.00" in the notes with "6.000,00 €" in the table beside it.
+    return _NOTE_AMOUNT.sub(lambda m: _swap_separators(m.group(1)), notes)
 
 
 _ENV = Environment(
@@ -123,10 +148,66 @@ _ENV = Environment(
     autoescape=False,
     keep_trailing_newline=False,
 )
-_ENV.filters["num2"] = lambda x: f"{x:,.2f}"
-_ENV.filters["num4"] = lambda x: f"{x:,.4f}"
-_ENV.filters["fx4"] = lambda x: f"{x:.4f}"
-_ENV.filters["shares"] = _shares_filter
+# Non-breaking space, so "1.234,56 €" never wraps across a line in the PDF.
+_NBSP = "\u00a0"
+
+
+def _localized_number(value: Any, places: int, is_es: bool) -> str:
+    """Group digits the way the target language does.
+
+    en-US writes ``1,234.56``; es-ES swaps both separators to ``1.234,56``. The
+    report is transcribed into the Modelo 100 by hand, so a decimal point read
+    as a thousands separator is a three-orders-of-magnitude error on a figure
+    that goes straight into a tax return.
+    """
+    text = f"{value:,.{places}f}"
+    return _swap_separators(text) if is_es else text
+
+
+def _amount(value: Any, places: int, is_es: bool) -> str:
+    """A money amount with the euro sign where the language puts it."""
+    number = _localized_number(value, places, is_es)
+    return f"{number}{_NBSP}€" if is_es else f"€{number}"
+
+
+# ``is_es`` lives in the render context rather than in every call site: these
+# filters are used ~80 times across the template, and threading the language
+# through each one by hand is exactly the kind of edit that gets half-applied.
+@pass_context
+def _num_filter(ctx: Any, value: Any, places: int = 2) -> str:
+    return _localized_number(value, places, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _num4_filter(ctx: Any, value: Any) -> str:
+    return _localized_number(value, 4, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _eur_filter(ctx: Any, value: Any, places: int = 2) -> str:
+    return _amount(value, places, bool(ctx.get("is_es")))
+
+
+@pass_context
+def _eur4_filter(ctx: Any, value: Any) -> str:
+    return _amount(value, 4, bool(ctx.get("is_es")))
+
+
+_ENV.filters["num2"] = _num_filter
+_ENV.filters["num4"] = _num4_filter
+_ENV.filters["eur"] = _eur_filter
+_ENV.filters["eur4"] = _eur4_filter
+
+
+@pass_context
+def _fx4_filter(ctx: Any, value: Any) -> str:
+    """The ECB rate, ungrouped (it is never >= 1000) but locale-aware."""
+    text = f"{value:.4f}"
+    return _swap_separators(text) if ctx.get("is_es") else text
+
+
+_ENV.filters["fx4"] = _fx4_filter
+_ENV.filters["shares"] = pass_context(lambda ctx, val: _shares_filter(val, bool(ctx.get("is_es"))))
 _ENV.filters["ld"] = _localized_date
 _ENV.filters["tetype"] = _translate_event_type
 _ENV.filters["tnotes"] = _translate_notes
@@ -398,12 +479,66 @@ class ReportRenderer:
             rows.append(
                 {"broker": b, "gains": gain_amt, "losses": loss_amt, "net": gain_amt + loss_amt}
             )
+        # Bridge from this table's gross result to the computable one used
+        # everywhere else, so two different totals never read as a contradiction.
+        #
+        #   gross + deferred - released = computable
+        #
+        # A loss Art. 33.5.f defers does NOT reduce the base yet, so deferring it
+        # RAISES the computable result — it is added back, not subtracted. A
+        # deferral from an earlier year whose block has since broken does reduce
+        # it, so it is subtracted. A renuncia is not a step in this chain: it
+        # removes a release before the chain starts, and is reported separately
+        # because it is the one figure the reader cannot derive from the tables.
+        # Every term comes from the same yearly summaries that feed the Modelo
+        # 100 tables, so the arithmetic ties to the cent.
+        summaries = [
+            s
+            for s in self.engine.get_all_yearly_summaries()
+            if max_year is None or s.year <= max_year
+        ]
+        blocked = sum((abs(s.blocked_losses) for s in summaries), Decimal("0"))
+        released = sum((abs(s.unlocked_historical_losses) for s in summaries), Decimal("0"))
+        forfeited = sum(
+            (
+                amount
+                for origin, amount in self.engine.forfeited_releases.items()
+                if max_year is None or origin <= max_year
+            ),
+            Decimal("0"),
+        )
+        # Both endpoints have to keep matching the tables they point at — the
+        # broker total above and the portfolio total below, each rounded to cents
+        # on its own. Rounding the bridging terms independently too can leave the
+        # printed line a cent out, on a note whose only job is to show that those
+        # two totals reconcile. So the endpoints are pinned and the deferral term
+        # (failing that, the release term) absorbs the residual; it moves by at
+        # most a cent or two from its own rounded value.
+        cents = Decimal("0.01")
+        gross_net = (total_gain + total_loss).quantize(cents, ROUND_HALF_UP)
+        computable_net = sum((s.net_gain_loss for s in summaries), Decimal("0")).quantize(
+            cents, ROUND_HALF_UP
+        )
+        blocked_shown = blocked.quantize(cents, ROUND_HALF_UP)
+        released_shown = released.quantize(cents, ROUND_HALF_UP)
+        residual = computable_net - (gross_net + blocked_shown - released_shown)
+        if blocked_shown:
+            blocked_shown += residual
+        elif released_shown:
+            released_shown -= residual
         return {
             "broker_rows": rows,
             "broker_totals": {
                 "gains": total_gain,
                 "losses": total_loss,
                 "net": total_gain + total_loss,
+            },
+            "broker_bridge": {
+                "gross_net": gross_net,
+                "blocked": blocked_shown,
+                "released": released_shown,
+                "forfeited": forfeited,
+                "computable_net": computable_net,
             },
         }
 
