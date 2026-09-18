@@ -454,6 +454,152 @@ class ReportRenderer:
             "portfolio_totals": {"gains": total_gains, "losses": total_losses, "net": total_net},
         }
 
+    def _deferrals_context(self, max_year: int | None = None) -> dict[str, Any]:
+        """Art. 33.5.f deferrals still locked up, and the lot that would free each.
+
+        The yearly table says how much each year blocked; this says how much is
+        still deferred, where it sits, and what has to be transmitted to
+        integrate it — the balance a técnico needs to verify a future deduction,
+        and the taxpayer needs to plan one.
+
+        Two dates, because the two answers differ and both matter: 31 December of
+        the last complete year (the figure that belongs with the declared years)
+        and today (the live position). Unlike the Art. 49 carry-forward these
+        deferrals do **not** expire; they wait for the replacement shares to go.
+        """
+        cutoff = date(max_year, 12, 31) if max_year is not None else date.today()
+        today = date.today()
+
+        def pending_at(claim: Any, when: date) -> Decimal:
+            # Before it attached, the deferral did not exist. After that it is the
+            # amount less everything settled by then — freed (``releases``) and
+            # rolled onto successor shares (``rollovers``), which is why both
+            # halves have to carry dates.
+            if when < claim.anchor_date:
+                return Decimal("0")
+            settled = sum(
+                (amount for on, amount in claim.releases + claim.rollovers if on <= when),
+                Decimal("0"),
+            )
+            return Decimal(claim.amount - settled)
+
+        rows: list[dict[str, Any]] = []
+        for lot in self.engine.lot_ledger:
+            for claim in lot.deferred_claims:
+                at_cutoff = pending_at(claim, cutoff)
+                at_today = pending_at(claim, today)
+                if at_cutoff == 0 and at_today == 0:
+                    continue
+                rows.append(
+                    {
+                        "origin_year": claim.origin_year,
+                        "pending_cutoff": at_cutoff,
+                        "pending_today": at_today,
+                        "lot_date": lot.acquisition_date,
+                        "lot_broker": lot.broker,
+                        "lot_label": lot.isin or "—",
+                        "lot_shares_today": lot.remaining_shares,
+                    }
+                )
+        rows.sort(key=lambda r: (r["origin_year"], r["lot_date"]))
+        return {
+            "deferral_rows": rows,
+            "deferral_cutoff": cutoff,
+            "deferral_today": today,
+            "deferral_totals": {
+                "pending_cutoff": sum((r["pending_cutoff"] for r in rows), Decimal("0")),
+                "pending_today": sum((r["pending_today"] for r in rows), Decimal("0")),
+            },
+        }
+
+    def _espp_exposure_context(self, max_year: int | None = None) -> dict[str, Any]:
+        """ESPP lots still inside the 36 months, and the FIFO cushion in front.
+
+        The Art. 42.3.f table above reports breaches that already happened. This
+        reports the exposure still open: how much of the purchase discount would
+        become rendimiento del trabajo if those shares left now, and how many
+        shares stand ahead of them in the FIFO queue — because what usually
+        reaches an ESPP lot is not a decision to sell it, but a later vest's
+        sell-to-cover eating through everything in front of it.
+
+        The cushion is a projection over the current queue, not a tax figure. It
+        is computed per security: Spanish FIFO is per ISIN, so a holding in
+        another security shields nothing.
+        """
+        from .cli_main import ESPP_HOLDING_MONTHS
+        from .dates import add_months
+        from .ecb_rates import ECBRateFetcher
+        from .models import LotOrigin
+
+        cutoff = date(max_year, 12, 31) if max_year is not None else date.today()
+        today = date.today()
+        ledger = self.engine.lot_ledger
+
+        def discount_per_share(lot: Any) -> Decimal | None:
+            """EUR discount on one share, at the lot's own acquisition rate.
+
+            The salary accrued at purchase, not at sale, so the purchase-date
+            rate is the right one — same basis as the breach table, so the two
+            can be added together.
+            """
+            if lot.espp_fmv_usd is None or lot.espp_price_usd is None:
+                return None
+            fx = lot.fx_rate or ECBRateFetcher.get_rate(lot.acquisition_date)
+            return Decimal((lot.espp_fmv_usd - lot.espp_price_usd) * fx)
+
+        rows: list[dict[str, Any]] = []
+        warnings: list[str] = []
+        for index, lot in enumerate(ledger):
+            if lot.origin is not LotOrigin.ESPP:
+                continue
+            exempt_from = add_months(lot.acquisition_date, ESPP_HOLDING_MONTHS)
+            if today >= exempt_from:
+                continue  # exemption already secured; nothing at risk
+            shares_today = lot.shares_held_at(today)
+            shares_cutoff = lot.shares_held_at(cutoff)
+            if shares_today <= 0 and shares_cutoff <= 0:
+                continue
+
+            per_share = discount_per_share(lot)
+            if per_share is None:
+                # A missing input must never read as "nothing at risk".
+                warnings.append(lot.acquisition_date.isoformat())
+                continue
+
+            # Everything acquired earlier in the same security and still held is
+            # consumed before FIFO can reach this lot.
+            cushion = sum(
+                (
+                    earlier.shares_held_at(today)
+                    for earlier in ledger[:index]
+                    if earlier.isin == lot.isin
+                ),
+                Decimal("0"),
+            )
+            rows.append(
+                {
+                    "acq_date": lot.acquisition_date,
+                    "broker": lot.broker,
+                    "shares_cutoff": shares_cutoff,
+                    "shares_today": shares_today,
+                    "discount_cutoff": (per_share * shares_cutoff).quantize(Decimal("0.01")),
+                    "discount_today": (per_share * shares_today).quantize(Decimal("0.01")),
+                    "exempt_from": exempt_from,
+                    "cushion_today": cushion,
+                }
+            )
+        rows.sort(key=lambda r: r["acq_date"])
+        return {
+            "espp_exposure_rows": rows,
+            "espp_exposure_cutoff": cutoff,
+            "espp_exposure_today": today,
+            "espp_exposure_unvalued": warnings,
+            "espp_exposure_totals": {
+                "discount_cutoff": sum((r["discount_cutoff"] for r in rows), Decimal("0")),
+                "discount_today": sum((r["discount_today"] for r in rows), Decimal("0")),
+            },
+        }
+
     def _broker_context(self, max_year: int | None = None) -> dict[str, Any]:
         """Per-broker realized G/L view-model, attributed to the selling broker."""
         gains: dict[str, Decimal] = {}
@@ -805,6 +951,11 @@ class ReportRenderer:
             ]
         else:
             ctx["single_events"] = _in_window(engine.processed_events)
+
+        # Deferrals are a live balance, not a yearly figure, so this section runs
+        # on the whole lot ledger regardless of the report's year window.
+        ctx.update(self._deferrals_context(max_year=max_year))
+        ctx.update(self._espp_exposure_context(max_year=max_year))
 
         if multi_broker:
             ctx.update(self._broker_context(max_year=max_year))

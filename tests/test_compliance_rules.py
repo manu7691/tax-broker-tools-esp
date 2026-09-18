@@ -1029,3 +1029,64 @@ class TestForfeitsReachThePerSecurityView:
         )
 
         assert portfolio.aggregate.forfeited_releases == {2022: Decimal("5000.00")}
+
+
+class TestRolloversAreDated:
+    """A rolled-over deferral must record WHEN it rolled, like a release does.
+
+    ``releases`` dates only the part that was definitively integrated. The part
+    that rolls onto replacement shares increments ``released`` and ``rolled``
+    with no date at all, so the pending balance at any past date cannot be
+    reconstructed once a rollover has happened. The report needs that balance to
+    state what was still deferred at 31 December.
+
+    Nothing about the amounts changes here — ``rolled`` is already computed. This
+    only records the date alongside it.
+    """
+
+    EVENTS = [
+        ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+        ev(date(2022, 5, 10), EventType.SELL, "100", "50"),  # loss -5000
+        ev(date(2022, 5, 20), EventType.BUY, "100", "50"),  # blocks it
+        # Sells the replacement, but a vest 35 days later replaces 20 of the 100:
+        # 80% is integrated on the spot and 20% rolls onto the vested lot.
+        ev(date(2023, 6, 10), EventType.SELL, "100", "50"),
+        ev(date(2023, 7, 15), EventType.VEST, "20", "50"),
+    ]
+
+    def _claims(self):
+        engine = TaxEngine(release_policy="definitive")
+        engine.process_all(list(self.EVENTS))
+        return [c for lot in engine.lot_ledger for c in lot.deferred_claims]
+
+    def test_the_rolled_amount_is_recorded_with_its_date(self):
+        rolled_over = [c for c in self._claims() if c.rolled != 0]
+
+        assert rolled_over, "scenario must actually roll a deferral over"
+        for claim in rolled_over:
+            assert claim.rollovers == [(date(2023, 6, 10), Decimal("-1000.0000"))]
+
+    def test_every_rollover_entry_sums_to_the_rolled_total(self):
+        for claim in self._claims():
+            assert sum((amount for _, amount in claim.rollovers), Decimal("0")) == claim.rolled
+
+    def test_releases_and_rollovers_together_account_for_everything_settled(self):
+        """``released`` is freed + rolled; both halves must now be dated."""
+        for claim in self._claims():
+            dated = sum((amount for _, amount in claim.releases + claim.rollovers), Decimal("0"))
+            assert dated == claim.released
+
+    def test_a_claim_that_never_rolled_has_no_entries(self):
+        engine = TaxEngine(release_policy="definitive")
+        engine.process_all(
+            [
+                ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+                ev(date(2022, 5, 10), EventType.SELL, "100", "50"),
+                ev(date(2022, 5, 20), EventType.BUY, "100", "50"),
+                ev(date(2023, 9, 10), EventType.SELL, "100", "50"),  # clean exit
+            ]
+        )
+
+        for lot in engine.lot_ledger:
+            for claim in lot.deferred_claims:
+                assert claim.rollovers == []

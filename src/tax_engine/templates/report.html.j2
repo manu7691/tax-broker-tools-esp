@@ -223,6 +223,31 @@
 {%- else %}
 <p style='font-size: 11px; color: #555;'><strong>* Estimación aislada.</strong> La columna de impuesto aplica la escala del ahorro a estas ganancias bursátiles de forma <em>aislada</em>. Tu cuota real depende de tu base del ahorro <strong>total</strong> del ejercicio (dividendos, intereses, ganancias de otros activos) y de las pérdidas pendientes de compensar de años anteriores (límite de 4 años, Art. 49 LIRPF). Usa esta cifra como orientación, no como la cuota definitiva.</p>
 {%- endif %}
+{%- if deferral_rows %}
+{# ---- Outstanding Art. 33.5.f deferrals ---- #}
+<h2>{{ 'Pérdidas Diferidas del Art. 33.5.f Pendientes de Integrar' if is_es else 'Outstanding Deferred Losses (Art. 33.5.f)' }}</h2>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'>What the 2-month rule still has locked up, and the lot that has to be transmitted to free it. These deferrals <strong>do not expire</strong>: unlike the four-year limit on carrying a negative savings balance forward (Art. 49 LIRPF), they simply wait until the replacement shares leave your estate. Two dates, because both matter: the balance at the last complete year end, which belongs with the declared years, and the balance today.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'>Lo que la regla de los 2 meses mantiene bloqueado, y el lote que hay que transmitir para liberarlo. Estas diferidas <strong>no caducan</strong>: a diferencia del límite de cuatro años para arrastrar un saldo negativo del ahorro (Art. 49 LIRPF), sencillamente esperan a que las acciones de reemplazo salgan de tu patrimonio. Se dan dos fechas porque ambas importan: el saldo al cierre del último ejercicio completo, que acompaña a los ejercicios declarados, y el saldo de hoy.</p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Origin Year</th><th>Pending at {{ deferral_cutoff | ld(is_es) }}</th><th>Pending today ({{ deferral_today | ld(is_es) }})</th><th>Lot holding it</th><th>Broker</th><th>Shares left in lot</th></tr>
+{%- else %}
+<tr><th>Año origen</th><th>Pendiente a {{ deferral_cutoff | ld(is_es) }}</th><th>Pendiente hoy ({{ deferral_today | ld(is_es) }})</th><th>Lote que lo retiene</th><th>Bróker</th><th>Acciones vivas del lote</th></tr>
+{%- endif %}
+{%- for r in deferral_rows %}
+<tr><td>{{ r.origin_year }}</td><td class='loss'>{{ r.pending_cutoff | eur }}</td><td class='loss'>{{ r.pending_today | eur }}</td><td>{{ r.lot_date | ld(is_es) }}</td><td>{{ r.lot_broker }}</td><td>{{ r.lot_shares_today | shares }}</td></tr>
+{%- endfor %}
+<tr><td><strong>Total</strong></td><td class='loss'><strong>{{ deferral_totals.pending_cutoff | eur }}</strong></td><td class='loss'><strong>{{ deferral_totals.pending_today | eur }}</strong></td><td></td><td></td><td></td></tr>
+</table>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'>A lot showing 0 shares left has already been transmitted, yet its deferral may still be pending: the loss is only integrated by a transmission that is <em>definitive</em> — one with no repurchase of homogeneous securities in the following two months (DGT V3282-18, V0046-20, V1119-21). Until that condition is met the loss keeps waiting, which is why a fully sold lot can still carry a balance here.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'>Un lote con 0 acciones vivas ya se transmitió, pero su diferida puede seguir pendiente: la pérdida solo se integra con una transmisión <em>definitiva</em>, es decir, sin recompra de valores homogéneos en los 2 meses siguientes (DGT V3282-18, V0046-20, V1119-21). Mientras esa condición no se cumpla la pérdida sigue esperando, y por eso un lote íntegramente vendido puede conservar saldo aquí.</p>
+{%- endif %}
+{%- endif %}
 {%- if multi_broker %}
 {# ---- Realized Gains/Losses by Broker ---- #}
 <h2>{{ 'Ganancias/Pérdidas Realizadas por Bróker' if is_es else 'Realized Gains/Losses by Broker' }}</h2>
@@ -401,6 +426,29 @@
 <p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANT:</strong> Employee must have signed the ESPP enrollment/agreement document from the company for each offering period to qualify for the tax exemption.</p>
 {%- else %}
 <p style='background-color: #fff3cd; padding: 10px; border-left: 4px solid #ffc107;'><strong>⚠️ IMPORTANTE:</strong> El empleado debe haber firmado el documento de inscripción/acuerdo ESPP de la empresa para cada período de oferta para poder optar a la exención fiscal.</p>
+{%- endif %}
+{%- endif %}
+{%- if espp_exposure_rows %}
+{# ---- Live ESPP exposure (still inside the 36 months) ---- #}
+<h2>{{ 'Exposición ESPP Viva (Art. 42.3.f LIRPF)' if is_es else 'Live ESPP Exposure (Art. 42.3.f LIRPF)' }}</h2>
+{%- if not is_es %}
+<p style='font-size: 11px; color: #555;'>ESPP lots still inside the 36 months. If these shares leave your estate before the date shown, the purchase discount becomes <strong>salary income of the purchase year</strong> and needs a complementaria for that year. The <strong>FIFO cushion</strong> is how many shares of the same security, acquired earlier, still stand in front of the lot: what usually reaches an ESPP lot is not a decision to sell it, but a later vest's sell-to-cover eating through everything ahead of it. The cushion is a <em>projection over today's queue</em>, not a tax figure.</p>
+{%- else %}
+<p style='font-size: 11px; color: #555;'>Lotes ESPP que siguen dentro de los 36 meses. Si estas acciones salen de tu patrimonio antes de la fecha indicada, el descuento de compra pasa a ser <strong>rendimiento del trabajo del año de compra</strong> y exige una complementaria de aquel ejercicio. El <strong>Colchón FIFO</strong> es cuántas acciones del mismo valor, adquiridas antes, siguen por delante del lote: lo que suele alcanzar a un lote ESPP no es la decisión de venderlo, sino el sell-to-cover de un vesting posterior comiéndose todo lo que tiene delante. El colchón es una <em>proyección sobre la cola de hoy</em>, no una cifra fiscal.</p>
+{%- endif %}
+<table>
+{%- if not is_es %}
+<tr><th>Purchase date</th><th>Broker</th><th>Shares at {{ espp_exposure_cutoff | ld(is_es) }}</th><th>Shares today</th><th>Discount at risk today</th><th>Exempt from</th><th>FIFO cushion ahead</th></tr>
+{%- else %}
+<tr><th>Fecha compra</th><th>Bróker</th><th>Acciones a {{ espp_exposure_cutoff | ld(is_es) }}</th><th>Acciones hoy</th><th>Descuento en riesgo hoy</th><th>Exento desde</th><th>Colchón FIFO por delante</th></tr>
+{%- endif %}
+{%- for r in espp_exposure_rows %}
+<tr><td>{{ r.acq_date | ld(is_es) }}</td><td>{{ r.broker }}</td><td>{{ r.shares_cutoff | shares }}</td><td>{{ r.shares_today | shares }}</td><td><strong style='color:#cc0000;'>{{ r.discount_today | eur }}</strong></td><td>{{ r.exempt_from | ld(is_es) }}</td><td>{{ r.cushion_today | shares }}</td></tr>
+{%- endfor %}
+<tr><td><strong>Total</strong></td><td></td><td></td><td></td><td><strong style='color:#cc0000;'>{{ espp_exposure_totals.discount_today | eur }}</strong></td><td></td><td></td></tr>
+</table>
+{%- if espp_exposure_unvalued %}
+<p style='color: #cc0000; font-size: 11px;'><strong>{{ '⚠️ Sin valorar:' if is_es else '⚠️ Not valued:' }}</strong> {{ 'los lotes ESPP comprados el' if is_es else 'ESPP lots purchased on' }} {{ espp_exposure_unvalued | join(', ') }} {{ 'no traen el FMV o el precio pagado, así que su descuento en riesgo no se ha podido cuantificar. Un dato ausente no significa que no haya riesgo.' if is_es else 'carry no FMV or price paid, so their exposure could not be quantified. A missing input does not mean no exposure.' }}</p>
 {%- endif %}
 {%- endif %}
 {%- if securities is not none %}

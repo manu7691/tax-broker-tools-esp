@@ -451,3 +451,348 @@ class TestThePrintedBridgeBalances:
         b = self._bridge()
 
         assert abs(b["blocked"] - Decimal("500.00")) <= Decimal("0.02")
+
+
+def _deferral_engine():
+    """A deferral blocked in 2022 and definitively freed in the CURRENT year.
+
+    Pending at 31 December of the last complete year, gone today — which is
+    exactly the difference the two columns exist to show.
+    """
+    cur = date.today().year
+
+    def _ev(d, kind, shares, price):
+        return StockEvent(
+            event_date=d,
+            event_type=kind,
+            shares=Decimal(shares),
+            price_usd=Decimal(price),
+            fx_rate=Decimal("1"),
+        )
+
+    engine = TaxEngine(release_policy="definitive")
+    engine.process_all(
+        [
+            _ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+            _ev(date(2022, 5, 10), EventType.SELL, "100", "50"),  # loss -5000
+            _ev(date(2022, 5, 20), EventType.BUY, "100", "50"),  # blocks it
+            _ev(date(cur, 3, 10), EventType.SELL, "100", "50"),  # clean exit, frees it
+        ]
+    )
+    return engine
+
+
+class TestOutstandingDeferrals:
+    """What Art. 33.5.f still has locked up, and what would free it.
+
+    The yearly table says how much was blocked in each year; nothing said how
+    much is still deferred now, on which lot it sits, or what has to be sold to
+    integrate it. Without that a técnico cannot verify a future deduction, and
+    the taxpayer cannot plan one.
+    """
+
+    def _ctx(self):
+        cutoff = date.today().year - 1
+        return ReportRenderer(_deferral_engine())._deferrals_context(max_year=cutoff)
+
+    def test_the_deferral_is_listed_with_the_year_it_came_from(self):
+        rows = self._ctx()["deferral_rows"]
+
+        assert len(rows) == 1
+        assert rows[0]["origin_year"] == 2022
+
+    def test_it_was_still_pending_at_the_last_year_end(self):
+        assert self._ctx()["deferral_rows"][0]["pending_cutoff"] == Decimal("-5000.0000")
+
+    def test_and_is_gone_today(self):
+        assert self._ctx()["deferral_rows"][0]["pending_today"] == Decimal("0")
+
+    def test_the_row_names_the_lot_holding_it(self):
+        row = self._ctx()["deferral_rows"][0]
+
+        assert row["lot_date"] == date(2022, 5, 20)
+        assert row["lot_shares_today"] == Decimal("0")  # sold, which is what freed it
+
+    def test_the_totals_match_the_rows(self):
+        ctx = self._ctx()
+
+        assert ctx["deferral_totals"]["pending_cutoff"] == Decimal("-5000.0000")
+        assert ctx["deferral_totals"]["pending_today"] == Decimal("0")
+
+    def test_the_pending_balance_reconciles_with_the_yearly_table(self):
+        """Balance at 31/12 == blocked in all years so far, less what was released.
+
+        Ties the new table to the "Pérdidas Bloqueadas" column it explains; if
+        the two ever disagree, one of them is lying.
+        """
+        engine = _deferral_engine()
+        cutoff = date.today().year - 1
+        summaries = [s for s in engine.get_all_yearly_summaries() if s.year <= cutoff]
+        expected = sum((s.blocked_losses for s in summaries), Decimal("0")) - sum(
+            (s.unlocked_historical_losses for s in summaries), Decimal("0")
+        )
+
+        ctx = ReportRenderer(engine)._deferrals_context(max_year=cutoff)
+        assert ctx["deferral_totals"]["pending_cutoff"] == expected
+
+    def test_an_engine_with_no_deferrals_produces_no_rows(self):
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2022, 1, 10),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("10"),
+                    fx_rate=Decimal("1"),
+                )
+            ]
+        )
+
+        assert ReportRenderer(engine)._deferrals_context(max_year=2025)["deferral_rows"] == []
+
+
+class TestTheDeferralsSectionRenders:
+    """The section has to say the one thing the reviewer of this report got wrong.
+
+    Art. 33.5.f deferrals do not expire at four years — that is Art. 49, for the
+    negative balance of the savings base. Confusing the two leads to selling
+    shares to "rescue" losses that were never at risk.
+    """
+
+    def _html(self, lang="es"):
+        return ReportRenderer(_deferral_engine()).generate_html_content(lang=lang)
+
+    def test_the_section_is_present(self):
+        assert "Pérdidas Diferidas" in self._html()
+
+    def test_it_states_that_these_do_not_expire(self):
+        html = self._html()
+        assert "no caducan" in html
+        assert "Art. 49" in html  # the four-year rule it is contrasted with
+
+    def test_both_dates_are_labelled(self):
+        html = self._html()
+        assert f"31/12/{date.today().year - 1}" in html
+        assert date.today().strftime("%d/%m/%Y") in html
+
+    def test_english_has_its_own_wording(self):
+        html = self._html(lang="en")
+        assert "Outstanding Deferred Losses" in html
+        assert "do not expire" in html
+
+    def test_a_report_with_no_deferrals_omits_the_section_entirely(self):
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2022, 1, 10),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("10"),
+                    fx_rate=Decimal("1"),
+                )
+            ]
+        )
+
+        assert "Pérdidas Diferidas" not in ReportRenderer(engine).generate_html_content(lang="es")
+
+
+def _espp_exposure_engine():
+    """An ESPP lot still inside the 36 months, behind an RSU cushion that a
+    current-year sell-to-cover has just eaten through.
+
+    Timeline (fx = 1 throughout):
+      2024-01-10  VEST 50 @ 40   -> the cushion standing in front
+      2024-06-15  ESPP 20 @ 34, FMV 40 -> €6/share of discount at risk
+      <this year> SELL 55        -> consumes the 50 RSU and reaches 5 ESPP shares
+
+    So 20 shares were exposed at the last year end and 15 are exposed today,
+    with nothing left in front of them.
+    """
+    from tax_engine.models import LotOrigin
+
+    engine = TaxEngine()
+    engine.process_all(
+        [
+            StockEvent(
+                event_date=date(2024, 1, 10),
+                event_type=EventType.VEST,
+                shares=Decimal("50"),
+                price_usd=Decimal("40"),
+                fx_rate=Decimal("1"),
+                origin=LotOrigin.RSU,
+            ),
+            StockEvent(
+                event_date=date(2024, 6, 15),
+                event_type=EventType.BUY,
+                shares=Decimal("20"),
+                price_usd=Decimal("34"),
+                fx_rate=Decimal("1"),
+                origin=LotOrigin.ESPP,
+                espp_fmv_usd=Decimal("40"),
+                espp_price_usd=Decimal("34"),
+            ),
+            StockEvent(
+                event_date=date(date.today().year, 3, 1),
+                event_type=EventType.SELL,
+                shares=Decimal("55"),
+                price_usd=Decimal("45"),
+                fx_rate=Decimal("1"),
+            ),
+        ]
+    )
+    return engine
+
+
+class TestLiveEsppExposure:
+    """ESPP lots still inside the 36 months, and what stands between them and FIFO.
+
+    The existing table reports exemption breaches that already happened. Nothing
+    reported the exposure still open, so a reader could not see that a future
+    vest's sell-to-cover turns a clean file into a complementaria.
+    """
+
+    def _ctx(self):
+        cutoff = date.today().year - 1
+        return ReportRenderer(_espp_exposure_engine())._espp_exposure_context(max_year=cutoff)
+
+    def test_the_lot_still_inside_the_window_is_listed(self):
+        rows = self._ctx()["espp_exposure_rows"]
+
+        assert len(rows) == 1
+        assert rows[0]["acq_date"] == date(2024, 6, 15)
+
+    def test_it_reports_the_shares_exposed_at_each_date(self):
+        row = self._ctx()["espp_exposure_rows"][0]
+
+        assert row["shares_cutoff"] == Decimal("20")
+        assert row["shares_today"] == Decimal("15")
+
+    def test_the_discount_at_risk_follows_the_shares_still_held(self):
+        row = self._ctx()["espp_exposure_rows"][0]
+
+        assert row["discount_cutoff"] == Decimal("120.00")  # 20 x €6
+        assert row["discount_today"] == Decimal("90.00")  # 15 x €6
+
+    def test_it_says_when_the_exemption_is_secured(self):
+        assert self._ctx()["espp_exposure_rows"][0]["exempt_from"] == date(2027, 6, 15)
+
+    def test_the_cushion_counts_only_shares_ahead_in_the_queue(self):
+        """The RSU lot in front was consumed by the sale, so nothing shields it now."""
+        row = self._ctx()["espp_exposure_rows"][0]
+
+        assert row["cushion_today"] == Decimal("0")
+
+    def test_a_lot_past_36_months_is_not_listed(self):
+        from tax_engine.models import LotOrigin
+
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2019, 1, 10),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("34"),
+                    fx_rate=Decimal("1"),
+                    origin=LotOrigin.ESPP,
+                    espp_fmv_usd=Decimal("40"),
+                    espp_price_usd=Decimal("34"),
+                )
+            ]
+        )
+
+        ctx = ReportRenderer(engine)._espp_exposure_context(max_year=date.today().year - 1)
+        assert ctx["espp_exposure_rows"] == []
+
+
+class TestTheEsppExposureSectionRenders:
+    def _html(self, lang="es"):
+        return ReportRenderer(_espp_exposure_engine()).generate_html_content(lang=lang)
+
+    def test_the_section_is_present(self):
+        assert "Exposición ESPP" in self._html()
+
+    def test_it_shows_the_cushion_and_says_it_is_a_projection(self):
+        html = self._html()
+        assert "Colchón FIFO" in html
+        assert "proyección" in html
+
+    def test_it_names_the_consequence_of_breaching(self):
+        html = self._html()
+        assert "complementaria" in html
+        assert "rendimiento del trabajo" in html.lower()
+
+    def test_english_has_its_own_wording(self):
+        html = self._html(lang="en")
+        assert "Live ESPP Exposure" in html
+        assert "FIFO cushion" in html
+
+    def test_a_report_with_no_live_espp_lots_omits_the_section(self):
+        engine = TaxEngine()
+        engine.process_all(
+            [
+                StockEvent(
+                    event_date=date(2022, 1, 10),
+                    event_type=EventType.BUY,
+                    shares=Decimal("10"),
+                    price_usd=Decimal("10"),
+                    fx_rate=Decimal("1"),
+                )
+            ]
+        )
+
+        assert "Exposición ESPP" not in ReportRenderer(engine).generate_html_content(lang="es")
+
+
+class TestTheDeferralNoteExplainsAFullySoldLot:
+    """A lot with no shares left can still hold a pending deferral.
+
+    Under the 'definitive' policy a transmission only frees the loss if no
+    homogeneous securities are repurchased in the following two months. Real
+    data has three such rows, and a footnote claiming the loss was already
+    integrated would contradict the very table it sits under.
+    """
+
+    def _html(self, lang="es"):
+        cur = date.today().year
+
+        def _ev(d, kind, shares, price):
+            return StockEvent(
+                event_date=d,
+                event_type=kind,
+                shares=Decimal(shares),
+                price_usd=Decimal(price),
+                fx_rate=Decimal("1"),
+            )
+
+        engine = TaxEngine(release_policy="definitive")
+        engine.process_all(
+            [
+                _ev(date(2021, 1, 10), EventType.BUY, "100", "100"),
+                _ev(date(2022, 5, 10), EventType.SELL, "100", "50"),  # loss
+                _ev(date(2022, 5, 20), EventType.BUY, "100", "50"),  # blocks it
+                _ev(date(cur, 3, 10), EventType.SELL, "100", "50"),  # sells the lot...
+                _ev(date(cur, 3, 20), EventType.BUY, "100", "50"),  # ...but buys back
+            ]
+        )
+        return ReportRenderer(engine).generate_html_content(lang=lang)
+
+    def test_the_note_does_not_claim_a_sold_lot_is_settled(self):
+        html = self._html()
+
+        assert "ya se integró" not in html
+        assert "se integró en esa venta" not in html
+
+    def test_it_explains_that_a_repurchase_keeps_the_loss_waiting(self):
+        html = self._html()
+
+        assert "recompra" in html
+        assert "2 meses siguientes" in html
+
+    def test_english_says_the_same(self):
+        html = self._html(lang="en")
+
+        assert "repurchase" in html.lower()
+        assert "following two months" in html

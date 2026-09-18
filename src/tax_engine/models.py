@@ -114,6 +114,10 @@ class DeferredWashSaleLoss:
     # because the transmission was not definitive. It is settled on this claim and
     # pending on the successor claim, so it must not be double-counted as blocked.
     rolled: Decimal = Decimal("0")
+    # The (date, amount) schedule behind ``rolled``, mirroring ``releases``.
+    # ``released`` is freed + rolled; without dating both halves the balance still
+    # deferred at a past date cannot be reconstructed once a rollover has happened.
+    rollovers: list[tuple[date, Decimal]] = field(default_factory=list)
     # True when this claim is itself the successor of a deferral that rolled over.
     # Its predecessor already reported the amount as blocked in the origin year, so
     # a successor must never add to that figure again.

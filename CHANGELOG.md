@@ -27,6 +27,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **What Art. 33.5.f still has locked up, and the lot that would free it.** The
+  yearly table said how much each year blocked; nothing said how much is *still*
+  deferred, where it sits, or what has to be transmitted to integrate it — the
+  balance a técnico needs to verify a future deduction and the taxpayer needs to
+  plan one. The section states plainly that these deferrals **do not expire**
+  (that is Art. 49, for the negative savings balance — a confusion that leads to
+  selling shares to "rescue" losses that were never at risk), and that a fully
+  sold lot can still carry a balance when its sales were not definitive. Its
+  total reconciles with the "Pérdidas Bloqueadas" column it explains.
+  `DeferredWashSaleLoss` gained `rollovers`, the dated schedule behind `rolled`:
+  `releases` dated only the freed half, so the balance at a past date could not
+  be reconstructed once a deferral had rolled over. No figure changes — the
+  amounts were already computed, they just had no date.
+- **Live ESPP exposure, with the FIFO cushion in front of it.** The Art. 42.3.f
+  table reports breaches that already happened. This reports the exposure still
+  open: lots inside the 36 months, the discount that would become salary income
+  of the purchase year, the date each is clear, and how many shares of the same
+  security stand ahead in the queue — because what usually reaches an ESPP lot
+  is not a decision to sell it but a later vest's sell-to-cover eating through
+  everything in front. The cushion is labelled a projection over today's queue,
+  not a tax figure, and an unvalued lot is reported loudly rather than read as
+  "nothing at risk".
 - **The two loss columns no longer share a name, and a note reconciles them.**
   *Resumen de Cartera* reports losses that are **deducible** (after Art. 33.5.f);
   *G/P Realizadas por Bróker* reports them **brutas**. Both were labelled

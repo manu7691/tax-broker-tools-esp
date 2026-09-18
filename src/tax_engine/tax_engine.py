@@ -599,6 +599,7 @@ class TaxEngine:
                     if replaced > 0:
                         rolled_amount = portion - freed_amount
                         claim.rolled += rolled_amount
+                        claim.rollovers.append((sell_date, rolled_amount))
                         self._roll_claim(claim, sell_date, replaced, rolled_amount)
 
                     if used_from_current >= disposed:
